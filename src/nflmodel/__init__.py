@@ -1,0 +1,12 @@
+"""Market-anchored NFL forecasts with an explicit authority gate."""
+
+from .authority import Action, Authority, Level, current, promote
+from .forecast import DEFAULT_LAMBDA, GameForecast, anchor, forecast_game, forecast_slate
+from .market import PairedQuote, american_to_implied, devig_two_way, prob_to_american
+
+__version__ = "0.1.0"
+__all__ = [
+    "Action", "Authority", "Level", "current", "promote",
+    "DEFAULT_LAMBDA", "GameForecast", "anchor", "forecast_game", "forecast_slate",
+    "PairedQuote", "american_to_implied", "devig_two_way", "prob_to_american",
+]
