@@ -68,6 +68,7 @@ currently unmet — run `nfl-model status` to see exactly which.
 pip install -e ".[dev]"
 nfl-model status
 nfl-model forecast --games slate.json
+nfl-model build-site --games data/slate_example.json --out _site/index.html
 ```
 
 `slate.json`:
@@ -79,6 +80,30 @@ nfl-model forecast --games slate.json
 Output carries the price, both American lines, the permitted action, and the unmet gates.
 Games without a paired price are reported as `AVOID` in `skipped` rather than dropped — a
 silently shorter list is indistinguishable from a slate with no games.
+
+## The dashboard
+
+`nfl-model build-site` renders a self-contained static page for GitHub Pages. It leads with the
+**authority gate** and only then shows the board: a dashboard that put prices first and
+permissions in a footnote would misrepresent the exact thing the gate exists to prevent. Every
+card carries the action its authority permits — `MONITOR` at best today, never `BET` — and the
+board reports `0 gems`, because a gem asserts an actionable edge and this authority permits none.
+
+The page is built from the **shared Chase Analytics board kernel**: `src/nflmodel/board.py`,
+`static/board.css` and `static/chase_tokens.css` are vendored **byte-identical** from
+[`mlb-model`](https://github.com/Alphakiller1/mlb-model) and
+[`wnba-edge-model`](https://github.com/Alphakiller1/wnba-edge-model), so an NFL card has the same
+anatomy, palette and typefaces as an MLB or WNBA one. `BOARD_CONTRACT.sha256` pins their hashes
+and `tests/test_board_contract.py` fails the build if any copy drifts — change a shared file in
+all three repos and regenerate the manifest, never edit one in isolation.
+
+What differs per sport is only the *adapter* (`board_nfl.py`): which slots the sport fills.
+
+| Slot | MLB | WNBA | NFL |
+| --- | --- | --- | --- |
+| `principals` | starting pitchers | usage leaders | *(none — no player feed)* |
+| `groups` | Full Game, First 5 | Full Game | Full Game |
+| side `score` | expected runs | projected points | fair win probability |
 
 ## Consumers
 

@@ -1,0 +1,33 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: install
+        run: pip install -e ".[dev]"
+      - name: ruff
+        run: ruff check src tests
+      - name: pytest
+        run: pytest -q
+      - name: dashboard builds and stays on the shared brand contract
+        run: |
+          python -m nflmodel.cli build-site --games data/slate_example.json --out _smoke/index.html
+          python - <<'EOF'
+          from pathlib import Path
+          html = Path('_smoke/index.html').read_text(encoding='utf-8')
+          # The authority gate must precede the numbers; a dashboard that shows prices
+          # first and permissions in a footnote misrepresents a research-only model.
+          assert html.index('id="authority"') < html.index('id="board"'), 'gate not first'
+          for key in ('RESEARCH_ONLY', 'bd-card', '1-800-GAMBLER',
+                      '#08090F', '#9A6BFF', 'DM Sans', 'Roboto Condensed'):
+              assert key in html, key
+          assert html.count('fonts.googleapis.com') == 1, 'duplicate font import'
+          print(f"OK: {len(html)//1024} KB, gate first, brand contract intact")
+          EOF

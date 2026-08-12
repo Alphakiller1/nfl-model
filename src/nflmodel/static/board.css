@@ -1,0 +1,681 @@
+/*
+ * Board kernel styles — the shared slate surface (see report/board.py).
+ *
+ * Vendored verbatim alongside board.py into every sport model. Every value here comes
+ * from chase_tokens.css; do not introduce new colours or fonts. Elevation is hairline
+ * borders + layered shadow, never a uniform violet outline.
+ */
+
+.bd {
+  --bd-gap: 14px;
+  --bd-card-min: 340px;
+  display: block;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+
+.bd-head {
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 18px;
+}
+
+.bd-head__title {
+  display: flex;
+  align-items: flex-end;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.bd-wordmark {
+  font-family: var(--font-wordmark);
+  font-size: var(--mm-text-hero);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+  line-height: 1;
+}
+
+.bd-wordmark em {
+  font-style: italic;
+  background: var(--v-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bd-counters {
+  display: flex;
+  gap: 22px;
+  padding-bottom: 3px;
+}
+
+.bd-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bd-counter__v {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xl);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.bd-counter.is-gem .bd-counter__v {
+  color: var(--ca-green);
+}
+
+.bd-counter__k {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-head__meta {
+  margin-top: 10px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.bd-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bd-filter {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 7px 15px;
+  cursor: pointer;
+}
+
+.bd-filter:hover {
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
+.bd-filter.on {
+  color: #fff;
+  background: var(--v-grad);
+  border-color: transparent;
+  box-shadow: 0 2px 12px var(--ca-purple-glow);
+}
+
+.bd-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-sort select {
+  font-family: var(--font-primary);
+  font-size: var(--mm-text-xs);
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── grid ───────────────────────────────────────────────────────────────── */
+
+.bd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--bd-card-min), 1fr));
+  gap: var(--bd-gap);
+  /* stretch, not start: cards in a row share a baseline so the market shelves line up
+     across the row and the eye can scan one market family horizontally. */
+  align-items: stretch;
+}
+
+/* ── card ───────────────────────────────────────────────────────────────── */
+
+.bd-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--ca-panel-glass);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--ca-card-radius);
+  box-shadow: var(--ca-card-shadow);
+  overflow: hidden;
+}
+
+.bd-card:hover {
+  border-color: var(--border-2);
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.45);
+}
+
+.bd-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.bd-card__league {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.bd-card__start {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-card__counts {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.bd-count {
+  min-width: 24px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--v-light);
+  background: var(--ca-brand-dim);
+  border: 1px solid var(--ca-brand-border);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.bd-count.is-gem {
+  color: var(--ca-green);
+  background: rgba(60, 203, 127, 0.1);
+  border-color: rgba(60, 203, 127, 0.32);
+}
+
+.bd-status {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.bd-status.is-pos { color: var(--ca-green); }
+.bd-status.is-neg { color: var(--ca-red); }
+.bd-status.is-warnc { color: var(--gold); }
+.bd-status.is-side { color: var(--side); }
+
+/* headline / primary action */
+
+.bd-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(124, 77, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--v-light);
+}
+
+.bd-headline:hover {
+  background: rgba(124, 77, 255, 0.12);
+}
+
+.bd-headline.is-pos { color: var(--ca-green); background: rgba(60, 203, 127, 0.07); }
+.bd-headline.is-pos:hover { background: rgba(60, 203, 127, 0.13); }
+.bd-headline.is-mut { color: var(--text-2); background: rgba(255, 255, 255, 0.02); }
+
+.bd-headline__cta {
+  font-size: var(--mm-text-2xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* score row */
+
+.bd-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 14px;
+}
+
+.bd-score__vs {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.bd-side {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.bd-side--home {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+/* Team marks carry their own colours, and the dark ones (navy, black) disappear against
+   the navy ground. A faint disc lifts every mark without tinting it. */
+.bd-side__logo {
+  flex: none;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+.bd-side__logo img,
+.bd-side__logo svg {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.bd-side__fallback {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--bg-4);
+  border-radius: 6px;
+  padding: 5px 4px;
+  width: 30px;
+  text-align: center;
+}
+
+.bd-side__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.bd-side__abbr {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-md);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.bd-side__detail {
+  font-size: var(--mm-text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-side__score {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  line-height: 1;
+}
+
+.bd-side--home .bd-side__score {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.bd-side.is-fav .bd-side__score {
+  color: var(--v-light);
+}
+
+/* principals */
+
+.bd-principals {
+  padding: 0 14px 13px;
+}
+
+.bd-principals__label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-4);
+  margin-bottom: 7px;
+}
+
+.bd-principals__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bd-principals__vs {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-4);
+  flex: none;
+}
+
+.bd-principal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.bd-principal__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bd-principal__name {
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-principal__team,
+.bd-principal__stat {
+  font-size: 10px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bd-face,
+.bd-principal img {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-4);
+  border: 1px solid var(--border-soft);
+}
+
+.bd-face--na {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+/* market groups */
+
+.bd-card__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-soft);
+  border-top: 1px solid var(--border-soft);
+  margin-top: auto;
+}
+
+.bd-group {
+  background: var(--bg-2);
+  padding: 11px 14px 12px;
+}
+
+.bd-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.bd-group__label {
+  position: relative;
+  padding-left: 9px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.bd-group__label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  bottom: 1px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--v-grad);
+}
+
+.bd-group__state {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-group__count {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--bg-4);
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.bd-group__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 7px;
+}
+
+.bd-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px 7px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  min-width: 0;
+}
+
+.bd-tile__label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-tile__value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.15;
+}
+
+.bd-tile__gem {
+  font-size: 9px;
+  color: var(--ca-green);
+}
+
+/* Wraps rather than truncating: "BOS -1.5 · MONITOR" clipped to "BOS -1.5 · MONIT…"
+   loses the state, which is the half that says whether to act. */
+.bd-tile__state {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}
+
+.bd-tile.is-pos .bd-tile__value { color: var(--ca-green); }
+.bd-tile.is-neg .bd-tile__value { color: var(--ca-red); }
+.bd-tile.is-warnc .bd-tile__value { color: var(--gold); }
+.bd-tile.is-side .bd-tile__value { color: var(--side); }
+.bd-tile.is-mut .bd-tile__value { color: var(--text-2); }
+
+.bd-tile.is-gem {
+  border-color: rgba(60, 203, 127, 0.32);
+  background: rgba(60, 203, 127, 0.06);
+}
+
+.bd-tile.is-idle {
+  opacity: 0.5;
+}
+
+.bd-tile.is-idle .bd-tile__value {
+  color: var(--text-3);
+}
+
+/* footer */
+
+.bd-card__footer {
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--v-light);
+}
+
+.bd-card__footer:hover {
+  background: rgba(124, 77, 255, 0.08);
+}
+
+/* empty states */
+
+.bd-empty {
+  padding: 16px;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  color: var(--text-3);
+  font-size: var(--mm-text-sm);
+  background: rgba(255, 255, 255, 0.012);
+  margin: 12px 14px 14px;
+}
+
+.bd-empty--board {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .bd {
+    --bd-card-min: 100%;
+  }
+  .bd-head__title {
+    gap: 16px;
+  }
+  .bd-wordmark {
+    font-size: var(--mm-text-3xl);
+  }
+  .bd-counters {
+    gap: 16px;
+  }
+}

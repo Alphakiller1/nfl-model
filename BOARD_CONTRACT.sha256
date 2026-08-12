@@ -1,0 +1,6 @@
+# Chase Analytics shared board contract - byte-identical across mlb-model,
+# wnba-edge-model and nfl-model. Regenerate ONLY when you have copied the new
+# file into all three repos; tests/test_board_contract.py fails otherwise.
+e45d0a141283b03c4d96f73b68040f94f67dd8e6cf0824e4b015b9b6b6e4cb00  board.py
+d4c961f87f305d03cfeb8c94ca249589b824804bd7f64fb8d897953f4af23d15  board.css
+925ad05f6ee2abbc8d2a4bd9dd84a9d0713a87fcb0e55118f3eeb001481912e5  chase_tokens.css

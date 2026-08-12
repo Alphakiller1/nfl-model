@@ -1,0 +1,118 @@
+/*
+ * Chase Analytics design tokens — vendored, canonical copy.
+ *
+ * Source of truth: mlbma-pipeline/dashboard/mlbma_design_system.css (+ chase_nav.css for the
+ * nav-specific values). Do not invent new values here or redefine a token differently than
+ * that file. If MLBMA's tokens change, resync this file by hand — it intentionally has no
+ * runtime dependency on the mlbma-pipeline repo so this product stays independently deployable.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Page & surfaces (mlbma_design_system.css :root) */
+  --bg: #08090F;
+  --bg-2: #0E1018;
+  --bg-3: #12141D;
+  --bg-4: #181B26;
+  --raised: #20232F;
+  --border: #262A38;
+  --border-2: #363B4D;
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border-violet: rgba(124, 77, 255, 0.32);
+  --card: #12141D;
+  --card-2: #181B26;
+
+  --text: #F5F6FA;
+  --text-2: #A4A8B6;
+  --text-3: #6E7383;
+  --text-4: #4C5161;
+
+  /* Brand purple family */
+  --ca-purple: #9A6BFF;
+  --ca-purple-dark: #5B2BE0;
+  --ca-purple-heading: #6D28D9;
+  --ca-purple-light: #C4B0FF;
+  --ca-purple-glow: rgba(124, 77, 255, 0.32);
+  --ca-brand: #9A6BFF;
+  --ca-brand-dim: rgba(124, 77, 255, 0.11);
+  --ca-brand-border: rgba(124, 77, 255, 0.32);
+  --v-grad: linear-gradient(135deg, #9A6BFF 0%, #5B2BE0 100%);
+  --v-light: #C4B0FF;
+  --v-mid: #7C4DFF;
+  --v-deep: #5B2BE0;
+
+  /* Semantic status colors (not primary grade) */
+  --ca-green: #3CCB7F;
+  --ca-teal: #86D76F;
+  --ca-amber: #E8C24A;
+  --ca-red: #F2545B;
+  --gold: #E8C24A;
+  --teal: #2DD4BF;
+  --green: #3CCB7F;
+  --red: #F2545B;
+  --side: #C4B0FF;
+
+  /* 7-step metric grade gradient (league-relative percentile) */
+  --metric-very-weak: #F2545B;
+  --metric-weak: #F0935B;
+  --metric-below: #E8C24A;
+  --metric-neutral: #A1A1AA;
+  --metric-above: #86D76F;
+  --metric-strong: #4ADE80;
+  --metric-elite: #22C55E;
+
+  /* Card / board surface treatment */
+  --ca-card-radius: 16px;
+  --ca-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --ca-panel-border: rgba(154, 107, 255, 0.41);
+  --ca-panel-glass: linear-gradient(180deg, #1A1D2D 0%, #0D101B 54%, #06070D 100%);
+  --ca-board-top: #181A2A;
+  --ca-board-bottom: #05060C;
+  --ca-glow-violet: 0 0 0 1px rgba(196, 176, 255, 0.13), 0 0 30px rgba(124, 77, 255, 0.24),
+    0 28px 78px rgba(0, 0, 0, 0.86), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  /* Typography */
+  --font-primary: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-primary);
+  --font-display: 'Roboto Condensed', 'DM Sans', system-ui, sans-serif;
+  --sans: var(--font-primary);
+  --display: var(--font-display);
+  --mono: var(--font-display);
+  --font-wordmark: 'Oswald', 'Arial Narrow', system-ui, sans-serif;
+  --ca-editorial-caps: 0.1em;
+
+  /* MLB Model type scale — dense broadcast UI, bumped up ~1-2px per step for legibility
+     (floor raised 10->11, body 13->15). Change these tokens to rescale the whole report. */
+  --mm-text-2xs: 11px;
+  --mm-text-xs: 12px;
+  --mm-text-sm: 13px;
+  --mm-text-base: 15px;
+  --mm-text-md: 16px;
+  --mm-text-lg: 17px;
+  --mm-text-xl: 19px;
+  --mm-text-2xl: 22px;
+  --mm-text-3xl: 27px;
+  --mm-text-display: 31px;
+  --mm-text-hero: 36px;
+
+  /* Nav (chase_nav.css) */
+  --chase-nav-height: 68px;
+  --chase-nav-max-width: 1400px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.num, td, th, .chip, .mval { font-variant-numeric: tabular-nums; }
+.pos { color: var(--ca-green); }
+.neg { color: var(--ca-red); }
+.warnc { color: var(--gold); }
+.side { color: var(--side); }
+.mut { color: var(--text-2); }
+
+/* Percentile grade chips — the Chase 5(+2)-tier scale, exact token colors */
+.c-elite { color: #4ADE80; }
+.c-good  { color: #7BDC5A; }
+.c-mid   { color: #FBBF24; }
+.c-weak  { color: #FB923C; }
+.c-poor  { color: #F87171; }
+.c-na    { color: var(--text-2); }

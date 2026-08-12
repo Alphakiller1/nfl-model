@@ -40,6 +40,18 @@ def _cmd_forecast(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_build_site(args: argparse.Namespace) -> int:
+    from .site import build_site
+
+    out = build_site(
+        Path(args.out),
+        Path(args.games) if args.games else None,
+        args.lam,
+    )
+    print(f"wrote dashboard to {out}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="nfl-model",
                                 description="Market-anchored NFL forecasts with an authority gate.")
@@ -55,8 +67,17 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--lam", type=float, default=DEFAULT_LAMBDA,
                    help="deviation shrinkage; tune in nfl-genesis, not here")
 
+    s = sub.add_parser("build-site", help="render the static dashboard for GitHub Pages")
+    s.add_argument("--out", default="_site/index.html")
+    s.add_argument("--games", help="slate JSON; omitted renders the board's empty state")
+    s.add_argument("--lam", type=float, default=DEFAULT_LAMBDA)
+
     args = p.parse_args(argv)
-    return {"status": _cmd_status, "forecast": _cmd_forecast}[args.cmd](args)
+    return {
+        "status": _cmd_status,
+        "forecast": _cmd_forecast,
+        "build-site": _cmd_build_site,
+    }[args.cmd](args)
 
 
 if __name__ == "__main__":

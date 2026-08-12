@@ -1,0 +1,64 @@
+name: deploy-pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  # false, not true: a Pages deploy that is mid-publish must finish. Cancelling it
+  # produces GitHub's "Deployment failed, try again later". Overlapping runs queue.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install model
+        run: pip install .
+      - name: Build static dashboard
+        # No slate committed yet renders the board's honest empty state rather than
+        # failing the deploy; point --games at a real slate once one is published.
+        run: |
+          python -m nflmodel.cli build-site \
+            --games data/slate_example.json --out _site/index.html
+      - name: Post-build smoke
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          html = Path('_site/index.html').read_text(encoding='utf-8')
+          assert html.index('id="authority"') < html.index('id="board"'), 'gate not first'
+          for key in ('RESEARCH_ONLY', 'bd-card', '1-800-GAMBLER', 'not betting advice'):
+              assert key in html, key
+          # A research-only build must never publish a CARD whose action reads BET.
+          # Matched on the rendered status element, not bare ">BET<" — the methodology
+          # copy legitimately contains the word while explaining it can never happen.
+          assert 'bd-status is-pos">BET<' not in html, \
+              'BET action rendered under a research-only authority'
+          print(f"OK: {len(html)//1024} KB")
+          EOF
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
