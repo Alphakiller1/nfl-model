@@ -8,6 +8,10 @@ one brand: same card anatomy, same palette, same typefaces.
 If this test fails you changed a shared file in one repo only. The fix is to copy it into
 all three and regenerate `BOARD_CONTRACT.sha256` in each — not to edit the hash here.
 
+Hashes are taken over newline-normalised bytes: Windows checkouts carry CRLF while CI
+runs on LF, and a contract that fails on the checkout's line endings tests the platform
+rather than the content.
+
 This file is itself vendored; keep the copies identical apart from `_VENDORED`.
 """
 from __future__ import annotations
@@ -26,6 +30,14 @@ _VENDORED = {
     "chase_tokens.css": _REPO / "src" / "nflmodel" / "static" / "chase_tokens.css",
 }
 
+_CRLF = b"\r\n"
+_LF = b"\n"
+
+
+def _digest(path: Path) -> str:
+    """sha256 over LF-normalised bytes, so the contract is checkout-independent."""
+    return hashlib.sha256(path.read_bytes().replace(_CRLF, _LF)).hexdigest()
+
 
 def _expected() -> dict[str, str]:
     manifest = (_REPO / "BOARD_CONTRACT.sha256").read_text(encoding="utf-8")
@@ -43,7 +55,7 @@ def _expected() -> dict[str, str]:
 def test_vendored_file_matches_the_shared_contract(name):
     path = _VENDORED[name]
     assert path.is_file(), f"{name} is missing from this repo"
-    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    actual = _digest(path)
     assert actual == _expected()[name], (
         f"{name} has drifted from the shared board contract.\n"
         f"Copy it to mlb-model, wnba-edge-model and nfl-model, then regenerate "

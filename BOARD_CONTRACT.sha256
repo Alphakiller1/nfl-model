@@ -1,6 +1,7 @@
 # Chase Analytics shared board contract - byte-identical across mlb-model,
 # wnba-edge-model and nfl-model. Regenerate ONLY when you have copied the new
 # file into all three repos; tests/test_board_contract.py fails otherwise.
-e45d0a141283b03c4d96f73b68040f94f67dd8e6cf0824e4b015b9b6b6e4cb00  board.py
-d4c961f87f305d03cfeb8c94ca249589b824804bd7f64fb8d897953f4af23d15  board.css
-925ad05f6ee2abbc8d2a4bd9dd84a9d0713a87fcb0e55118f3eeb001481912e5  chase_tokens.css
+# Hashes are over LF-normalised bytes (see tests/test_board_contract.py).
+4a927c551d888c68afa4ee36bfcf4fab2ce218f2cea95f009464055d67c8f358  board.py
+93bff6d085930975e7ae13a7f4cb709677fa8e697b35b8911ddb19b9e920d0bb  board.css
+13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911  chase_tokens.css

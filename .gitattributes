@@ -1,0 +1,7 @@
+# The vendored board contract is hashed across three repos; LF everywhere keeps a
+# Windows checkout from differing from CI. See tests/test_board_contract.py.
+src/nflmodel/board.py text eol=lf
+src/nflmodel/static/board.css text eol=lf
+src/nflmodel/static/chase_tokens.css text eol=lf
+BOARD_CONTRACT.sha256 text eol=lf
+tests/test_board_contract.py text eol=lf
