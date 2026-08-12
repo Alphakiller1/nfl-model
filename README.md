@@ -1,5 +1,12 @@
 # nfl-model
 
+**Live dashboard:** https://alphakiller1.github.io/nfl-model/ — rebuilt by
+`.github/workflows/deploy-pages.yml` on every push to `main`. It leads with the authority
+gate rather than the numbers, because at `lam = 0` the price below *is* the market.
+
+Sibling boards on the same shared kernel: [MLB](https://alphakiller1.github.io/mlb-model/)
+· [WNBA](https://alphakiller1.github.io/wnba-edge-model/).
+
 Deployable NFL forecasts with an explicit **authority gate**, sitting downstream of
 [`nfl-genesis`](https://github.com/Alphakiller1/nfl-genesis) the way `mlb-model` sits downstream
 of `mlbma-pipeline`.
