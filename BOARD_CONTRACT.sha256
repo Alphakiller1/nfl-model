@@ -2,6 +2,6 @@
 # wnba-edge-model and nfl-model. Regenerate ONLY when you have copied the new
 # file into all three repos; tests/test_board_contract.py fails otherwise.
 # Hashes are over LF-normalised bytes (see tests/test_board_contract.py).
-1114f5e49f1b508935f8c07c79290efb1ccc6d603845e1e1f93c507f54999191  board.py
-93bff6d085930975e7ae13a7f4cb709677fa8e697b35b8911ddb19b9e920d0bb  board.css
+93c75b39bf1360989440a918ca417cef614aff613cf16b8f1dcccc3838d63bac  board.py
+ceb45e266abc985d5de4d65608cff59bec9a62f181bb7300f7ceb37849d9d530  board.css
 13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911  chase_tokens.css

@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import authority as auth
+from . import ratings
 from .board import BOARD_JS, board_html
 from .board_nfl import build_board
 from .forecast import DEFAULT_LAMBDA, forecast_slate
@@ -60,7 +61,7 @@ def _gate_section(payload: dict) -> str:
     return f"""
 <section id="authority">
   <div class="sec-head">
-    <span class="kicker">Authority · 1/3</span>
+    <span class="kicker">Authority · 1/4</span>
     <h2>What these numbers may be used for</h2>
     <p class="blurb">A probability and a permission are different things. This model
     <b>matches</b> the paired no-vig closing market and does not beat it, so it is
@@ -94,7 +95,7 @@ def _method_section(payload: dict) -> str:
     return f"""
 <section id="methodology">
   <div class="sec-head">
-    <span class="kicker">Methodology · 3/3</span>
+    <span class="kicker">Methodology · 4/4</span>
     <h2>How the forecast is built</h2>
   </div>
   <div class="prose">
@@ -115,6 +116,87 @@ def _method_section(payload: dict) -> str:
 </section>"""
 
 
+def _ratings_section() -> str:
+    """Preseason power ratings — the model's content when no market exists yet."""
+    payload = ratings.load()
+    entries = ratings.teams()
+    head = (
+        '<section id="ratings">'
+        '<div class="sec-head">'
+        '<span class="kicker">Preseason · 2/4</span>'
+        "<h2>Power ratings</h2>"
+        '<p class="blurb">Points relative to an average team on a neutral field. This is a '
+        "prior, not an edge: it is what the model believes about team strength before any "
+        "line exists, and it is not anchored to a market because out of season there is no "
+        "market to anchor to.</p></div>"
+    )
+    if not entries:
+        return (
+            f"{head}<div class=\"empty\">No ratings built yet. Run "
+            f"<code>scripts/build_power_ratings.py</code> in nfl-genesis and commit the "
+            f"emitted <code>power_ratings.json</code>.</div></section>"
+        )
+
+    seasons = payload.get("seasons") or []
+    span = f"{min(seasons)}–{max(seasons)}" if seasons else "recent seasons"
+    hfa = float(payload.get("home_field_points") or 0.0)
+
+    rows = []
+    for entry in entries:
+        last = entry.get("last_season") or {}
+        record = (
+            f"{last.get('w', 0)}&#8209;{last.get('l', 0)}"
+            + (f"&#8209;{last['t']}" if last.get("t") else "")
+            if last
+            else "&ndash;"
+        )
+        diff = last.get("diff")
+        diff_tone = "pos" if (diff or 0) > 0 else "neg" if (diff or 0) < 0 else "dim"
+        diff_cell = (
+            f'<span class="{diff_tone}">{diff:+.0f}</span>'
+            if isinstance(diff, (int, float))
+            else "&ndash;"
+        )
+        rating = float(entry.get("rating", 0.0))
+        # Bar is centred on zero: above-average right, below-average left.
+        width = min(abs(rating) / 7.0, 1.0) * 50.0
+        offset = 50.0 if rating >= 0 else 50.0 - width
+        tone = "pos" if rating >= 0 else "neg"
+        wins = ratings.projected_wins(str(entry.get("team", "")))
+        wins_cell = f"{wins:.1f}" if wins is not None else "&ndash;"
+        rows.append(
+            f'<tr><td class="rank">{entry.get("rank", "")}</td>'
+            f'<td class="team">{e(str(entry.get("team", "")))}</td>'
+            f'<td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span>'
+            f'<i class="rb-{tone}" style="left:{offset:.1f}%;width:{width:.1f}%"></i></div></td>'
+            f'<td class="num score">{rating:+.2f}</td>'
+            f'<td class="num wins">{wins_cell}</td>'
+            f'<td class="num">{record}</td>'
+            f'<td class="num">{last.get("ppg", "&ndash;")}</td>'
+            f'<td class="num">{last.get("papg", "&ndash;")}</td>'
+            f'<td class="num">{diff_cell}</td></tr>'
+        )
+
+    return (
+        f"{head}"
+        f'<p class="note">{e(str(payload.get("method") or ""))} '
+        f'Home field is worth <b>{hfa:.2f}</b> points, measured over the same window '
+        f'({e(span)}, {payload.get("games_used", 0)} regular-season games). '
+        f'<b>Proj W</b> is expected wins against a league-average schedule, not a '
+        f'schedule-aware total — the 2026 fixture list is not published in the research repo '
+        f'yet, and inventing opponents would make the number look more precise than the '
+        f'inputs support. The 32 projections sum to '
+        f'{sum(ratings.projected_wins(t["team"]) or 0 for t in entries):.0f} wins against the '
+        f'{ratings.GAMES_PER_SEASON * len(entries) // 2} a full season contains.</p>'
+        f'<div class="tablewrap"><table class="pr">'
+        f"<thead><tr><th></th><th>Team</th><th>Rating</th><th class=\"num\">Pts</th>"
+        f'<th class="num">Proj W</th>'
+        f'<th class="num">Last yr</th><th class="num">PF/g</th><th class="num">PA/g</th>'
+        f'<th class="num">Diff</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table></div></section>"
+    )
+
+
 def build_site(out: Path, games_path: Path | None = None,
                lam: float = DEFAULT_LAMBDA) -> Path:
     payload = forecast_slate(_load_games(games_path), lam)
@@ -132,6 +214,7 @@ def build_site(out: Path, games_path: Path | None = None,
     </a>
     <div class="nav-links">
       <a class="nav-link" href="#authority">Authority</a>
+      <a class="nav-link" href="#ratings">Ratings</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#methodology">Methodology</a>
     </div>
@@ -153,9 +236,10 @@ def build_site(out: Path, games_path: Path | None = None,
 </header>
 <main class="wrap">
   {_gate_section(payload)}
+  {_ratings_section()}
   <section id="board">
     <div class="sec-head">
-      <span class="kicker">Slate · 2/3</span>
+      <span class="kicker">Slate · 3/4</span>
       <h2>Forecast board</h2>
       <p class="blurb">Every card carries the action its authority permits. While this model
       is research-only that action is <code>MONITOR</code> at best &mdash; never
@@ -253,6 +337,23 @@ text-transform:uppercase;letter-spacing:.08em}
 tbody tr:last-child td{border-bottom:none}
 .gate-ok{color:var(--ca-green);width:28px}
 .gate-no{color:var(--ca-red);width:28px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.dim{color:var(--text-3)}
+.pos{color:var(--ca-green)}
+.neg{color:var(--ca-red)}
+.empty{padding:16px;border:1px dashed var(--border-2);border-radius:var(--ca-card-radius);
+color:var(--text-3);font-size:var(--mm-text-sm);background:rgba(255,255,255,.012)}
+/* Power ratings: a zero-centred bar, so above- and below-average teams are told apart at a
+   glance rather than by reading the sign off a number. */
+.pr .rank{color:var(--text-4);width:34px;font-variant-numeric:tabular-nums}
+.pr .team{font-family:var(--font-display);font-weight:700;letter-spacing:.03em;width:62px}
+.pr .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
+.pr .ratingbar{width:38%;min-width:150px}
+.rb-track{position:relative;height:8px;border-radius:99px;background:var(--bg-4)}
+.rb-zero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--border-2)}
+.rb-track i{position:absolute;top:0;bottom:0;border-radius:99px}
+.rb-pos{background:var(--v-grad)}
+.rb-neg{background:var(--ca-red);opacity:.75}
 .prose{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);padding:18px;font-size:var(--mm-text-sm);color:var(--text-2)}
 .prose p+p{margin-top:11px}

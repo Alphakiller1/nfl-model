@@ -1,0 +1,494 @@
+{
+  "generated_at": "2026-08-13T05:16:50+00:00",
+  "method": "Opponent-adjusted average scoring margin over the last three regular seasons, weighted 0.55/0.30/0.15 toward the present, home-field removed, centred on zero and shrunk 25% toward the mean.",
+  "seasons": [
+    2023,
+    2024,
+    2025
+  ],
+  "home_field_points": 1.76,
+  "shrink": 0.75,
+  "games_used": 816,
+  "teams": [
+    {
+      "team": "DET",
+      "rating": 6.03,
+      "rank": 1,
+      "last_season": {
+        "w": 9,
+        "l": 8,
+        "t": 0,
+        "pf": 481.0,
+        "pa": 413.0,
+        "diff": 68.0,
+        "ppg": 28.3,
+        "papg": 24.3
+      }
+    },
+    {
+      "team": "BUF",
+      "rating": 5.06,
+      "rank": 2,
+      "last_season": {
+        "w": 12,
+        "l": 5,
+        "t": 0,
+        "pf": 481.0,
+        "pa": 365.0,
+        "diff": 116.0,
+        "ppg": 28.3,
+        "papg": 21.5
+      }
+    },
+    {
+      "team": "LA",
+      "rating": 4.71,
+      "rank": 3,
+      "last_season": {
+        "w": 12,
+        "l": 5,
+        "t": 0,
+        "pf": 518.0,
+        "pa": 346.0,
+        "diff": 172.0,
+        "ppg": 30.5,
+        "papg": 20.4
+      }
+    },
+    {
+      "team": "SEA",
+      "rating": 4.64,
+      "rank": 4,
+      "last_season": {
+        "w": 14,
+        "l": 3,
+        "t": 0,
+        "pf": 483.0,
+        "pa": 292.0,
+        "diff": 191.0,
+        "ppg": 28.4,
+        "papg": 17.2
+      }
+    },
+    {
+      "team": "BAL",
+      "rating": 4.23,
+      "rank": 5,
+      "last_season": {
+        "w": 8,
+        "l": 9,
+        "t": 0,
+        "pf": 424.0,
+        "pa": 398.0,
+        "diff": 26.0,
+        "ppg": 24.9,
+        "papg": 23.4
+      }
+    },
+    {
+      "team": "PHI",
+      "rating": 3.32,
+      "rank": 6,
+      "last_season": {
+        "w": 11,
+        "l": 6,
+        "t": 0,
+        "pf": 379.0,
+        "pa": 325.0,
+        "diff": 54.0,
+        "ppg": 22.3,
+        "papg": 19.1
+      }
+    },
+    {
+      "team": "GB",
+      "rating": 3.31,
+      "rank": 7,
+      "last_season": {
+        "w": 9,
+        "l": 7,
+        "t": 1,
+        "pf": 391.0,
+        "pa": 360.0,
+        "diff": 31.0,
+        "ppg": 23.0,
+        "papg": 21.2
+      }
+    },
+    {
+      "team": "HOU",
+      "rating": 2.91,
+      "rank": 8,
+      "last_season": {
+        "w": 12,
+        "l": 5,
+        "t": 0,
+        "pf": 404.0,
+        "pa": 295.0,
+        "diff": 109.0,
+        "ppg": 23.8,
+        "papg": 17.4
+      }
+    },
+    {
+      "team": "SF",
+      "rating": 2.58,
+      "rank": 9,
+      "last_season": {
+        "w": 12,
+        "l": 5,
+        "t": 0,
+        "pf": 437.0,
+        "pa": 371.0,
+        "diff": 66.0,
+        "ppg": 25.7,
+        "papg": 21.8
+      }
+    },
+    {
+      "team": "DEN",
+      "rating": 2.43,
+      "rank": 10,
+      "last_season": {
+        "w": 14,
+        "l": 3,
+        "t": 0,
+        "pf": 401.0,
+        "pa": 311.0,
+        "diff": 90.0,
+        "ppg": 23.6,
+        "papg": 18.3
+      }
+    },
+    {
+      "team": "MIN",
+      "rating": 2.43,
+      "rank": 11,
+      "last_season": {
+        "w": 9,
+        "l": 8,
+        "t": 0,
+        "pf": 344.0,
+        "pa": 333.0,
+        "diff": 11.0,
+        "ppg": 20.2,
+        "papg": 19.6
+      }
+    },
+    {
+      "team": "KC",
+      "rating": 2.15,
+      "rank": 12,
+      "last_season": {
+        "w": 6,
+        "l": 11,
+        "t": 0,
+        "pf": 362.0,
+        "pa": 328.0,
+        "diff": 34.0,
+        "ppg": 21.3,
+        "papg": 19.3
+      }
+    },
+    {
+      "team": "JAX",
+      "rating": 1.35,
+      "rank": 13,
+      "last_season": {
+        "w": 13,
+        "l": 4,
+        "t": 0,
+        "pf": 474.0,
+        "pa": 336.0,
+        "diff": 138.0,
+        "ppg": 27.9,
+        "papg": 19.8
+      }
+    },
+    {
+      "team": "LAC",
+      "rating": 0.98,
+      "rank": 14,
+      "last_season": {
+        "w": 11,
+        "l": 6,
+        "t": 0,
+        "pf": 368.0,
+        "pa": 340.0,
+        "diff": 28.0,
+        "ppg": 21.6,
+        "papg": 20.0
+      }
+    },
+    {
+      "team": "PIT",
+      "rating": 0.66,
+      "rank": 15,
+      "last_season": {
+        "w": 10,
+        "l": 7,
+        "t": 0,
+        "pf": 397.0,
+        "pa": 387.0,
+        "diff": 10.0,
+        "ppg": 23.4,
+        "papg": 22.8
+      }
+    },
+    {
+      "team": "CHI",
+      "rating": 0.55,
+      "rank": 16,
+      "last_season": {
+        "w": 11,
+        "l": 6,
+        "t": 0,
+        "pf": 441.0,
+        "pa": 415.0,
+        "diff": 26.0,
+        "ppg": 25.9,
+        "papg": 24.4
+      }
+    },
+    {
+      "team": "TB",
+      "rating": 0.55,
+      "rank": 17,
+      "last_season": {
+        "w": 8,
+        "l": 9,
+        "t": 0,
+        "pf": 380.0,
+        "pa": 411.0,
+        "diff": -31.0,
+        "ppg": 22.4,
+        "papg": 24.2
+      }
+    },
+    {
+      "team": "IND",
+      "rating": 0.42,
+      "rank": 18,
+      "last_season": {
+        "w": 8,
+        "l": 9,
+        "t": 0,
+        "pf": 466.0,
+        "pa": 412.0,
+        "diff": 54.0,
+        "ppg": 27.4,
+        "papg": 24.2
+      }
+    },
+    {
+      "team": "NE",
+      "rating": 0.33,
+      "rank": 19,
+      "last_season": {
+        "w": 14,
+        "l": 3,
+        "t": 0,
+        "pf": 490.0,
+        "pa": 320.0,
+        "diff": 170.0,
+        "ppg": 28.8,
+        "papg": 18.8
+      }
+    },
+    {
+      "team": "CIN",
+      "rating": -1.28,
+      "rank": 20,
+      "last_season": {
+        "w": 6,
+        "l": 11,
+        "t": 0,
+        "pf": 414.0,
+        "pa": 492.0,
+        "diff": -78.0,
+        "ppg": 24.4,
+        "papg": 28.9
+      }
+    },
+    {
+      "team": "DAL",
+      "rating": -1.61,
+      "rank": 21,
+      "last_season": {
+        "w": 7,
+        "l": 9,
+        "t": 1,
+        "pf": 471.0,
+        "pa": 511.0,
+        "diff": -40.0,
+        "ppg": 27.7,
+        "papg": 30.1
+      }
+    },
+    {
+      "team": "MIA",
+      "rating": -2.07,
+      "rank": 22,
+      "last_season": {
+        "w": 7,
+        "l": 10,
+        "t": 0,
+        "pf": 347.0,
+        "pa": 424.0,
+        "diff": -77.0,
+        "ppg": 20.4,
+        "papg": 24.9
+      }
+    },
+    {
+      "team": "WAS",
+      "rating": -2.47,
+      "rank": 23,
+      "last_season": {
+        "w": 5,
+        "l": 12,
+        "t": 0,
+        "pf": 356.0,
+        "pa": 451.0,
+        "diff": -95.0,
+        "ppg": 20.9,
+        "papg": 26.5
+      }
+    },
+    {
+      "team": "ATL",
+      "rating": -2.65,
+      "rank": 24,
+      "last_season": {
+        "w": 8,
+        "l": 9,
+        "t": 0,
+        "pf": 353.0,
+        "pa": 401.0,
+        "diff": -48.0,
+        "ppg": 20.8,
+        "papg": 23.6
+      }
+    },
+    {
+      "team": "ARI",
+      "rating": -2.74,
+      "rank": 25,
+      "last_season": {
+        "w": 3,
+        "l": 14,
+        "t": 0,
+        "pf": 355.0,
+        "pa": 488.0,
+        "diff": -133.0,
+        "ppg": 20.9,
+        "papg": 28.7
+      }
+    },
+    {
+      "team": "NO",
+      "rating": -3.1,
+      "rank": 26,
+      "last_season": {
+        "w": 6,
+        "l": 11,
+        "t": 0,
+        "pf": 306.0,
+        "pa": 383.0,
+        "diff": -77.0,
+        "ppg": 18.0,
+        "papg": 22.5
+      }
+    },
+    {
+      "team": "NYG",
+      "rating": -3.97,
+      "rank": 27,
+      "last_season": {
+        "w": 4,
+        "l": 13,
+        "t": 0,
+        "pf": 381.0,
+        "pa": 439.0,
+        "diff": -58.0,
+        "ppg": 22.4,
+        "papg": 25.8
+      }
+    },
+    {
+      "team": "CLE",
+      "rating": -4.29,
+      "rank": 28,
+      "last_season": {
+        "w": 5,
+        "l": 12,
+        "t": 0,
+        "pf": 279.0,
+        "pa": 379.0,
+        "diff": -100.0,
+        "ppg": 16.4,
+        "papg": 22.3
+      }
+    },
+    {
+      "team": "CAR",
+      "rating": -5.75,
+      "rank": 29,
+      "last_season": {
+        "w": 8,
+        "l": 9,
+        "t": 0,
+        "pf": 311.0,
+        "pa": 380.0,
+        "diff": -69.0,
+        "ppg": 18.3,
+        "papg": 22.4
+      }
+    },
+    {
+      "team": "LV",
+      "rating": -6.06,
+      "rank": 30,
+      "last_season": {
+        "w": 3,
+        "l": 14,
+        "t": 0,
+        "pf": 241.0,
+        "pa": 432.0,
+        "diff": -191.0,
+        "ppg": 14.2,
+        "papg": 25.4
+      }
+    },
+    {
+      "team": "NYJ",
+      "rating": -6.18,
+      "rank": 31,
+      "last_season": {
+        "w": 3,
+        "l": 14,
+        "t": 0,
+        "pf": 300.0,
+        "pa": 503.0,
+        "diff": -203.0,
+        "ppg": 17.6,
+        "papg": 29.6
+      }
+    },
+    {
+      "team": "TEN",
+      "rating": -6.47,
+      "rank": 32,
+      "last_season": {
+        "w": 3,
+        "l": 14,
+        "t": 0,
+        "pf": 284.0,
+        "pa": 478.0,
+        "diff": -194.0,
+        "ppg": 16.7,
+        "papg": 28.1
+      }
+    }
+  ]
+}

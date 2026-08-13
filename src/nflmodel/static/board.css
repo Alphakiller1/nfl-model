@@ -119,9 +119,28 @@
   cursor: pointer;
 }
 
-.bd-filter:hover {
+.bd-filter:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--border-2);
+}
+
+/* A filter with no matches is shown greyed with its zero rather than left live: clicking a
+   live button that empties the board is indistinguishable from a broken button. */
+.bd-filter:disabled,
+.bd-filter.is-empty {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bd-filter__n {
+  display: inline-block;
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+.bd-filter.on .bd-filter__n {
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .bd-filter.on {
