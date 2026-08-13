@@ -15,7 +15,6 @@ from nflmodel.market import (
     prob_to_american,
 )
 
-
 # ── market math ───────────────────────────────────────────────────────────────
 
 def test_american_probability_round_trip() -> None:

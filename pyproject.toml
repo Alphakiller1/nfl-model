@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
+dev = ["pytest>=8,<10", "ruff==0.15.20"]
 
 [project.scripts]
 nfl-model = "nflmodel.cli:main"
@@ -26,3 +26,9 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+# Selected explicitly rather than inherited from ruff's defaults. The default set grows
+# with each release, so an unpinned config turns CI red on a day nobody touched the code
+# — which is exactly how this repo's first CI run failed. Matches wnba-edge-model.
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]

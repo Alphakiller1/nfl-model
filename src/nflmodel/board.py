@@ -271,7 +271,10 @@ def _card_html(card: Card) -> str:
         inner = '<span class="bd-principals__vs">vs</span>'.join(
             _principal_html(principal) for principal in card.principals
         )
-        principals = f'<div class="bd-principals">{label}<div class="bd-principals__row">{inner}</div></div>'
+        principals = (
+            f'<div class="bd-principals">{label}'
+            f'<div class="bd-principals__row">{inner}</div></div>'
+        )
 
     groups = "".join(_group_html(group) for group in card.groups)
     if not groups:

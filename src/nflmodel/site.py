@@ -78,7 +78,8 @@ def _gate_section(payload: dict) -> str:
       <span class="gate-v">{len(satisfied)} / {len(auth.REQUIRED_GATES)}</span>
     </div>
     <div class="gate-card">
-      <span class="gate-k">Lambda</span><span class="gate-v">{float(payload.get("lam", 0.0)):.3f}</span>
+      <span class="gate-k">Lambda</span>
+      <span class="gate-v">{float(payload.get("lam", 0.0)):.3f}</span>
     </div>
   </div>
   <div class="tablewrap"><table>
@@ -98,7 +99,8 @@ def _method_section(payload: dict) -> str:
   </div>
   <div class="prose">
     <p>The forecast is market-anchored:</p>
-    <pre><code>logit(p) = logit(market_fair) + lam * (logit(structural) - logit(market_fair))</code></pre>
+    <pre><code>logit(p) = logit(market_fair)
+         + lam * (logit(structural) - logit(market_fair))</code></pre>
     <p><code>lam</code> is selected out-of-sample in
     <a href="https://github.com/Alphakiller1/nfl-genesis">nfl-genesis</a>, not here. It
     selected <b>0.000 in all five folds from 2021 onward</b> — the estimator stating that the
