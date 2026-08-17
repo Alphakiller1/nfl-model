@@ -29,11 +29,11 @@ jobs:
       - name: Install model
         run: pip install .
       - name: Build static dashboard
-        # No slate committed yet renders the board's honest empty state rather than
-        # failing the deploy; point --games at a real slate once one is published.
+        # Week 1 rating projections are packaged in the app. The market board remains
+        # empty until paired prices are published, rather than inventing market inputs.
         run: |
           python -m nflmodel.cli build-site \
-            --games data/slate_example.json --out _site/index.html
+            --out _site/index.html
       - name: Post-build smoke
         run: |
           python - <<'EOF'

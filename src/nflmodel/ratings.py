@@ -25,6 +25,10 @@ from pathlib import Path
 
 _RATINGS_PATH = Path(__file__).resolve().parent / "power_ratings.json"
 
+# The rating export uses ``LA`` while the official schedule uses ``LAR``. Normalize
+# at the model boundary so schedule-driven projections cannot silently omit the Rams.
+_TEAM_ALIASES = {"LAR": "LA"}
+
 # Standard deviation of an NFL game margin. Stable near 13.5 points across modern seasons
 # and used only to turn a rating gap into a win probability; the projection below is not
 # sensitive to small changes in it.
@@ -45,7 +49,8 @@ def teams() -> list[dict]:
 
 
 def rating_for(team: str) -> float | None:
-    key = str(team or "").upper()
+    raw_key = str(team or "").upper()
+    key = _TEAM_ALIASES.get(raw_key, raw_key)
     for entry in teams():
         if str(entry.get("team", "")).upper() == key:
             return float(entry.get("rating", 0.0))

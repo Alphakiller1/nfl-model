@@ -14,6 +14,7 @@ from nflmodel.market import (
     devig_two_way,
     prob_to_american,
 )
+from nflmodel.ratings import rating_for
 
 # ── market math ───────────────────────────────────────────────────────────────
 
@@ -136,3 +137,7 @@ def test_forecast_game_emits_american_odds_both_ways() -> None:
                       home_american=-175, away_american=150)
     assert f.home_american < 0 < f.away_american
     assert math.isclose(f.home_fair + f.away_fair, 1.0, abs_tol=1e-5)
+
+
+def test_schedule_abbreviation_resolves_to_rating_abbreviation() -> None:
+    assert rating_for("LAR") == rating_for("LA")

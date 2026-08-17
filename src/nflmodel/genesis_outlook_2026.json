@@ -1,0 +1,246 @@
+{
+  "authority": "RESEARCH_ONLY",
+  "coverage": {
+    "division_projection_method": "rating_leader",
+    "schedule_simulation": false,
+    "week_one_games": 16
+  },
+  "division_projections": [
+    {
+      "division": "AFC East",
+      "projected_wins": 11.0,
+      "rating": 5.06,
+      "rating_gap": 4.73,
+      "runner_up": "NE",
+      "team": "BUF"
+    },
+    {
+      "division": "AFC North",
+      "projected_wins": 10.6,
+      "rating": 4.23,
+      "rating_gap": 3.57,
+      "runner_up": "PIT",
+      "team": "BAL"
+    },
+    {
+      "division": "AFC South",
+      "projected_wins": 9.9,
+      "rating": 2.91,
+      "rating_gap": 1.56,
+      "runner_up": "JAX",
+      "team": "HOU"
+    },
+    {
+      "division": "AFC West",
+      "projected_wins": 9.7,
+      "rating": 2.43,
+      "rating_gap": 0.28,
+      "runner_up": "KC",
+      "team": "DEN"
+    },
+    {
+      "division": "NFC East",
+      "projected_wins": 10.1,
+      "rating": 3.32,
+      "rating_gap": 4.93,
+      "runner_up": "DAL",
+      "team": "PHI"
+    },
+    {
+      "division": "NFC North",
+      "projected_wins": 11.4,
+      "rating": 6.03,
+      "rating_gap": 2.72,
+      "runner_up": "GB",
+      "team": "DET"
+    },
+    {
+      "division": "NFC South",
+      "projected_wins": 8.8,
+      "rating": 0.55,
+      "rating_gap": 3.2,
+      "runner_up": "ATL",
+      "team": "TB"
+    },
+    {
+      "division": "NFC West",
+      "projected_wins": 10.8,
+      "rating": 4.71,
+      "rating_gap": 0.07,
+      "runner_up": "SEA",
+      "team": "LAR"
+    }
+  ],
+  "generated_at_utc": "2026-08-17T22:50:00+00:00",
+  "model_version": "genesis-ratings-outlook/1",
+  "note": "Rating-derived preseason outlook. This is not a market price, betting edge, or schedule-aware season simulation.",
+  "schema": "genesis/season-outlook/1",
+  "season": 2026,
+  "source": {
+    "ratings_generated_at": "2026-08-13T05:16:50+00:00",
+    "ratings_method": "Opponent-adjusted average scoring margin over the last three regular seasons, weighted 0.55/0.30/0.15 toward the present, home-field removed, centred on zero and shrunk 25% toward the mean.",
+    "week_one_schedule": "https://www.nfl.com/schedules/2026/by-week/week-1"
+  },
+  "week_one": [
+    {
+      "away_team": "NE",
+      "away_win_probability": 0.3265,
+      "game": "NE@SEA",
+      "home_margin": 6.07,
+      "home_team": "SEA",
+      "home_win_probability": 0.6735,
+      "neutral_site": false,
+      "start_text": "Wed Sep 9 \u00b7 8:20 PM ET"
+    },
+    {
+      "away_team": "SF",
+      "away_win_probability": 0.4373,
+      "game": "SF@LAR",
+      "home_margin": 2.13,
+      "home_team": "LAR",
+      "home_win_probability": 0.5627,
+      "neutral_site": true,
+      "start_text": "Thu Sep 10 \u00b7 8:35 PM local \u00b7 Melbourne"
+    },
+    {
+      "away_team": "CHI",
+      "away_win_probability": 0.6317,
+      "game": "CHI@CAR",
+      "home_margin": -4.54,
+      "home_team": "CAR",
+      "home_win_probability": 0.3683,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "TB",
+      "away_win_probability": 0.5021,
+      "game": "TB@CIN",
+      "home_margin": -0.07,
+      "home_team": "CIN",
+      "home_win_probability": 0.4979,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "NO",
+      "away_win_probability": 0.2099,
+      "game": "NO@DET",
+      "home_margin": 10.89,
+      "home_team": "DET",
+      "home_win_probability": 0.7901,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "BUF",
+      "away_win_probability": 0.5115,
+      "game": "BUF@HOU",
+      "home_margin": -0.39,
+      "home_team": "HOU",
+      "home_win_probability": 0.4885,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "BAL",
+      "away_win_probability": 0.5603,
+      "game": "BAL@IND",
+      "home_margin": -2.05,
+      "home_team": "IND",
+      "home_win_probability": 0.4397,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "CLE",
+      "away_win_probability": 0.2918,
+      "game": "CLE@JAX",
+      "home_margin": 7.4,
+      "home_team": "JAX",
+      "home_win_probability": 0.7082,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "ATL",
+      "away_win_probability": 0.3536,
+      "game": "ATL@PIT",
+      "home_margin": 5.07,
+      "home_team": "PIT",
+      "home_win_probability": 0.6464,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "NYJ",
+      "away_win_probability": 0.4566,
+      "game": "NYJ@TEN",
+      "home_margin": 1.47,
+      "home_team": "TEN",
+      "home_win_probability": 0.5434,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 1:00 PM ET"
+    },
+    {
+      "away_team": "ARI",
+      "away_win_probability": 0.3424,
+      "game": "ARI@LAC",
+      "home_margin": 5.48,
+      "home_team": "LAC",
+      "home_win_probability": 0.6576,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 4:25 PM ET"
+    },
+    {
+      "away_team": "MIA",
+      "away_win_probability": 0.5656,
+      "game": "MIA@LV",
+      "home_margin": -2.23,
+      "home_team": "LV",
+      "home_win_probability": 0.4344,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 4:25 PM ET"
+    },
+    {
+      "away_team": "GB",
+      "away_win_probability": 0.474,
+      "game": "GB@MIN",
+      "home_margin": 0.88,
+      "home_team": "MIN",
+      "home_win_probability": 0.526,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 4:25 PM ET"
+    },
+    {
+      "away_team": "WAS",
+      "away_win_probability": 0.288,
+      "game": "WAS@PHI",
+      "home_margin": 7.55,
+      "home_team": "PHI",
+      "home_win_probability": 0.712,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 4:25 PM ET"
+    },
+    {
+      "away_team": "DAL",
+      "away_win_probability": 0.5177,
+      "game": "DAL@NYG",
+      "home_margin": -0.6,
+      "home_team": "NYG",
+      "home_win_probability": 0.4823,
+      "neutral_site": false,
+      "start_text": "Sun Sep 13 \u00b7 8:20 PM ET"
+    },
+    {
+      "away_team": "DEN",
+      "away_win_probability": 0.4564,
+      "game": "DEN@KC",
+      "home_margin": 1.48,
+      "home_team": "KC",
+      "home_win_probability": 0.5436,
+      "neutral_site": false,
+      "start_text": "Mon Sep 14 \u00b7 8:15 PM ET"
+    }
+  ]
+}

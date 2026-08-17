@@ -9,6 +9,7 @@ The page leads with the authority gate rather than the numbers. This model match
 market and does not beat it; a dashboard that showed prices first and permissions in a
 footnote would misrepresent exactly the thing the authority gate exists to prevent.
 """
+# ruff: noqa: E501
 from __future__ import annotations
 
 import html
@@ -21,6 +22,14 @@ from . import ratings
 from .board import BOARD_JS, board_html
 from .board_nfl import build_board
 from .forecast import DEFAULT_LAMBDA, forecast_slate
+from .projections import (
+    division_winners,
+    outlook,
+    outlook_note,
+    schedule_source,
+    team_logo_url,
+    week_one_projections,
+)
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -61,7 +70,7 @@ def _gate_section(payload: dict) -> str:
     return f"""
 <section id="authority">
   <div class="sec-head">
-    <span class="kicker">Authority · 1/4</span>
+    <span class="kicker">Authority · 1/5</span>
     <h2>What these numbers may be used for</h2>
     <p class="blurb">A probability and a permission are different things. This model
     <b>matches</b> the paired no-vig closing market and does not beat it, so it is
@@ -123,7 +132,7 @@ def _ratings_section() -> str:
     head = (
         '<section id="ratings">'
         '<div class="sec-head">'
-        '<span class="kicker">Preseason · 2/4</span>'
+        '<span class="kicker">Preseason · 4/5</span>'
         "<h2>Power ratings</h2>"
         '<p class="blurb">Points relative to an average team on a neutral field. This is a '
         "prior, not an edge: it is what the model believes about team strength before any "
@@ -162,11 +171,13 @@ def _ratings_section() -> str:
         width = min(abs(rating) / 7.0, 1.0) * 50.0
         offset = 50.0 if rating >= 0 else 50.0 - width
         tone = "pos" if rating >= 0 else "neg"
-        wins = ratings.projected_wins(str(entry.get("team", "")))
+        team = str(entry.get("team", ""))
+        wins = ratings.projected_wins(team)
         wins_cell = f"{wins:.1f}" if wins is not None else "&ndash;"
         rows.append(
             f'<tr><td class="rank">{entry.get("rank", "")}</td>'
-            f'<td class="team">{e(str(entry.get("team", "")))}</td>'
+            f'<td class="team"><span class="rating-team">{_team_mark(team)}'
+            f'<b>{e(team)}</b></span></td>'
             f'<td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span>'
             f'<i class="rb-{tone}" style="left:{offset:.1f}%;width:{width:.1f}%"></i></div></td>'
             f'<td class="num score">{rating:+.2f}</td>'
@@ -183,7 +194,7 @@ def _ratings_section() -> str:
         f'Home field is worth <b>{hfa:.2f}</b> points, measured over the same window '
         f'({e(span)}, {payload.get("games_used", 0)} regular-season games). '
         f'<b>Proj W</b> is expected wins against a league-average schedule, not a '
-        f'schedule-aware total — the 2026 fixture list is not published in the research repo '
+        f'schedule-aware total — a schedule-aware season simulation has not yet been published '
         f'yet, and inventing opponents would make the number look more precise than the '
         f'inputs support. The 32 projections sum to '
         f'{sum(ratings.projected_wins(t["team"]) or 0 for t in entries):.0f} wins against the '
@@ -194,6 +205,95 @@ def _ratings_section() -> str:
         f'<th class="num">Last yr</th><th class="num">PF/g</th><th class="num">PA/g</th>'
         f'<th class="num">Diff</th></tr></thead>'
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
+    )
+
+
+def _team_mark(team: str) -> str:
+    """A compact, accessible logo; its abbreviation remains visible alongside it."""
+    return (
+        f'<img class="team-mark" src="{e(team_logo_url(team))}" alt="{e(team)} logo" '
+        'loading="lazy" width="36" height="36">'
+    )
+
+
+def _outlook_overview() -> str:
+    payload = outlook()
+    generated = str(payload.get("generated_at_utc", "")).replace("T", " · ").replace(
+        "+00:00", " UTC"
+    )
+    return (
+        '<section class="outlook-overview" aria-label="Genesis outlook summary">'
+        '<div class="outlook-title"><span class="kicker">Genesis outlook · 2026</span>'
+        '<h2>Preseason command center</h2><p>One research-only source powers the Week 1 board, '
+        'division leaders, and team ratings.</p></div>'
+        '<div class="outlook-metrics">'
+        '<div><span>Week 1</span><b>16 games</b></div>'
+        '<div><span>Division board</span><b>8 leaders</b></div>'
+        '<div><span>Authority</span><b>Research only</b></div>'
+        f'<div><span>Genesis publish</span><b>{e(generated)}</b></div>'
+        '</div></section>'
+    )
+
+
+def _week_one_section() -> str:
+    cards = []
+    for game in week_one_projections():
+        away = str(game["away_team"])
+        home = str(game["home_team"])
+        home_probability = float(game["home_win_probability"])
+        away_probability = float(game["away_win_probability"])
+        margin = float(game["home_margin"])
+        favored, favored_probability = (
+            (home, home_probability) if home_probability >= 0.5 else (away, away_probability)
+        )
+        margin_text = f"{home} by {margin:+.1f}" if margin >= 0 else f"{away} by {abs(margin):.1f}"
+        cards.append(
+            '<article class="projection-card">'
+            f'<div class="projection-start">{e(str(game["start_text"]))}</div>'
+            '<div class="projection-matchup">'
+            f'<div class="projection-team">{_team_mark(away)}<b>{e(away)}</b>'
+            f'<span>{away_probability:.0%}</span></div>'
+            '<span class="projection-vs">@</span>'
+            f'<div class="projection-team">{_team_mark(home)}<b>{e(home)}</b>'
+            f'<span>{home_probability:.0%}</span></div></div>'
+            f'<p><b>{e(favored)}</b> {favored_probability:.0%} win probability · '
+            f'{e(margin_text)} projected</p>'
+            '</article>'
+        )
+    return (
+        '<section id="projections">'
+        '<div class="sec-head"><span class="kicker">Preseason · 2/5</span>'
+        '<h2>Week 1 projections</h2>'
+        '<p class="blurb">Rating-based win probabilities for every Week 1 matchup. These are '
+        'preseason strength projections, not market prices or betting recommendations.</p></div>'
+        f'<p class="note">Published by <a href="https://github.com/Alphakiller1/nfl-genesis">NFL Genesis</a>. '
+        f'Matchups and kickoff windows: <a href="{e(schedule_source())}">NFL 2026 Week 1 schedule</a>. '
+        f'{e(outlook_note())}</p>'
+        f'<div class="projection-grid">{"".join(cards)}</div></section>'
+    )
+
+
+def _division_section() -> str:
+    cards = []
+    for winner in division_winners():
+        team = str(winner["team"])
+        cards.append(
+            '<article class="division-card">'
+            f'<span class="division-name">{e(str(winner["division"]))}</span>'
+            f'<div class="division-winner">{_team_mark(team)}<b>{e(team)}</b></div>'
+            '<div class="division-stats">'
+            f'<span><b>{float(winner["projected_wins"]):.1f}</b> proj W</span>'
+            f'<span><b>{float(winner["rating"]):+.2f}</b> rating</span></div>'
+            f'<p>Over {e(str(winner["runner_up"]))} by {float(winner["rating_gap"]):.2f} pts</p>'
+            '</article>'
+        )
+    return (
+        '<section id="divisions"><div class="sec-head">'
+        '<span class="kicker">Preseason · 3/5</span><h2>Projected division winners</h2>'
+        '<p class="blurb">The highest-rated team in each division. Projected wins remain '
+        'league-average-schedule estimates, so this is a transparent strength-based division '
+        'projection rather than a schedule simulation.</p></div>'
+        f'<div class="division-grid">{"".join(cards)}</div></section>'
     )
 
 
@@ -214,6 +314,8 @@ def build_site(out: Path, games_path: Path | None = None,
     </a>
     <div class="nav-links">
       <a class="nav-link" href="#authority">Authority</a>
+      <a class="nav-link" href="#projections">Week 1</a>
+      <a class="nav-link" href="#divisions">Divisions</a>
       <a class="nav-link" href="#ratings">Ratings</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#methodology">Methodology</a>
@@ -236,10 +338,13 @@ def build_site(out: Path, games_path: Path | None = None,
 </header>
 <main class="wrap">
   {_gate_section(payload)}
+  {_outlook_overview()}
+  {_week_one_section()}
+  {_division_section()}
   {_ratings_section()}
   <section id="board">
     <div class="sec-head">
-      <span class="kicker">Slate · 3/4</span>
+      <span class="kicker">Market slate · 5/5</span>
       <h2>Forecast board</h2>
       <p class="blurb">Every card carries the action its authority permits. While this model
       is research-only that action is <code>MONITOR</code> at best &mdash; never
@@ -343,6 +448,15 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .neg{color:var(--ca-red)}
 .empty{padding:16px;border:1px dashed var(--border-2);border-radius:var(--ca-card-radius);
 color:var(--text-3);font-size:var(--mm-text-sm);background:rgba(255,255,255,.012)}
+.outlook-overview{border:1px solid var(--ca-brand-border);border-radius:var(--ca-card-radius);overflow:hidden;position:relative;background:linear-gradient(125deg,rgba(124,77,255,.18),rgba(255,255,255,.02) 58%);padding:22px}.outlook-overview:after{content:"";position:absolute;right:-60px;top:-100px;width:230px;height:230px;border:1px solid rgba(154,107,255,.28);border-radius:50%;box-shadow:0 0 0 36px rgba(154,107,255,.05),0 0 0 72px rgba(154,107,255,.025)}.outlook-title{position:relative;z-index:1}.outlook-title h2{margin-top:4px}.outlook-title p{color:var(--text-2);font-size:var(--mm-text-sm);max-width:530px;margin-top:5px}.outlook-metrics{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;margin-top:18px;position:relative;z-index:1}.outlook-metrics div{background:rgba(8,9,15,.48);border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px}.outlook-metrics span{display:block;color:var(--text-3);font-family:var(--font-display);font-size:var(--mm-text-2xs);letter-spacing:.08em;text-transform:uppercase}.outlook-metrics b{display:block;color:var(--text);font-family:var(--font-display);font-size:var(--mm-text-sm);margin-top:2px}
+.projection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:10px}
+.projection-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);border-radius:var(--ca-card-radius);padding:13px;box-shadow:0 12px 32px rgba(0,0,0,.10);transition:border-color .18s ease,transform .18s ease}.projection-card:hover{border-color:var(--ca-brand-border);transform:translateY(-2px)}
+.projection-start{color:var(--text-3);font-family:var(--font-display);font-size:var(--mm-text-2xs);letter-spacing:.06em;text-transform:uppercase}
+.projection-matchup{align-items:center;display:grid;grid-template-columns:1fr 20px 1fr;gap:5px;margin:8px 0}
+.projection-team{align-items:center;display:grid;grid-template-columns:36px auto 1fr;gap:7px;min-width:0}.projection-team b{font-family:var(--font-display);letter-spacing:.04em}.projection-team span{text-align:right;color:var(--v-light);font-family:var(--font-display);font-weight:800;font-size:var(--mm-text-md)}
+.projection-vs{color:var(--text-4);font-family:var(--font-display);font-weight:700;text-align:center}.projection-card p{color:var(--text-2);font-size:var(--mm-text-xs)}.projection-card p b{color:var(--text)}
+.team-mark{display:block;height:36px;object-fit:contain;width:36px}.division-team{align-items:center;display:flex;gap:9px}.division-team .team-mark{height:28px;width:28px}
+.division-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.division-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);border-radius:var(--ca-card-radius);min-height:190px;padding:15px;position:relative;overflow:hidden}.division-card:before{background:var(--v-grad);content:"";height:3px;left:0;position:absolute;right:0;top:0}.division-name{color:var(--gold);font-family:var(--font-display);font-size:var(--mm-text-2xs);letter-spacing:.09em;text-transform:uppercase}.division-winner{align-items:center;display:flex;gap:9px;margin:13px 0 11px}.division-winner .team-mark{height:46px;width:46px}.division-winner b{font-family:var(--font-display);font-size:var(--mm-text-xl);letter-spacing:.05em}.division-stats{border-top:1px solid var(--border-soft);display:flex;gap:15px;padding-top:9px}.division-stats span{color:var(--text-3);font-size:var(--mm-text-2xs)}.division-stats b{color:var(--v-light);display:block;font-family:var(--font-display);font-size:var(--mm-text-md)}.division-card p{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:9px}.rating-team{align-items:center;display:flex;gap:8px}.rating-team .team-mark{height:25px;width:25px}
 /* Power ratings: a zero-centred bar, so above- and below-average teams are told apart at a
    glance rather than by reading the sign off a number. */
 .pr .rank{color:var(--text-4);width:34px;font-variant-numeric:tabular-nums}
@@ -364,5 +478,5 @@ code{font-family:var(--font-display);font-size:var(--mm-text-xs);color:var(--v-l
 footer{border-top:1px solid var(--border-soft);margin-top:48px;padding:24px 0 40px;
 font-size:var(--mm-text-xs);color:var(--text-3)}
 .foot-links{margin-top:9px;display:flex;gap:9px;flex-wrap:wrap}
-@media(max-width:640px){.hero-title{font-size:var(--mm-text-3xl)}.nav-links{display:none}}
+@media(max-width:760px){.outlook-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.division-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.hero-title{font-size:var(--mm-text-3xl)}.nav-links{display:none}.division-grid{grid-template-columns:1fr}}
 """
