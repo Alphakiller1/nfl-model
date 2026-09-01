@@ -27,6 +27,62 @@ from .sources import nflverse
 HISTORY_SEASONS = 3
 
 
+@dataclass(frozen=True)
+class Record:
+    """A team's win-loss record and scoring, for display only."""
+
+    wins: int = 0
+    losses: int = 0
+    ties: int = 0
+    points_for: float = 0.0
+    points_against: float = 0.0
+    season: int = 0
+
+    @property
+    def played(self) -> int:
+        return self.wins + self.losses + self.ties
+
+    @property
+    def label(self) -> str:
+        base = f"{self.wins}-{self.losses}"
+        return f"{base}-{self.ties}" if self.ties else base
+
+    @property
+    def points_for_per_game(self) -> float | None:
+        return self.points_for / self.played if self.played else None
+
+    @property
+    def points_against_per_game(self) -> float | None:
+        return self.points_against / self.played if self.played else None
+
+    @property
+    def differential(self) -> float:
+        return self.points_for - self.points_against
+
+
+def build_records(games: list[ratings.Game]) -> dict[str, Record]:
+    """Win-loss and scoring totals per team. Ties are counted, not dropped:
+    about one NFL game a season ends level and a record that hides it is wrong."""
+    acc: dict[str, dict] = {}
+    for game in games:
+        for team, scored, allowed in ((game.home, game.home_points, game.away_points),
+                                      (game.away, game.away_points, game.home_points)):
+            entry = acc.setdefault(team, {"w": 0, "l": 0, "t": 0, "pf": 0.0, "pa": 0.0,
+                                          "season": game.season})
+            entry["pf"] += scored
+            entry["pa"] += allowed
+            entry["season"] = max(entry["season"], game.season)
+            if scored > allowed:
+                entry["w"] += 1
+            elif scored < allowed:
+                entry["l"] += 1
+            else:
+                entry["t"] += 1
+    return {team: Record(wins=v["w"], losses=v["l"], ties=v["t"], points_for=v["pf"],
+                         points_against=v["pa"], season=v["season"])
+            for team, v in acc.items()}
+
+
 @dataclass
 class Slate:
     """One week, fully assembled."""
@@ -40,6 +96,18 @@ class Slate:
     games_played: dict[str, float]
     authority: auth_mod.Authority
     projections: list[forecast.GameProjection] = field(default_factory=list)
+    # Context, not model input. A preseason board with no records on it asks the
+    # reader to take a rating on faith; "SEA +9.5, 12-5 last year" is a claim they
+    # can check against something they remember.
+    records: dict[str, "Record"] = field(default_factory=dict)
+    prior_records: dict[str, "Record"] = field(default_factory=dict)
+
+    def record_for(self, team: str) -> "Record | None":
+        """This season's record once it exists, otherwise last season's."""
+        current = self.records.get(team)
+        if current is not None and current.played:
+            return current
+        return self.prior_records.get(team)
 
     @property
     def in_season(self) -> bool:
@@ -151,9 +219,11 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         )
         for row in games
     ]
+    prior = [g for g in history if g.season == season - 1]
     return Slate(season=season, week=week, table=table, forms=forms, games=games,
                  schedule=schedule, games_played=played, authority=authority,
-                 projections=projections)
+                 projections=projections, records=build_records(completed),
+                 prior_records=build_records(prior))
 
 
 # ── kickoff formatting ───────────────────────────────────────────────────────

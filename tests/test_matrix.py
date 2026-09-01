@@ -138,3 +138,39 @@ def test_two_identical_teams_project_to_home_field_exactly():
     form = make_form(epa=0.05)
     assert matrix.margin_points(form, form) == pytest.approx(
         matrix.COEFFICIENTS["home_field"])
+
+
+# ── the published breakdown ──────────────────────────────────────────────────
+def test_the_breakdown_reconciles_with_the_margin_exactly():
+    """A breakdown whose parts do not add up to the number above it is worse
+    than none at all: it invites the reader to trust a wrong accounting."""
+    home = make_form(epa=0.12, first_down=0.33, allowed_epa=-0.06)
+    away = make_form(epa=-0.03, first_down=0.26, allowed_epa=0.05)
+    contributions = matrix.margin_contributions(home, away)
+    assert set(contributions) == set(matrix.STATS)
+    total = sum(contributions.values()) + matrix.COEFFICIENTS["home_field"]
+    assert total == pytest.approx(matrix.margin_points(home, away), abs=1e-9)
+
+
+def test_the_breakdown_is_antisymmetric_in_the_two_teams():
+    home = make_form(epa=0.12, allowed_epa=-0.06)
+    away = make_form(epa=-0.03, allowed_epa=0.05)
+    forward = matrix.margin_contributions(home, away)
+    reverse = matrix.margin_contributions(away, home)
+    for stat in matrix.STATS:
+        assert forward[stat] == pytest.approx(-reverse[stat], abs=1e-12)
+
+
+def test_a_contribution_follows_the_net_that_drives_it():
+    """Each contribution is the coefficient times the difference of the two
+    teams' nets, which is why the card shows nets rather than raw offence."""
+    home = make_form(epa=0.12, allowed_epa=-0.06)
+    away = make_form(epa=-0.03, allowed_epa=0.05)
+    net_home = home.off_epa - home.def_epa
+    net_away = away.off_epa - away.def_epa
+    expected = matrix.COEFFICIENTS["epa"] * (net_home - net_away)
+    assert matrix.margin_contributions(home, away)["epa"] == pytest.approx(expected)
+
+
+def test_an_incomplete_form_yields_no_breakdown():
+    assert matrix.margin_contributions(matrix.TeamForm(off_epa=0.1), average_form()) is None

@@ -85,6 +85,10 @@ def test_a_neutral_site_card_does_not_claim_a_home_field(slate):
     rating = next(t for g in card.groups for t in g.tiles if t.label == "Rating gap")
     assert "home field" not in rating.state
     assert "neutral" in rating.state
+    # ...and the breakdown drops the term rather than adding one that does not apply.
+    breakdown = next(g for g in card.groups if g.tag == "breakdown")
+    assert "Home field" not in {t.label for t in breakdown.tiles}
+    assert len(breakdown.tiles) == len(matrix.STATS)
 
 
 def test_a_card_headline_calls_the_difference_a_gap_not_an_edge(slate):
@@ -310,3 +314,70 @@ def test_the_published_constants_match_the_measured_residuals():
     assert totals_mod.TOTAL_SD == pytest.approx(fit["total"]["residual_sd"], abs=0.005)
     # ...and NOT the raw margin spread, which is a full point higher.
     assert ratings_mod.MARGIN_SD < fit["context"]["margin_sd"] - 0.5
+
+
+# ── the sections added for information density ───────────────────────────────
+def test_a_card_carries_the_factor_breakdown_that_explains_its_own_number(slate):
+    """The board previously showed three market tiles and nothing about why.
+    Every game with form now carries the five-family decomposition."""
+    card = build_card(slate.projections[0])
+    breakdown = next(g for g in card.groups if g.tag == "breakdown")
+    # Five efficiency families plus the home-field term: every addend of the sum.
+    assert len(breakdown.tiles) == len(matrix.STATS) + 1
+    assert {t.label for t in breakdown.tiles} >= {"Home field"}
+    assert breakdown.market is False
+    # Ordered by size of effect: a reader scanning one card wants the reason.
+    values = [float(t.value.split()[-1]) for t in breakdown.tiles]
+    assert values == sorted(values, reverse=True)
+
+
+def test_a_card_names_the_team_each_factor_favours(slate):
+    projection = slate.projections[0]
+    card = build_card(projection)
+    breakdown = next(g for g in card.groups if g.tag == "breakdown")
+    for tile in breakdown.tiles:
+        assert tile.value.split()[0] in {projection.home, projection.away}
+
+
+def test_a_side_shows_its_rating_and_record_not_a_bare_price(slate):
+    """A "+150" beside a team name says nothing about whether the team is good;
+    the price already has its own tile."""
+    card = build_card(slate.projections[0], ratings_table=slate.table,
+                      records={t: slate.record_for(t) for t in slate.forms})
+    assert "+" in card.home.detail or "-" in card.home.detail
+
+
+def test_the_disagreement_section_ranks_every_priced_game(slate):
+    html = _render(slate)
+    assert 'id="disagreements"' in html
+    assert "Where the model differs from the market" in html
+    # It must say what it is not, in the same breath as what it is.
+    normalised = " ".join(html.split())
+    assert "not</b> as a card" in normalised
+    assert "49.85% of exactly these disagreements" in normalised
+
+
+def test_the_disagreement_table_is_ordered_by_the_size_of_the_gap(slate):
+    import re
+    html = _render(slate)
+    section = html[html.index('id="disagreements"'):html.index('id="ratings"')]
+    gaps = [float(m) for m in re.findall(r'num score">[A-Z]{2,3} ([0-9.]+)</td>', section)]
+    assert gaps
+    assert gaps == sorted(gaps, reverse=True)
+
+
+def test_the_playoff_section_publishes_both_conferences_and_the_cut_line(slate):
+    html = _render(slate)
+    assert 'id="seeds"' in html
+    assert "AFC playoff field" in html and "NFC playoff field" in html
+    assert "seed-cut" in html
+
+
+def test_the_page_uses_the_shared_display_type_scale(slate):
+    """The siblings all run the same clamp, weight and uppercase treatment. This
+    page shipped a 36px sentence-case title and read like a different product."""
+    css = site._PAGE_CSS
+    assert "clamp(38px,6vw,64px)" in css      # hero, matching wnba-edge-model
+    assert "clamp(26px,3.4vw,36px)" in css    # section titles
+    assert "font-stretch:125%" in css
+    assert "text-transform:uppercase" in css

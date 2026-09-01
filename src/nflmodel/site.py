@@ -77,6 +77,16 @@ def _fmt(value, places: int = 1, sign: bool = True) -> str:
     return f"{value:.{places}f}"
 
 
+def _handicap(margin, home: str, away: str) -> str:
+    """A margin as a bettor reads it: the favourite and its number."""
+    if margin is None:
+        return "&ndash;"
+    if abs(margin) < 0.05:
+        return "PK"
+    favourite = home if margin > 0 else away
+    return f"{e(favourite)} {-abs(margin):.1f}"
+
+
 def _logo(abbr: str, size: int = 22) -> str:
     team = teams.get(abbr)
     return (f'<img class="tlogo" src="{e(team.logo)}" alt="" loading="lazy" '
@@ -129,9 +139,11 @@ def _nav(slate) -> str:
     <div class="nav-links">
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
+      <a class="nav-link" href="#disagreements">Gaps</a>
       <a class="nav-link" href="#ratings">Power Ratings</a>
       <a class="nav-link" href="#units">Offense &amp; Defense</a>
       <a class="nav-link" href="#divisions">Divisions</a>
+      <a class="nav-link" href="#seeds">Playoffs</a>
       <a class="nav-link" href="#methodology">Method</a>
     </div>
     <div class="chase-status"><span class="product-tag">NFL MODEL</span>
@@ -146,9 +158,8 @@ def _hero(slate, built_at: str) -> str:
     return f"""
 <header class="hero">
   <div class="wrap">
-    <div class="hero-eyebrow">CHASE ANALYTICS&ensp;|&ensp;MODEL LAB</div>
-    <h1 class="hero-title">National Football League<br>projections, and the
-    permission to use them.</h1>
+    <div class="hero-eyebrow">Chase Analytics Model Lab</div>
+    <h1 class="hero-title">The NFL slate,<br>modelled and gated.</h1>
     <p class="hero-sub">Opponent-adjusted power ratings, projected scores and totals for
     every game, offensive and defensive unit rankings, and a simulated race for all eight
     divisions &mdash; behind an explicit gate on what the numbers are allowed to be used for.
@@ -275,7 +286,7 @@ def _ratings_section(slate, outlooks) -> str:
     return f"""
 <section id="ratings">
   <div class="sec-head">
-    <span class="kicker">Ratings &middot; 03</span>
+    <span class="kicker">Ratings &middot; 04</span>
     <h2>Power ratings</h2>
     <p class="blurb">Two independent estimates of team strength, side by side. <b>Rating</b>
     is the opponent-adjusted scoring-margin solve: points relative to an average team on a
@@ -350,7 +361,7 @@ def _units_section(slate) -> str:
     return f"""
 <section id="units">
   <div class="sec-head">
-    <span class="kicker">Units &middot; 04</span>
+    <span class="kicker">Units &middot; 05</span>
     <h2>Offensive &amp; defensive power rankings</h2>
     <p class="blurb"><b>Pts</b> is points per game above an average unit, on the same scale as
     the overall rating &mdash; an offence at +3.1 and a defence at +1.4 add to a +4.5 team, and
@@ -399,7 +410,7 @@ def _divisions_section(outlooks) -> str:
     return f"""
 <section id="divisions">
   <div class="sec-head">
-    <span class="kicker">Season &middot; 05</span>
+    <span class="kicker">Season &middot; 06</span>
     <h2>Projected division winners</h2>
     <p class="blurb">Every regular-season game on the real 2026 fixture list, replayed
     {divisions_mod.SIMULATIONS:,} times from the same margins the board publishes. Division
@@ -417,6 +428,110 @@ def _divisions_section(outlooks) -> str:
 </section>"""
 
 
+def _disagreements_section(slate) -> str:
+    """Every priced game ranked by how far the model sits from the closing line.
+
+    The single most useful view on the page, and the one it was missing. A reader
+    scanning sixteen cards cannot see which games the model actually has an
+    opinion about; a ranked table answers that in one look.
+
+    It ranks *disagreement*, not confidence. The model is 0.44 points worse than
+    this line out of sample, so a wide gap is at least as likely to be the model
+    missing something as the market being wrong -- which is why the column is
+    headed Gap and the blurb says so rather than leaving it implied.
+    """
+    priced = [p for p in slate.projections if p.market_gap is not None]
+    priced.sort(key=lambda p: -abs(p.market_gap))
+    if not priced:
+        return ""
+    rows = []
+    for rank, p in enumerate(priced, start=1):
+        side = p.home if p.market_gap > 0 else p.away
+        day = p.kickoff.split(" · ")[0] if p.kickoff else ""
+        market_total = (f"{p.market_total:.1f}" if p.market_total is not None
+                        else "&ndash;")
+        rows.append(
+            f'<tr><td class="rank">{rank}</td>'
+            f'<td class="team"><span class="tname">{_logo(p.away, 20)}<b>{e(p.away)}</b>'
+            f'<span class="dim">at</span>{_logo(p.home, 20)}<b>{e(p.home)}</b></span></td>'
+            f'<td class="dim">{e(day)}</td>'
+            f'<td class="num">{_handicap(p.model_margin, p.home, p.away)}</td>'
+            f'<td class="num dim">{_handicap(p.market_margin, p.home, p.away)}</td>'
+            f'<td class="num score">{e(side)} {abs(p.market_gap):.1f}</td>'
+            f'<td class="num">{p.projected_total:.1f}</td>'
+            f'<td class="num dim">{market_total}</td>'
+            f'<td class="num">{_fmt(p.total_gap)}</td></tr>')
+    widest = priced[0]
+    lean = widest.home if widest.market_gap > 0 else widest.away
+    return f"""
+<section id="disagreements">
+  <div class="sec-head">
+    <span class="kicker">Disagreement &middot; 03</span>
+    <h2>Where the model differs from the market</h2>
+    <p class="blurb">All {len(priced)} priced games, widest disagreement first. The biggest is
+    <b>{e(widest.away)} at {e(widest.home)}</b>, where the model is
+    <b>{abs(widest.market_gap):.1f} points</b> on {e(lean)}. Read this as a map of where the
+    model has an opinion, <b>not</b> as a card: measured out of sample it is 0.44 points worse
+    than this line and covers 49.85% of exactly these disagreements, so a wide gap is at least
+    as likely to be the model missing an injury as the market being wrong.</p>
+  </div>
+  <div class="tablewrap"><table class="pr">
+    <thead><tr><th>#</th><th>Matchup</th><th>Day</th><th class="num">Model</th>
+    <th class="num">Market</th><th class="num">Gap</th><th class="num">Total</th>
+    <th class="num">Mkt</th><th class="num">Diff</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody></table></div>
+</section>"""
+
+
+def _seeds_section(outlooks) -> str:
+    """The playoff field: seven per conference, ordered by how often each makes it."""
+    if not outlooks:
+        return ""
+    blocks = []
+    for conference in ("AFC", "NFC"):
+        members = sorted((o for o in outlooks if o.conference == conference),
+                         key=lambda o: -o.make_playoffs)
+        if not members:
+            continue
+        rows = []
+        for seed, outlook in enumerate(members, start=1):
+            # The cut line is drawn where the field actually ends, so a reader
+            # sees who is in and who is on the bubble without counting rows.
+            cut = ' class="seed-cut"' if seed == divisions_mod.PLAYOFF_SPOTS + 1 else ""
+            rows.append(
+                f'<tr{cut}><td class="rank">{seed}</td>'
+                f'<td class="team"><span class="tname">{_logo(outlook.team, 20)}'
+                f'<b>{e(outlook.team)}</b></span></td>'
+                f'<td class="dim">{e(outlook.division.split()[1])}</td>'
+                f'<td class="num">{outlook.projected_wins:.1f}</td>'
+                f'<td class="oddsbar"><div class="ob-track">'
+                f'<i style="width:{outlook.make_playoffs * 100:.1f}%"></i></div></td>'
+                f'<td class="num score">{outlook.make_playoffs:.0%}</td>'
+                f'<td class="num dim">{outlook.win_division:.0%}</td>'
+                f'<td class="num dim">{outlook.top_seed:.0%}</td></tr>')
+        blocks.append(
+            f'<div class="unit"><div class="unit-h">{conference} playoff field</div>'
+            f'<div class="tablewrap"><table class="pr unit-tbl">'
+            f'<thead><tr><th>#</th><th>Team</th><th>Div</th><th class="num">W</th>'
+            f'<th>Playoff odds</th><th class="num">PO</th><th class="num">Div</th>'
+            f'<th class="num">1st</th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div></div>')
+    return f"""
+<section id="seeds">
+  <div class="sec-head">
+    <span class="kicker">Playoffs &middot; 07</span>
+    <h2>Projected playoff field</h2>
+    <p class="blurb">Seven teams per conference &mdash; four division winners and three wild
+    cards &mdash; ordered by how often each reaches the field across
+    {divisions_mod.SIMULATIONS:,} simulated seasons. The rule under the seventh row is the cut
+    line. <b>PO</b> is the chance of reaching the playoffs, <b>Div</b> of winning the division,
+    <b>1st</b> of taking the conference&rsquo;s top seed. Each conference&rsquo;s PO column
+    sums to seven by construction.</p>
+  </div>
+  <div class="units">{"".join(blocks)}</div>
+</section>"""
+
+
 def _method_section() -> str:
     coefficients = "".join(
         f"<tr><td>{e(matrix.FEATURE_LABELS.get(k, k).replace('_', ' '))}</td>"
@@ -431,7 +546,7 @@ def _method_section() -> str:
     return f"""
 <section id="methodology">
   <div class="sec-head">
-    <span class="kicker">Method &middot; 06</span>
+    <span class="kicker">Method &middot; 08</span>
     <h2>How the numbers are built</h2>
     <p class="blurb">Every constant below was measured on {EVIDENCE['games']:,}
     out-of-sample games rather than assumed, and the sweeps that came back flat are labelled
@@ -551,9 +666,11 @@ def render(slate, outlooks) -> str:
             f'<main class="wrap">'
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
+            f"{_disagreements_section(slate)}"
             f"{_ratings_section(slate, outlooks)}"
             f"{_units_section(slate)}"
             f"{_divisions_section(outlooks)}"
+            f"{_seeds_section(outlooks)}"
             f"{_method_section()}"
             f"</main>{_footer(built_at)}")
     return (
@@ -608,13 +725,22 @@ background-clip:text;color:transparent}
 .product-tag{font-family:var(--font-display);font-weight:700;font-size:11px;
 letter-spacing:.14em;color:var(--v-light);border:1px solid var(--ca-brand-border);
 border-radius:999px;padding:5px 11px;white-space:nowrap}
-.hero{padding:52px 0 32px;border-bottom:1px solid var(--border-soft)}
-.hero-eyebrow{font-family:var(--font-display);font-size:11px;font-weight:700;
-letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--gold);
-margin-bottom:14px}
-.hero-title{font-family:var(--font-display);font-size:var(--mm-text-hero);font-weight:700;
-line-height:1.08;letter-spacing:-.01em}
-.hero-sub{color:var(--text-2);max-width:720px;margin-top:12px;font-size:var(--mm-text-md)}
+.hero{padding:60px 0 38px;border-bottom:1px solid var(--border-soft)}
+/* Display type is the shared identity across the lab: the same clamp, weight,
+   uppercase and 125% stretch that mlb-model, wnba-edge-model and cfb-model use.
+   This page previously ran a 36px sentence-case title and read like a different
+   product sitting next to them. */
+.hero-title,.sec-title,.tile-v,.gate-v,.pr .score{font-stretch:125%}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--gold);
+font-family:var(--font-display);font-weight:700;font-size:12px;letter-spacing:.2em;
+border:1px solid var(--border-2);border-radius:999px;padding:7px 15px;
+background:rgba(14,16,24,.6);text-transform:uppercase}
+.hero-eyebrow::before{content:"";width:7px;height:7px;border-radius:50%;
+background:var(--v-mid);box-shadow:0 0 10px var(--ca-purple-glow)}
+.hero-title{font-family:var(--font-display);font-weight:800;
+font-size:clamp(38px,6vw,64px);line-height:1.02;letter-spacing:-.015em;
+text-transform:uppercase;margin:22px 0 14px;max-width:900px}
+.hero-sub{color:var(--text-2);max-width:680px;font-size:16px}
 .hero-meta{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
 .pill{border:1px solid var(--border-soft);border-radius:999px;padding:4px 13px;
 font-size:var(--mm-text-xs);background:var(--bg-3);color:var(--text-2);white-space:nowrap}
@@ -622,11 +748,12 @@ font-size:var(--mm-text-xs);background:var(--bg-3);color:var(--text-2);white-spa
 .pill.dim{color:var(--text-3)}
 main{padding:14px 0 40px}
 section{margin-top:46px;scroll-margin-top:80px}
-.sec-head{margin-bottom:16px}
-.kicker{font-family:var(--font-display);font-size:11px;font-weight:700;
-letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--gold)}
-h2{font-family:var(--font-display);font-size:var(--mm-text-2xl);margin-top:5px;font-weight:700}
-.blurb{color:var(--text-2);max-width:860px;margin-top:8px;font-size:var(--mm-text-sm)}
+.sec-head{margin-bottom:18px}
+.kicker{color:var(--gold);font-family:var(--font-display);font-weight:700;font-size:12px;
+letter-spacing:.2em;text-transform:uppercase}
+h2{font-family:var(--font-display);font-weight:800;font-size:clamp(26px,3.4vw,36px);
+text-transform:uppercase;letter-spacing:-.01em;line-height:1.05;margin:8px 0 10px}
+.blurb{color:var(--text-2);max-width:880px;margin-top:8px;font-size:var(--mm-text-base)}
 .blurb b{color:var(--text)}
 .note{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:11px;max-width:900px}
 .fine{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:10px}
@@ -639,22 +766,23 @@ h2{font-family:var(--font-display);font-size:var(--mm-text-2xl);margin-top:5px;f
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;
 margin:14px 0}
 .tile{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
-border-radius:var(--ca-card-radius);padding:15px;display:flex;flex-direction:column;gap:3px}
-.tile-v{font-family:var(--font-display);font-size:var(--mm-text-2xl);font-weight:800;
-color:var(--v-light);font-variant-numeric:tabular-nums}
+border-radius:var(--ca-card-radius);padding:17px 16px;display:flex;flex-direction:column;
+gap:6px}
+.tile-v{display:block;font-family:var(--font-display);font-weight:800;font-size:34px;
+line-height:1;letter-spacing:-.01em;color:var(--v-light);font-variant-numeric:tabular-nums}
 .tile-l{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:600;
 letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--text-2)}
 .tile-n{color:var(--text-3);font-size:var(--mm-text-2xs);line-height:1.4}
 /* 170px, not 150: the longest value these cards ever hold is "RESEARCH_ONLY",
-   which needs 137px at this type size and was being clipped by 2px in the
-   four-column layout. The minimum is set by the content, not by eye. */
-.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+   which needs 160px at this type size and was clipped in both the four- and
+   three-column layouts. The minimum is set by the content, not by eye. */
+.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
 gap:10px;margin:14px 0}
 .gate-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);padding:14px;display:flex;flex-direction:column;gap:3px}
 .gate-k{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:600;
 letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--text-3)}
-.gate-v{font-family:var(--font-display);font-size:var(--mm-text-lg);font-weight:700;
+.gate-v{font-family:var(--font-display);font-size:var(--mm-text-xl);font-weight:800;
 color:var(--text);font-variant-numeric:tabular-nums}
 .tablewrap{overflow-x:auto;border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);background:var(--bg-2)}
@@ -709,6 +837,7 @@ white-space:normal}
 .dv-tbl td{padding:7px 4px;border-bottom:1px solid var(--border-soft)}
 .dv-tbl .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
 .oddsbar{width:30%;min-width:44px}
+.seed-cut td{border-top:2px solid var(--ca-brand-border)}
 .ob-track{position:relative;height:6px;border-radius:99px;background:var(--bg-4)}
 .ob-track i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--v-grad)}
 /* Methodology grid */
@@ -737,7 +866,7 @@ footer{border-top:1px solid var(--border-soft);margin-top:52px;padding:24px 0 44
 font-size:var(--mm-text-xs);color:var(--text-3)}
 footer b{color:var(--text-2)}
 .foot-links{margin-top:9px;display:flex;gap:9px;flex-wrap:wrap}
-@media(max-width:820px){.hero-title{font-size:var(--mm-text-2xl)}.nav-links{display:none}}
+@media(max-width:820px){.nav-links{display:none}}
 /* At 375px the product tag and the season pill together pushed the document 49px
    wider than the viewport and clipped every paragraph on the page. The wordmark
    is also allowed to clip inside its own box rather than push the row, so a font

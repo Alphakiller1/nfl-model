@@ -32,6 +32,21 @@ from . import matrix, teams
 from .board import Board, Card, Group, Principal, Side, Tile
 from .forecast import GameProjection
 
+COEFFICIENTS_HOME_FIELD = matrix.COEFFICIENTS["home_field"]
+
+# Short labels for the breakdown tiles. `matrix.FEATURE_LABELS` stays descriptive
+# for the methodology table, but the kernel truncates a tile label with an
+# ellipsis and at the two-column board breakpoint it has about 84px to work with
+# -- "First-down rate" rendered as "FIRST-DOWN RA...". These are the football
+# words for the same quantities and they fit.
+_TILE_LABELS = {
+    "epa": "EPA/play",
+    "first_down": "First downs",
+    "explosive": "Explosives",
+    "sack": "Sacks",
+    "turnover": "Turnovers",
+}
+
 # The gate maps an action to how a tile reads. BET is unreachable while the
 # authority is RESEARCH_ONLY; it is listed so the mapping stays total if a
 # challenger ever promotes.
@@ -141,6 +156,72 @@ def _moneyline_tile(p: GameProjection) -> Tile:
     )
 
 
+def _breakdown_group(p: GameProjection) -> Group | None:
+    """How the model got there, family by family -- the shelf this board lacked.
+
+    The matchup model is linear and symmetric, so the margin decomposes exactly:
+    these five contributions plus the home-field term reconcile to the efficiency
+    margin with no residual. A breakdown whose parts do not add up to the number
+    above it is worse than none at all, so the arithmetic is exact rather than
+    indicative, and `tests/test_site.py` checks that it still reconciles.
+    """
+    home_form, away_form = p.home_form, p.away_form
+    if home_form is None or away_form is None:
+        return None
+    contributions = matrix.margin_contributions(home_form, away_form)
+    if contributions is None:
+        return None
+    # Home field is a term of the same sum, so it belongs on the same shelf. Left
+    # off, the tiles reconciled on a hosted game and silently did NOT on a neutral
+    # one, while the note claimed they always did -- the Melbourne game was the
+    # counter-example sitting on the board. Including it makes the shelf
+    # self-evidently complete at both venues.
+    if not p.neutral:
+        contributions = {**contributions, "home_field": COEFFICIENTS_HOME_FIELD}
+    tiles = []
+    # Largest effect first: a reader scanning one card wants the reason, not an
+    # alphabetical list of factors.
+    for stat, points in sorted(contributions.items(), key=lambda kv: -abs(kv[1])):
+        beneficiary = p.home if points > 0 else p.away
+        if stat == "home_field":
+            tiles.append(Tile(
+                label="Home field",
+                value=f"{beneficiary} {abs(points):.1f}",
+                state="fitted home advantage",
+                tone="mut",
+                note=("The measured home-field term of the matchup model. Every tile on "
+                      "this shelf is a term of one sum, and together they equal the "
+                      "efficiency margin exactly."),
+            ))
+            continue
+        # NET, not raw offence. The contribution is g x (net_home - net_away)
+        # where net = what a team's offence produces minus what its defence
+        # allows, so the two numbers shown must be the nets or the sub-line
+        # contradicts the tile above it. New England out-produces Seattle on
+        # offensive EPA and still loses the family, because Seattle's defence
+        # allows far less -- printing only the offence made that look like a
+        # sign error.
+        def net(form) -> float:
+            return getattr(form, f"off_{stat}") - getattr(form, f"def_{stat}")
+
+        away_net, home_net = net(away_form), net(home_form)
+        shown = (f"{away_net:+.3f} / {home_net:+.3f}" if stat == "epa"
+                 else f"{away_net * 100:+.1f} / {home_net * 100:+.1f} pp")
+        tiles.append(Tile(
+            label=_TILE_LABELS[stat],
+            value=f"{beneficiary} {abs(points):.1f}",
+            state=f"net {p.away} {shown.split(' / ')[0]} / {p.home} {shown.split(' / ')[1]}",
+            tone="mut",
+            note=(f"Points of home margin from the {matrix.FEATURE_LABELS[stat].lower()} "
+                  f"matchup. Net is a team's own rate minus the rate its defence "
+                  f"allows, and the contribution is the coefficient times the "
+                  f"difference of the two nets. Every tile on this shelf is a term "
+                  f"of one sum, and together they equal the efficiency margin."),
+        ))
+    return Group(label="How the model got there", tiles=tuple(tiles), tag="breakdown",
+                 market=False)
+
+
 def _matchup_group(p: GameProjection) -> Group | None:
     """Unpriced shelf: which unit is carrying the projection.
 
@@ -214,14 +295,30 @@ def _headline(p: GameProjection) -> str:
 
 def build_card(p: GameProjection, *, key: str = "",
                qbs: tuple[str, str] = ("", ""),
-               coaches: tuple[str, str] = ("", "")) -> Card:
+               coaches: tuple[str, str] = ("", ""),
+               records: dict | None = None,
+               ratings_table: dict | None = None,
+               row: dict | None = None) -> Card:
     """One projection -> one board card."""
-    def side(abbr: str, score: float | None, opponent_score: float | None,
-             moneyline) -> Side:
+    records = records or {}
+    ratings_table = ratings_table or {}
+    row = row or {}
+
+    def side(abbr: str, score: float | None, opponent_score: float | None) -> Side:
+        # Rating and record, not the moneyline: the price is already on its own
+        # tile, and a bare "+150" beside a team name tells a reader nothing about
+        # whether the team is good.
+        parts = []
+        rating = ratings_table.get(abbr)
+        if rating is not None:
+            parts.append(f"{rating:+.1f}")
+        record = records.get(abbr)
+        if record is not None and record.played:
+            parts.append(f"{record.label} '{record.season % 100:02d}")
         return Side(
             abbr=abbr,
             score=f"{score:.0f}" if score is not None else "—",
-            detail=_american(moneyline) if moneyline is not None else "",
+            detail=" · ".join(parts),
             logo_html=_logo(abbr),
             favored=(score is not None and opponent_score is not None
                      and score > opponent_score),
@@ -243,19 +340,33 @@ def build_card(p: GameProjection, *, key: str = "",
     groups = [Group(label="Full game",
                     tiles=(_spread_tile(p), _total_tile(p), _moneyline_tile(p)),
                     tag="fullgame", state=p.action)]
-    matchup = _matchup_group(p)
-    if matchup is not None:
-        groups.append(matchup)
+    for build in (_matchup_group, _breakdown_group):
+        shelf = build(p)
+        if shelf is not None:
+            groups.append(shelf)
 
-    venue = " · neutral site" if p.neutral else ""
+    # Everything a reader needs to place the game before reading a number.
+    context = [p.kickoff]
+    if p.neutral:
+        context.append("neutral site")
+    if row.get("div_game"):
+        context.append("division")
+    roof = str(row.get("roof") or "")
+    if roof in {"dome", "closed"}:
+        context.append("indoors")
+    elif roof == "retractable":
+        context.append("retractable roof")
+    rest = row.get("home_rest")
+    if rest is not None and float(rest) > 7:
+        context.append(f"{int(float(rest))}d rest {p.home}")
     return Card(
         key=key or f"{p.away}@{p.home}",
         league="NFL",
-        start_text=f"{p.kickoff}{venue}",
+        start_text=" · ".join(part for part in context if part),
         status_label=p.action,
         status_tone=_ACTION_TONE.get(p.action, "mut"),
-        away=side(p.away, p.projected_away_score, p.projected_home_score, p.away_moneyline),
-        home=side(p.home, p.projected_home_score, p.projected_away_score, p.home_moneyline),
+        away=side(p.away, p.projected_away_score, p.projected_home_score),
+        home=side(p.home, p.projected_home_score, p.projected_away_score),
         headline=_headline(p),
         headline_tone="mut",
         principals=principals,
@@ -280,6 +391,11 @@ def build_board(slate, *, rows_by_key: dict | None = None) -> Board:
             key=str(row.get("game_id") or f"{projection.away}@{projection.home}"),
             qbs=(row.get("away_qb_name", ""), row.get("home_qb_name", "")),
             coaches=(row.get("away_coach", ""), row.get("home_coach", "")),
+            records={team: slate.record_for(team)
+                     for team in (projection.home, projection.away)
+                     if slate.record_for(team) is not None},
+            ratings_table=slate.table,
+            row=row,
         ))
 
     authority = slate.authority
@@ -298,7 +414,7 @@ def build_board(slate, *, rows_by_key: dict | None = None) -> Board:
         meta=meta,
         # Labels carry no count: the kernel appends its own match count to every
         # filter, so "All 16" rendered as "ALL 16 16".
-        filters=[("all", "All"), ("fullgame", "Priced"), ("matchup", "With form")],
+        filters=[("all", "All"), ("fullgame", "Priced"), ("breakdown", "With form")],
         sorts=[("start", "Kickoff"), ("picks", "Priced markets")],
         empty_text=(
             "No regular-season games found for this week. The schedule comes from "

@@ -123,7 +123,9 @@ GROUPS = {
 FEATURE_LABELS = {
     "epa": "EPA per play",
     "first_down": "First-down rate",
-    "explosive": "Explosive-play rate",
+    # Kept short: the board kernel truncates a tile label with an ellipsis, and
+    # "Explosive-play rate" rendered as "EXPLOSIVE-PLAY R…".
+    "explosive": "Explosive rate",
     "sack": "Sack rate",
     "turnover": "Turnover rate",
 }
@@ -245,3 +247,31 @@ def efficiency_rating(form: TeamForm) -> float | None:
     if offense is None or defence is None:
         return None
     return offense + defence
+
+
+def margin_contributions(home: TeamForm, away: TeamForm) -> dict[str, float] | None:
+    """Each family's contribution to the efficiency margin, in points.
+
+    Because the matchup model is linear and symmetric, the margin decomposes
+    exactly:
+
+        efficiency_margin = home_field + SUM_x g_x * [ (off_x(H) + def_x(A))
+                                                     - (off_x(A) + def_x(H)) ]
+
+    so these values plus `COEFFICIENTS["home_field"]` reconcile to
+    `margin_points` with no residual term. That exactness is the point: a
+    breakdown whose parts do not add up to the number above it is worse than no
+    breakdown, because it invites the reader to trust an accounting that is
+    quietly wrong.
+
+    Positive favours the home team.
+    """
+    if not (home.complete() and away.complete()):
+        return None
+    return {
+        stat: COEFFICIENTS[stat] * (
+            (getattr(home, f"off_{stat}") + getattr(away, f"def_{stat}"))
+            - (getattr(away, f"off_{stat}") + getattr(home, f"def_{stat}"))
+        )
+        for stat in STATS
+    }

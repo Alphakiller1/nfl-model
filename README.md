@@ -36,11 +36,21 @@ an edge. Full evidence and every parameter sweep: [`reports/BASELINE_2016_2025.m
 
 | Section | What it answers |
 | --- | --- |
-| Board | projected score, total, spread and moneyline for every game this week |
-| Power ratings | opponent-adjusted points vs an average team, split into offence and defence |
-| Offense & defense | both units ranked, with opponent-adjusted component rates |
-| Divisions | 20,000 simulated seasons over the real fixture list — division, playoff and #1-seed odds |
+| Authority | what the numbers may be used for, and which of the twelve gates are unmet |
+| Board | projected score, total, spread and moneyline per game, plus a factor-by-factor breakdown of *why* |
+| Disagreements | all sixteen games ranked by how far the model sits from the closing line |
+| Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
+| Offense & defense | both units ranked, with opponent-adjusted component rates graded by league percentile |
+| Divisions | 20,000 simulated seasons over the real fixture list — division and playoff odds |
+| Playoffs | the projected seven-team field per conference, with the cut line drawn |
 | Method | every fitted constant, and which sweeps came back flat |
+
+Each game card carries twelve tiles: three market projections, three shelves
+explaining which unit drives the number, and the **exact** decomposition of the
+margin into its five efficiency families plus home field. Those addends sum to
+the efficiency margin to within 1e-14 — a breakdown whose parts do not add up to
+the number above it is worse than no breakdown, so `tests/test_matrix.py` pins
+the reconciliation.
 
 ## The model
 
