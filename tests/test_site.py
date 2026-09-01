@@ -8,6 +8,7 @@ at the top.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -55,6 +56,35 @@ def test_the_favoured_side_is_the_one_projected_to_score_more(slate):
         assert float(card.home.score) > float(card.away.score)
     else:
         assert float(card.away.score) > float(card.home.score)
+
+
+def test_the_spread_and_moneyline_tiles_favour_the_same_team(slate):
+    """Both are model numbers, so they must never name different favourites.
+    Reading the moneyline off the published margin made "IND -1.5" sit beside
+    "BAL 60%" on the same card — both correct, the card incoherent."""
+    for projection in slate.projections:
+        card = build_card(projection)
+        tiles = {t.label: t.value for t in
+                 next(g for g in card.groups if g.tag == "fullgame").tiles}
+        spread, moneyline = tiles["Spread"], tiles["Moneyline"]
+        if spread in {"PK", "—"} or moneyline == "—":
+            continue
+        assert spread.split()[0] == moneyline.split()[0], (spread, moneyline)
+
+
+def test_filter_labels_carry_no_count_of_their_own(slate):
+    """The kernel appends a match count, so "All 16" rendered as "ALL 16 16"."""
+    for _, label in build_board(slate).filters:
+        assert not any(character.isdigit() for character in label), label
+
+
+def test_a_neutral_site_card_does_not_claim_a_home_field(slate):
+    projection = slate.projections[0]
+    neutral = replace(projection, neutral=True)
+    card = build_card(neutral)
+    rating = next(t for g in card.groups for t in g.tiles if t.label == "Rating gap")
+    assert "home field" not in rating.state
+    assert "neutral" in rating.state
 
 
 def test_a_card_headline_calls_the_difference_a_gap_not_an_edge(slate):
@@ -182,8 +212,25 @@ def test_export_publishes_a_null_edge_rather_than_omitting_the_key(slate):
 def test_export_game_carries_scores_totals_and_both_margins(slate):
     game = export.payload(slate)["games"][0]
     for key in ("projected_home_score", "projected_away_score", "projected_total",
-                "model_margin", "market_margin", "published_margin", "market_gap"):
+                "model_margin", "market_margin", "published_margin", "market_gap",
+                "win_probability", "model_win_probability"):
         assert game[key] is not None
+
+
+def test_export_carries_both_probabilities_and_they_are_distinguishable(slate):
+    """One is the published price, one is the model's view. A consumer that
+    cannot tell them apart will quote the market as the model."""
+    game = next(g for g in export.payload(slate)["games"]
+                if abs(g["market_gap"]) > 1.0)
+    assert game["win_probability"] != game["model_win_probability"]
+
+
+def test_every_matchup_tile_names_the_team_it_favours(slate):
+    card = build_card(slate.projections[0])
+    matchup = next(g for g in card.groups if g.tag == "matchup")
+    for tile in matchup.tiles:
+        assert tile.value.split()[0] in {slate.projections[0].home,
+                                         slate.projections[0].away}, tile.value
 
 
 def test_export_team_row_reconciles_offence_defence_and_efficiency(slate):
@@ -207,3 +254,59 @@ def test_export_names_the_matrix_lineage_and_its_promotion_status(slate):
     constants = export.payload(slate)["constants"]
     assert constants["matrix_lineage"] == matrix.LINEAGE_VERSION
     assert constants["matrix_status"] == "CHALLENGER/UNPROMOTED"
+
+
+def test_the_pages_evidence_matches_the_fit_it_claims_to_report():
+    """`site.EVIDENCE` is hand-copied from `scripts/fit_matrix.py` output, so it
+    is exactly the kind of thing that silently goes stale after a refit. Pinning
+    it against the committed summary makes a drifted headline number a failing
+    test rather than a wrong dashboard.
+
+    This caught a real one: five surfaces truncated the ATS interval's lower
+    bound to 47.81% when the value rounds to 47.82%.
+    """
+    import json
+    import math
+    from pathlib import Path
+
+    fit = json.loads((Path(__file__).resolve().parents[1] / "reports"
+                      / "fit_summary.json").read_text(encoding="utf-8"))
+    margin, total = fit["margin"], fit["total"]
+    wins, losses, pushes = margin["ats"]
+    played = wins + losses
+    rate = wins / played
+    se = math.sqrt(rate * (1 - rate) / played)
+
+    assert site.EVIDENCE["games"] == fit["games"]
+    assert site.EVIDENCE["margin_model"] == pytest.approx(margin["model_mae"], abs=5e-5)
+    assert site.EVIDENCE["margin_market"] == pytest.approx(margin["market_mae"], abs=5e-5)
+    assert site.EVIDENCE["margin_ratings_only"] == pytest.approx(
+        margin["ratings_only_mae"], abs=5e-5)
+    assert site.EVIDENCE["total_model"] == pytest.approx(total["model_mae"], abs=5e-5)
+    assert site.EVIDENCE["total_market"] == pytest.approx(total["market_mae"], abs=5e-5)
+    assert site.EVIDENCE["total_league_mean"] == pytest.approx(
+        total["league_mean_mae"], abs=5e-5)
+    assert site.EVIDENCE["ats"] == (wins, losses, pushes)
+    assert site.EVIDENCE["ats_rate"] == pytest.approx(rate, abs=5e-5)
+    low, high = site.EVIDENCE["ats_ci"]
+    assert low == pytest.approx(rate - 1.96 * se, abs=5e-5)
+    assert high == pytest.approx(rate + 1.96 * se, abs=5e-5)
+
+
+def test_the_published_constants_match_the_measured_residuals():
+    """MARGIN_SD is the forecast's residual SD, not the raw spread of NFL
+    margins. Using the raw 14.32 would claim more uncertainty than the model has
+    and push every win probability toward 50%."""
+    import json
+    from pathlib import Path
+
+    from nflmodel import ratings as ratings_mod
+    from nflmodel import totals as totals_mod
+
+    fit = json.loads((Path(__file__).resolve().parents[1] / "reports"
+                      / "fit_summary.json").read_text(encoding="utf-8"))
+    assert ratings_mod.MARGIN_SD == pytest.approx(fit["margin"]["residual_sd"], abs=0.005)
+    assert ratings_mod.MARGIN_SD == matrix.MARGIN_SD
+    assert totals_mod.TOTAL_SD == pytest.approx(fit["total"]["residual_sd"], abs=0.005)
+    # ...and NOT the raw margin spread, which is a full point higher.
+    assert ratings_mod.MARGIN_SD < fit["context"]["margin_sd"] - 0.5

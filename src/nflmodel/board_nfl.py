@@ -107,12 +107,24 @@ def _total_tile(p: GameProjection) -> Tile:
 
 
 def _moneyline_tile(p: GameProjection) -> Tile:
-    if p.win_probability is None:
+    """The MODEL's win probability, with the market's fair price beside it.
+
+    Deliberately not the published probability. Spread and Total both show the
+    model's number and put the market in the sub-line, so a moneyline derived
+    from the published margin contradicted the tile next to it every time the
+    two disagreed about who was favoured: "IND -1.5" beside "BAL 60%". Both
+    numbers were correct and the card was incoherent.
+    """
+    if p.model_win_probability is None:
         return Tile(label="Moneyline", value="—", state="no rating", tone="mut")
-    favourite = p.home if p.win_probability >= 0.5 else p.away
-    probability = max(p.win_probability, 1.0 - p.win_probability)
+    favourite = p.home if p.model_win_probability >= 0.5 else p.away
+    probability = max(p.model_win_probability, 1.0 - p.model_win_probability)
     if p.market_fair_home is not None:
-        market = max(p.market_fair_home, 1.0 - p.market_fair_home)
+        # Quoted on the SAME side the model favours, not on whichever side the
+        # market favours -- otherwise two percentages sit side by side describing
+        # different teams.
+        market = (p.market_fair_home if favourite == p.home
+                  else 1.0 - p.market_fair_home)
         prices = f"{_american(p.home_moneyline)}/{_american(p.away_moneyline)}"
         state = f"market {market * 100:.0f}% · {prices}"
     else:
@@ -122,8 +134,9 @@ def _moneyline_tile(p: GameProjection) -> Tile:
         value=f"{favourite} {probability * 100:.0f}%",
         state=state,
         tone=_ACTION_TONE.get(p.action, "mut"),
-        note=("Win probability from the published margin at the model's 13.32-point "
-              "residual SD. De-vigging is paired only; a one-sided fair price is guesswork."),
+        note=("Model win probability at its 13.32-point residual SD, against the "
+              "paired no-vig market on the same side. De-vigging is paired only; "
+              "a one-sided fair price is guesswork."),
         priced=p.market_fair_home is not None,
     )
 
@@ -147,17 +160,21 @@ def _matchup_group(p: GameProjection) -> Group | None:
         leader = p.home if difference > 0 else p.away
         tiles.append(Tile(
             label=label,
-            value=f"{abs(difference):.1f}",
-            state=f"{leader} · {p.away} {away_value:+.1f} / {p.home} {home_value:+.1f}",
+            value=f"{leader} +{abs(difference):.1f}",
+            state=f"{p.away} {away_value:+.1f} / {p.home} {home_value:+.1f}",
             tone="mut",
             note=("Points per game above an average unit, from the opponent-adjusted "
                   "matchup model. Offence plus defence is the team's efficiency rating."),
         ))
     if p.rating_margin is not None:
+        # Same "{team} +{amount}" shape as the two tiles above it. A bare signed
+        # number in the third slot made the reader work out whose sign it was.
+        leader = p.home if p.rating_margin >= 0 else p.away
         tiles.append(Tile(
             label="Rating gap",
-            value=f"{p.rating_margin:+.1f}",
-            state="power ratings + home field",
+            value=f"{leader} +{abs(p.rating_margin):.1f}",
+            state=("power ratings · neutral site" if p.neutral
+                   else "power ratings + home field"),
             tone="mut",
             note=("The other half of the published margin: opponent-adjusted scoring "
                   "margin, home field removed before rating and added back here."),
@@ -279,8 +296,9 @@ def build_board(slate, *, rows_by_key: dict | None = None) -> Board:
         cards=cards,
         date_label=f"{slate.season} · Week {slate.week}",
         meta=meta,
-        filters=[("all", f"All {len(cards)}"), ("fullgame", "Priced"),
-                 ("matchup", "With form")],
+        # Labels carry no count: the kernel appends its own match count to every
+        # filter, so "All 16" rendered as "ALL 16 16".
+        filters=[("all", "All"), ("fullgame", "Priced"), ("matchup", "With form")],
         sorts=[("start", "Kickoff"), ("picks", "Priced markets")],
         empty_text=(
             "No regular-season games found for this week. The schedule comes from "

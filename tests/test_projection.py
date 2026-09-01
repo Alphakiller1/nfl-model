@@ -215,7 +215,26 @@ def test_the_simulation_uses_the_same_margin_the_board_publishes():
         ratings.win_probability(expected))
 
 
-def test_matrix_and_efficiency_margin_agree_on_a_neutral_site():
+def test_the_projection_carries_the_efficiency_margin_rather_than_recomputing_it():
+    """One computation, one number. Two call sites deriving the same quantity
+    from the same inputs is one refactor away from them disagreeing."""
     home, away = make_form(epa=0.12), make_form(epa=-0.03)
-    assert forecast.matrix_margin(home, away, True) == pytest.approx(
+    projection = totals.project(home, away, rating_margin=4.0, neutral=True)
+    assert projection.efficiency_margin == pytest.approx(
         matrix.margin_points(home, away, neutral=True))
+    assert projection.rating_margin == pytest.approx(4.0)
+    assert projection.margin == pytest.approx(
+        totals.blend_margin(4.0, projection.efficiency_margin))
+
+
+def test_the_model_win_probability_agrees_with_the_model_margin():
+    """The board shows model numbers with the market beside them, so a moneyline
+    read off the PUBLISHED margin contradicted the spread tile next to it
+    whenever the two disagreed about who was favoured."""
+    p = _project(market_margin=-14.0)      # market says the away side by 14
+    assert p.model_margin > 0               # the model says the home side
+    assert p.model_win_probability == pytest.approx(
+        ratings.win_probability(p.model_margin))
+    assert p.model_win_probability > 0.5
+    assert p.win_probability < 0.5          # the published price still says away
+    assert p.model_win_probability != pytest.approx(p.win_probability)

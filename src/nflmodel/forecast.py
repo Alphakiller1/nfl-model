@@ -188,7 +188,7 @@ def write_slate(games: list[dict], destination: str,
 # Fraction of the model's disagreement with the closing spread that is kept in
 # the published margin. Zero, and that is a measurement rather than caution: the
 # model's MAE is 10.3134 against the market's 9.8708 and its ATS record on
-# disagreements is 1158-1165-60 (49.85%, 95% CI [47.81%, 51.88%]) against a
+# disagreements is 1158-1165-60 (49.85%, 95% CI [47.82%, 51.88%]) against a
 # 52.38% breakeven. Raising it is a claim about evidence and belongs with a gate
 # record, not a config tweak.
 SPREAD_LAMBDA = 0.0
@@ -217,7 +217,15 @@ class GameProjection:
     market_margin: float | None = None
     # What the board publishes. Equals the market at SPREAD_LAMBDA = 0.
     margin: float | None = None
+    # Win probability implied by the PUBLISHED margin -- at lambda 0 that is the
+    # market's number, and it is what a price should be read from.
     win_probability: float | None = None
+    # Win probability implied by the MODEL's own margin. Distinct on purpose: the
+    # board's spread and total tiles show model numbers with the market beside
+    # them, so a moneyline tile derived from the published margin contradicted
+    # the spread tile on the same card whenever the two disagreed about who was
+    # favoured -- "IND -1.5" sitting next to "BAL 60%" reads as a defect, and was.
+    model_win_probability: float | None = None
     # Model minus market. Always a gap, never an edge, while the ATS record
     # straddles 50% — see `_points_edge`.
     market_gap: float | None = None
@@ -256,7 +264,7 @@ def _points_edge(market_gap: float | None, *, used_efficiency: bool
     It may not, and the reason is a measurement rather than a policy. Across
     2,383 out-of-sample games the model's margin MAE is 0.44 points worse than
     the closing line and its ATS record on disagreements is 49.85% with a 95%
-    interval of [47.81%, 51.88%] — an interval that contains 50% and sits
+    interval of [47.82%, 51.88%] — an interval that contains 50% and sits
     entirely below the 52.38% breakeven. Both estimators are calibrated (slope
     1.035); the market simply conditions on more, chiefly injuries and
     availability this repo does not model.
@@ -310,6 +318,8 @@ def project_game(
 
     edge, withheld = _points_edge(market_gap, used_efficiency=used_efficiency)
     win_p = None if published is None else ratings_mod.win_probability(published)
+    model_win_p = (None if model_margin is None
+                   else ratings_mod.win_probability(model_margin))
 
     market_fair = None
     if home_moneyline is not None and away_moneyline is not None:
@@ -322,12 +332,12 @@ def project_game(
     return GameProjection(
         home=home, away=away, neutral=neutral, season=season, week=week, kickoff=kickoff,
         rating_margin=rating_margin,
-        efficiency_margin=(matrix_margin(home_form, away_form, neutral)
-                           if used_efficiency else None),
+        efficiency_margin=projection.efficiency_margin,
         model_margin=model_margin,
         market_margin=market_margin,
         margin=published,
         win_probability=win_p,
+        model_win_probability=model_win_p,
         market_gap=market_gap,
         edge_points=edge,
         edge_withheld_reason=withheld,
@@ -347,11 +357,3 @@ def project_game(
                             implausible=auth.IMPLAUSIBLE_EDGE_POINTS).value,
         authority=a.level.value,
     )
-
-
-def matrix_margin(home_form, away_form, neutral: bool) -> float | None:
-    """The efficiency component on its own, for the breakdown."""
-    from . import matrix
-    if home_form is None or away_form is None:
-        return None
-    return matrix.margin_points(home_form, away_form, neutral=neutral)

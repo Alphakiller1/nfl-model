@@ -117,11 +117,15 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
 
     table = preseason.blend_ratings(prior_ratings, ratings.build(completed), played)
     forms = preseason.blend_forms(prior_forms, preseason.live_form(live_lines), played)
-    # Franchises with no history at all would otherwise be missing rather than
-    # zero. There are none in the modern NFL, but an expansion team or a broken
-    # alias would silently shrink the board, so they are surfaced as unrated.
-    for abbr in teams.all_abbrs():
-        table.setdefault(abbr, 0.0)
+    # A franchise with no history stays OUT of the table rather than being seeded
+    # at 0.0. An earlier version defaulted the 32 abbreviations in and called it
+    # "surfaced as unrated", which it was not: 0.0 is a rating, and it means
+    # exactly league average. Every downstream None check -- `projected_margin`,
+    # the AVOID action, the skipped-game path in `divisions.build_games` -- was
+    # dead code as a result, and a broken relocation alias would have produced a
+    # plausible average team instead of a visible gap. There are no such
+    # franchises in the modern NFL; the point is that if one appeared, the hero's
+    # "N teams rated" pill would say 31 instead of quietly saying 32.
 
     games = [row for row in schedule
              if row["season"] == season and row["week"] == week

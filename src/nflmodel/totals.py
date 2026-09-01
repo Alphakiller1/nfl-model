@@ -68,6 +68,11 @@ class Projection:
     home_score: float | None
     away_score: float | None
     modelled: bool          # False when the total fell back to the league mean
+    # The efficiency component on its own, carried out rather than recomputed by
+    # the caller. Two call sites deriving the same quantity from the same inputs
+    # is one refactor away from them disagreeing.
+    efficiency_margin: float | None = None
+    rating_margin: float | None = None
 
 
 def blend_margin(rating_margin: float | None,
@@ -106,7 +111,8 @@ def project(home: matrix.TeamForm | None, away: matrix.TeamForm | None, *,
     total = shrink_total(home_points + away_points) if modelled else LEAGUE_MEAN_TOTAL
 
     if margin is None:
-        return Projection(total if modelled else None, None, None, None, modelled)
+        return Projection(total if modelled else None, None, None, None, modelled,
+                          efficiency_margin, rating_margin)
 
     home_score = (total + margin) / 2.0
     away_score = (total - margin) / 2.0
@@ -116,4 +122,5 @@ def project(home: matrix.TeamForm | None, away: matrix.TeamForm | None, *,
         away_score, home_score = 0.0, total
     elif home_score < 0:
         home_score, away_score = 0.0, total
-    return Projection(total, margin, home_score, away_score, modelled)
+    return Projection(total, margin, home_score, away_score, modelled,
+                      efficiency_margin, rating_margin)

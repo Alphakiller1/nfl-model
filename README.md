@@ -21,11 +21,11 @@ games, 2017–2025, strictly point-in-time:
 
 | | Model | Market | Gap |
 | --- | ---: | ---: | ---: |
-| Margin MAE | 10.3134 | 9.8708 | +0.4426 |
+| Margin MAE | 10.3134 | 9.8708 | +0.4427 |
 | Total MAE | 10.8076 | 10.4700 | +0.3376 |
 
 ATS on games where the model disagrees with the line: **1158–1165–60 = 49.85%**,
-95% CI [47.81%, 51.88%], against a 52.38% breakeven. The interval contains 50% and
+95% CI [47.82%, 51.88%], against a 52.38% breakeven. The interval contains 50% and
 sits entirely below breakeven — unproven and slightly negative, not a signal.
 
 So `SPREAD_LAMBDA = 0`: the **published** margin is the market. The model's own

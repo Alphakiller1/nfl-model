@@ -52,7 +52,7 @@ EVIDENCE = {
     "margin_ratings_only": 10.4298,
     "ats": (1158, 1165, 60),
     "ats_rate": 0.4985,
-    "ats_ci": (0.4781, 0.5188),
+    "ats_ci": (0.4782, 0.5188),
     "total_model": 10.8076,
     "total_market": 10.4700,
     "total_league_mean": 11.0423,
@@ -216,7 +216,7 @@ def _authority_section(authority) -> str:
       <span class="gate-v">{forecast.SPREAD_LAMBDA:.3f}</span></div>
   </div>
   {_tiles()}
-  <div class="tablewrap"><table>
+  <div class="tablewrap"><table class="gates">
     <thead><tr><th></th><th>Production gate</th></tr></thead>
     <tbody>{rows}</tbody></table></div>
   <p class="note">{e(authority.evidence)}</p>
@@ -366,10 +366,12 @@ def _units_section(slate) -> str:
 def _division_card(name: str, members) -> str:
     rows = []
     for outlook in members:
-        meta = teams.get(outlook.team)
+        # Abbreviation only. The full nickname is the widest cell in the card and
+        # it is what pushed the division grid past the viewport; the logo beside
+        # the abbreviation already identifies the team.
         rows.append(
             f'<tr><td class="team"><span class="tname">{_logo(outlook.team, 20)}'
-            f'<b>{e(outlook.team)}</b><span class="dim">{e(meta.short)}</span></span></td>'
+            f'<b>{e(outlook.team)}</b></span></td>'
             f'<td class="num">{outlook.projected_wins:.1f}&#8209;'
             f'{outlook.projected_losses:.1f}</td>'
             f'<td class="oddsbar"><div class="ob-track">'
@@ -381,9 +383,10 @@ def _division_card(name: str, members) -> str:
              f'{e(champion.team)} &middot; {champion.win_division:.0%}</span>'
              if champion else "")
     return (f'<div class="dv"><div class="dv-h">{e(name)}{crown}</div>'
-            f'<table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th>'
-            f'<th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th>'
-            f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+            f'<div class="dv-wrap"><table class="dv-tbl">'
+            f'<thead><tr><th>Team</th><th class="num">Rec</th><th></th>'
+            f'<th class="num">Div</th><th class="num">PO</th>'
+            f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>')
 
 
 def _divisions_section(outlooks) -> str:
@@ -405,6 +408,10 @@ def _divisions_section(outlooks) -> str:
     instead would quietly hand every tie to the favourite. Ratings do not change during a
     simulated season, nobody gets injured, and draws are independent, so these tails are
     thinner than reality&rsquo;s.</p>
+    <p class="note"><b>Rec</b> is the mean simulated record, <b>Div</b> the chance of
+    winning the division, <b>PO</b> the chance of reaching the playoffs. The bar is
+    <b>Div</b> drawn to scale. Division chances sum to 100% within each division and
+    playoff chances to seven per conference, by construction.</p>
   </div>
   <div class="dvs">{cards}</div>
 </section>"""
@@ -589,9 +596,9 @@ a{color:var(--v-light);text-decoration:none}a:hover{text-decoration:underline}
 .chase-header{position:sticky;top:0;z-index:50;background:rgba(8,9,15,.86);
 backdrop-filter:blur(14px);border-bottom:1px solid var(--border-soft)}
 .chase-nav{display:flex;align-items:center;gap:22px;height:64px}
-.chase-logo{display:flex;align-items:center;gap:10px}
+.chase-logo{display:flex;align-items:center;gap:10px;min-width:0;overflow:hidden}
 .chase-wordmark{font-family:var(--font-wordmark);font-weight:700;font-size:19px;
-letter-spacing:.04em;color:var(--text);font-style:italic}
+letter-spacing:.04em;color:var(--text);font-style:italic;white-space:nowrap}
 .chase-wordmark em{font-style:italic;background:var(--v-grad);-webkit-background-clip:text;
 background-clip:text;color:transparent}
 .nav-links{display:flex;gap:2px;flex:1;justify-content:center;flex-wrap:wrap}
@@ -624,7 +631,12 @@ h2{font-family:var(--font-display);font-size:var(--mm-text-2xl);margin-top:5px;f
 .note{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:11px;max-width:900px}
 .fine{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:10px}
 .dim{color:var(--text-3)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;
+/* Every grid child carries min-width:0. A grid item defaults to min-width:auto,
+   which is its content's min-content size, so one wide table stretched the whole
+   page and clipped body copy off the right edge at 430px. */
+.tiles,.gate-grid,.units,.dvs,.mth{min-width:0}
+.tiles>*,.gate-grid>*,.units>*,.dvs>*,.mth>*{min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;
 margin:14px 0}
 .tile{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);padding:15px;display:flex;flex-direction:column;gap:3px}
@@ -633,7 +645,10 @@ color:var(--v-light);font-variant-numeric:tabular-nums}
 .tile-l{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:600;
 letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--text-2)}
 .tile-n{color:var(--text-3);font-size:var(--mm-text-2xs);line-height:1.4}
-.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+/* 170px, not 150: the longest value these cards ever hold is "RESEARCH_ONLY",
+   which needs 137px at this type size and was being clipped by 2px in the
+   four-column layout. The minimum is set by the content, not by eye. */
+.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
 gap:10px;margin:14px 0}
 .gate-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);padding:14px;display:flex;flex-direction:column;gap:3px}
@@ -651,6 +666,9 @@ text-transform:uppercase;letter-spacing:.08em;position:sticky;top:0;background:v
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:rgba(124,77,255,.05)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+/* Gate names are prose, not figures. The global nowrap clipped the longest of
+   them inside its scroll container, which reads as truncated data. */
+.gates td{white-space:normal}
 .gate-ok{color:var(--ca-green);width:28px}
 .gate-no{color:var(--text-4);width:28px}
 .empty{padding:16px;border:1px dashed var(--border-2);border-radius:var(--ca-card-radius);
@@ -684,14 +702,23 @@ letter-spacing:.03em;padding-bottom:9px;border-bottom:1px solid var(--border-sof
 .dv-pick{display:inline-flex;align-items:center;gap:6px;font-size:var(--mm-text-2xs);
 font-weight:600;color:var(--v-light);border:1px solid var(--ca-brand-border);
 border-radius:999px;padding:3px 9px;letter-spacing:.02em}
-.dv-tbl{font-size:var(--mm-text-xs)}
-.dv-tbl th{background:transparent;position:static;padding:7px 4px}
+.dv-wrap{overflow-x:auto}
+.dv-tbl{font-size:var(--mm-text-xs);width:100%}
+.dv-tbl th{background:transparent;position:static;padding:7px 4px;
+white-space:normal}
 .dv-tbl td{padding:7px 4px;border-bottom:1px solid var(--border-soft)}
 .dv-tbl .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
-.oddsbar{width:34%;min-width:70px}
+.oddsbar{width:30%;min-width:44px}
 .ob-track{position:relative;height:6px;border-radius:99px;background:var(--bg-4)}
 .ob-track i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--v-grad)}
 /* Methodology grid */
+/* The kernel dims every unpriced tile to opacity .5 so a projection can never
+   read as a pick. On an explanatory shelf that is the whole shelf, and the
+   result is a legibility problem rather than a signal. A non-market group is
+   exactly the one the kernel renders WITHOUT a market count, so it can be
+   selected precisely without touching the vendored stylesheet. */
+.bd-group:not(:has(.bd-group__count)) .bd-tile.is-idle{opacity:.88}
+.bd-group:not(:has(.bd-group__count)) .bd-tile.is-idle .bd-tile__value{color:var(--text-2)}
 .mth{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
 .mth-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
 border-radius:var(--ca-card-radius);padding:16px;font-size:var(--mm-text-sm);
@@ -711,4 +738,17 @@ font-size:var(--mm-text-xs);color:var(--text-3)}
 footer b{color:var(--text-2)}
 .foot-links{margin-top:9px;display:flex;gap:9px;flex-wrap:wrap}
 @media(max-width:820px){.hero-title{font-size:var(--mm-text-2xl)}.nav-links{display:none}}
+/* At 375px the product tag and the season pill together pushed the document 49px
+   wider than the viewport and clipped every paragraph on the page. The wordmark
+   is also allowed to clip inside its own box rather than push the row, so a font
+   fallback that renders wider cannot bring the overflow back. */
+@media(max-width:640px){
+.wrap{padding:0 16px}
+.chase-nav{gap:8px}
+.chase-wordmark{font-size:14px}
+.product-tag{font-size:9px;padding:4px 7px;letter-spacing:.08em}
+.chase-status{gap:5px}
+.chase-status .pill{font-size:10px;padding:3px 8px}
+.tile-v{font-size:var(--mm-text-xl)}
+}
 """

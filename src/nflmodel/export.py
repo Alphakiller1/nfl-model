@@ -59,7 +59,11 @@ def _projection(p: forecast.GameProjection) -> dict:
         # key so a consumer can check for it rather than infer it from absence.
         "edge_points": _round(p.edge_points, 2),
         "edge_withheld_reason": p.edge_withheld_reason,
+        # Both probabilities travel. `win_probability` is the published price
+        # (the market at lambda 0); `model_win_probability` is the model's own
+        # view, and it is the one that agrees with `model_margin`.
         "win_probability": _round(p.win_probability, 4),
+        "model_win_probability": _round(p.model_win_probability, 4),
         "projected_total": _round(p.projected_total, 2),
         "market_total": _round(p.market_total, 2),
         "projected_home_score": _round(p.projected_home_score, 1),
