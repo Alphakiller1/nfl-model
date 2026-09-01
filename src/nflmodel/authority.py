@@ -67,8 +67,11 @@ SATISFIED_GATES: tuple[str, ...] = (
 )
 
 # An "edge" larger than this against a liquid closing line is far more likely to be
-# a stale quote or a mapping error than a real disagreement.
+# a stale quote or a mapping error than a real disagreement. Two scales, because
+# the two forecasts speak different units: probability for the moneyline contract,
+# points for the spread board.
 IMPLAUSIBLE_EDGE = 0.15
+IMPLAUSIBLE_EDGE_POINTS = 14.0
 
 
 @dataclass(frozen=True)
@@ -81,11 +84,27 @@ class Authority:
     def may_bet(self) -> bool:
         return self.level is Level.PROMOTED and not self.unmet_gates
 
-    def action_for(self, edge: float | None, has_price: bool) -> Action:
-        """Map a modelled edge to what may actually be done with it."""
-        if not has_price or edge is None:
+    def action_for(self, edge: float | None, has_price: bool, *,
+                   modelled: bool = False,
+                   implausible: float = IMPLAUSIBLE_EDGE) -> Action:
+        """Map a modelled edge to what may actually be done with it.
+
+        `modelled` separates two states that a bare `edge is None` cannot.
+        A game with no usable price is AVOID. A game that *is* priced and *was*
+        modelled, but whose difference from the price is not publishable as an
+        edge, is MONITOR -- which is precisely the definition above: priced and
+        modelled, but not promoted.
+
+        The distinction is not cosmetic. The spread board withholds the edge on
+        every game by design (the model does not beat the closing line), so
+        without it a fully working board would report AVOID on all sixteen cards
+        and read as a feed outage rather than as an honest research-only state.
+        """
+        if not has_price:
             return Action.AVOID
-        if abs(edge) > IMPLAUSIBLE_EDGE:
+        if edge is None:
+            return Action.MONITOR if modelled else Action.AVOID
+        if abs(edge) > implausible:
             # Loud on purpose: against an efficient closing line this is a bug
             # signal, not an opportunity.
             return Action.REVIEW

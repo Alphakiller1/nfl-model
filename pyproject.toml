@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nfl-model"
-version = "0.1.0"
-description = "Market-anchored NFL forecasts with an explicit promotion/authority gate"
+version = "0.2.0"
+description = "Opponent-adjusted NFL projections with an explicit promotion/authority gate"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
@@ -21,7 +21,7 @@ packages = ["src/nflmodel"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
 
 [tool.ruff]
 line-length = 100

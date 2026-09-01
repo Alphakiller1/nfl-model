@@ -1,0 +1,1210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NFL Model — Chase Analytics</title>
+<meta name="description" content="NFL research dashboard: opponent-adjusted power ratings, projected scores and totals, offensive and defensive unit rankings, simulated division races, and an explicit authority gate.">
+<style>@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Oswald:ital,wght@0,600;0,700;0,900;1,600;1,700;1,900&family=Roboto+Condensed:wght@400;500;600;700;800&display=swap');/*
+ * Chase Analytics design tokens — vendored, canonical copy.
+ *
+ * Source of truth: mlbma-pipeline/dashboard/mlbma_design_system.css (+ chase_nav.css for the
+ * nav-specific values). Do not invent new values here or redefine a token differently than
+ * that file. If MLBMA's tokens change, resync this file by hand — it intentionally has no
+ * runtime dependency on the mlbma-pipeline repo so this product stays independently deployable.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Page & surfaces (mlbma_design_system.css :root) */
+  --bg: #08090F;
+  --bg-2: #0E1018;
+  --bg-3: #12141D;
+  --bg-4: #181B26;
+  --raised: #20232F;
+  --border: #262A38;
+  --border-2: #363B4D;
+  --border-soft: rgba(255, 255, 255, 0.06);
+  --border-violet: rgba(124, 77, 255, 0.32);
+  --card: #12141D;
+  --card-2: #181B26;
+
+  --text: #F5F6FA;
+  --text-2: #A4A8B6;
+  --text-3: #6E7383;
+  --text-4: #4C5161;
+
+  /* Brand purple family */
+  --ca-purple: #9A6BFF;
+  --ca-purple-dark: #5B2BE0;
+  --ca-purple-heading: #6D28D9;
+  --ca-purple-light: #C4B0FF;
+  --ca-purple-glow: rgba(124, 77, 255, 0.32);
+  --ca-brand: #9A6BFF;
+  --ca-brand-dim: rgba(124, 77, 255, 0.11);
+  --ca-brand-border: rgba(124, 77, 255, 0.32);
+  --v-grad: linear-gradient(135deg, #9A6BFF 0%, #5B2BE0 100%);
+  --v-light: #C4B0FF;
+  --v-mid: #7C4DFF;
+  --v-deep: #5B2BE0;
+
+  /* Semantic status colors (not primary grade) */
+  --ca-green: #3CCB7F;
+  --ca-teal: #86D76F;
+  --ca-amber: #E8C24A;
+  --ca-red: #F2545B;
+  --gold: #E8C24A;
+  --teal: #2DD4BF;
+  --green: #3CCB7F;
+  --red: #F2545B;
+  --side: #C4B0FF;
+
+  /* 7-step metric grade gradient (league-relative percentile) */
+  --metric-very-weak: #F2545B;
+  --metric-weak: #F0935B;
+  --metric-below: #E8C24A;
+  --metric-neutral: #A1A1AA;
+  --metric-above: #86D76F;
+  --metric-strong: #4ADE80;
+  --metric-elite: #22C55E;
+
+  /* Card / board surface treatment */
+  --ca-card-radius: 16px;
+  --ca-card-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --ca-panel-border: rgba(154, 107, 255, 0.41);
+  --ca-panel-glass: linear-gradient(180deg, #1A1D2D 0%, #0D101B 54%, #06070D 100%);
+  --ca-board-top: #181A2A;
+  --ca-board-bottom: #05060C;
+  --ca-glow-violet: 0 0 0 1px rgba(196, 176, 255, 0.13), 0 0 30px rgba(124, 77, 255, 0.24),
+    0 28px 78px rgba(0, 0, 0, 0.86), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  /* Typography */
+  --font-primary: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-primary);
+  --font-display: 'Roboto Condensed', 'DM Sans', system-ui, sans-serif;
+  --sans: var(--font-primary);
+  --display: var(--font-display);
+  --mono: var(--font-display);
+  --font-wordmark: 'Oswald', 'Arial Narrow', system-ui, sans-serif;
+  --ca-editorial-caps: 0.1em;
+
+  /* MLB Model type scale — dense broadcast UI, bumped up ~1-2px per step for legibility
+     (floor raised 10->11, body 13->15). Change these tokens to rescale the whole report. */
+  --mm-text-2xs: 11px;
+  --mm-text-xs: 12px;
+  --mm-text-sm: 13px;
+  --mm-text-base: 15px;
+  --mm-text-md: 16px;
+  --mm-text-lg: 17px;
+  --mm-text-xl: 19px;
+  --mm-text-2xl: 22px;
+  --mm-text-3xl: 27px;
+  --mm-text-display: 31px;
+  --mm-text-hero: 36px;
+
+  /* Nav (chase_nav.css) */
+  --chase-nav-height: 68px;
+  --chase-nav-max-width: 1400px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.num, td, th, .chip, .mval { font-variant-numeric: tabular-nums; }
+.pos { color: var(--ca-green); }
+.neg { color: var(--ca-red); }
+.warnc { color: var(--gold); }
+.side { color: var(--side); }
+.mut { color: var(--text-2); }
+
+/* Percentile grade chips — the Chase 5(+2)-tier scale, exact token colors */
+.c-elite { color: #4ADE80; }
+.c-good  { color: #7BDC5A; }
+.c-mid   { color: #FBBF24; }
+.c-weak  { color: #FB923C; }
+.c-poor  { color: #F87171; }
+.c-na    { color: var(--text-2); }
+/*
+ * Board kernel styles — the shared slate surface (see report/board.py).
+ *
+ * Vendored verbatim alongside board.py into every sport model. Every value here comes
+ * from chase_tokens.css; do not introduce new colours or fonts. Elevation is hairline
+ * borders + layered shadow, never a uniform violet outline.
+ */
+
+.bd {
+  --bd-gap: 14px;
+  --bd-card-min: 340px;
+  display: block;
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+
+.bd-head {
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 18px;
+}
+
+.bd-head__title {
+  display: flex;
+  align-items: flex-end;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+
+.bd-wordmark {
+  font-family: var(--font-wordmark);
+  font-size: var(--mm-text-hero);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+  line-height: 1;
+}
+
+.bd-wordmark em {
+  font-style: italic;
+  background: var(--v-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bd-counters {
+  display: flex;
+  gap: 22px;
+  padding-bottom: 3px;
+}
+
+.bd-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bd-counter__v {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xl);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.bd-counter.is-gem .bd-counter__v {
+  color: var(--ca-green);
+}
+
+.bd-counter__k {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-head__meta {
+  margin-top: 10px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.bd-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bd-filter {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 7px 15px;
+  cursor: pointer;
+}
+
+.bd-filter:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--border-2);
+}
+
+/* A filter with no matches is shown greyed with its zero rather than left live: clicking a
+   live button that empties the board is indistinguishable from a broken button. */
+.bd-filter:disabled,
+.bd-filter.is-empty {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bd-filter__n {
+  display: inline-block;
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+.bd-filter.on .bd-filter__n {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.bd-filter.on {
+  color: #fff;
+  background: var(--v-grad);
+  border-color: transparent;
+  box-shadow: 0 2px 12px var(--ca-purple-glow);
+}
+
+.bd-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-sort select {
+  font-family: var(--font-primary);
+  font-size: var(--mm-text-xs);
+  color: var(--text);
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── grid ───────────────────────────────────────────────────────────────── */
+
+.bd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--bd-card-min), 1fr));
+  gap: var(--bd-gap);
+  /* stretch, not start: cards in a row share a baseline so the market shelves line up
+     across the row and the eye can scan one market family horizontally. */
+  align-items: stretch;
+}
+
+/* ── card ───────────────────────────────────────────────────────────────── */
+
+.bd-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--ca-panel-glass);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--ca-card-radius);
+  box-shadow: var(--ca-card-shadow);
+  overflow: hidden;
+}
+
+.bd-card:hover {
+  border-color: var(--border-2);
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.45);
+}
+
+.bd-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.bd-card__league {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.bd-card__start {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-card__counts {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.bd-count {
+  min-width: 24px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--v-light);
+  background: var(--ca-brand-dim);
+  border: 1px solid var(--ca-brand-border);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.bd-count.is-gem {
+  color: var(--ca-green);
+  background: rgba(60, 203, 127, 0.1);
+  border-color: rgba(60, 203, 127, 0.32);
+}
+
+.bd-status {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.bd-status.is-pos { color: var(--ca-green); }
+.bd-status.is-neg { color: var(--ca-red); }
+.bd-status.is-warnc { color: var(--gold); }
+.bd-status.is-side { color: var(--side); }
+
+/* headline / primary action */
+
+.bd-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(124, 77, 255, 0.06);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--v-light);
+}
+
+.bd-headline:hover {
+  background: rgba(124, 77, 255, 0.12);
+}
+
+.bd-headline.is-pos { color: var(--ca-green); background: rgba(60, 203, 127, 0.07); }
+.bd-headline.is-pos:hover { background: rgba(60, 203, 127, 0.13); }
+.bd-headline.is-mut { color: var(--text-2); background: rgba(255, 255, 255, 0.02); }
+
+.bd-headline__cta {
+  font-size: var(--mm-text-2xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* score row */
+
+.bd-score {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 14px;
+}
+
+.bd-score__vs {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.bd-side {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.bd-side--home {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+/* Team marks carry their own colours, and the dark ones (navy, black) disappear against
+   the navy ground. A faint disc lifts every mark without tinting it. */
+.bd-side__logo {
+  flex: none;
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px var(--border-soft);
+}
+
+.bd-side__logo img,
+.bd-side__logo svg {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+.bd-side__fallback {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--bg-4);
+  border-radius: 6px;
+  padding: 5px 4px;
+  width: 30px;
+  text-align: center;
+}
+
+.bd-side__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.bd-side__abbr {
+  font-family: var(--font-display);
+  font-size: var(--mm-text-md);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.bd-side__detail {
+  font-size: var(--mm-text-2xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-side__score {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  line-height: 1;
+}
+
+.bd-side--home .bd-side__score {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+.bd-side.is-fav .bd-side__score {
+  color: var(--v-light);
+}
+
+/* principals */
+
+.bd-principals {
+  padding: 0 14px 13px;
+}
+
+.bd-principals__label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--ca-editorial-caps);
+  text-transform: uppercase;
+  color: var(--text-4);
+  margin-bottom: 7px;
+}
+
+.bd-principals__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bd-principals__vs {
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-4);
+  flex: none;
+}
+
+.bd-principal {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.bd-principal__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bd-principal__name {
+  font-size: var(--mm-text-xs);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-principal__team,
+.bd-principal__stat {
+  font-size: 10px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bd-face,
+.bd-principal img {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-4);
+  border: 1px solid var(--border-soft);
+}
+
+.bd-face--na {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+/* market groups */
+
+.bd-card__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-soft);
+  border-top: 1px solid var(--border-soft);
+  margin-top: auto;
+}
+
+.bd-group {
+  background: var(--bg-2);
+  padding: 11px 14px 12px;
+}
+
+.bd-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.bd-group__label {
+  position: relative;
+  padding-left: 9px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.bd-group__label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  bottom: 1px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--v-grad);
+}
+
+.bd-group__state {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bd-group__count {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: var(--bg-4);
+  border-radius: 5px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+
+.bd-group__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 7px;
+}
+
+.bd-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px 7px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  min-width: 0;
+}
+
+.bd-tile__label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bd-tile__value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.15;
+}
+
+.bd-tile__gem {
+  font-size: 9px;
+  color: var(--ca-green);
+}
+
+/* Wraps rather than truncating: "BOS -1.5 · MONITOR" clipped to "BOS -1.5 · MONIT…"
+   loses the state, which is the half that says whether to act. */
+.bd-tile__state {
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}
+
+.bd-tile.is-pos .bd-tile__value { color: var(--ca-green); }
+.bd-tile.is-neg .bd-tile__value { color: var(--ca-red); }
+.bd-tile.is-warnc .bd-tile__value { color: var(--gold); }
+.bd-tile.is-side .bd-tile__value { color: var(--side); }
+.bd-tile.is-mut .bd-tile__value { color: var(--text-2); }
+
+.bd-tile.is-gem {
+  border-color: rgba(60, 203, 127, 0.32);
+  background: rgba(60, 203, 127, 0.06);
+}
+
+.bd-tile.is-idle {
+  opacity: 0.5;
+}
+
+.bd-tile.is-idle .bd-tile__value {
+  color: var(--text-3);
+}
+
+/* footer */
+
+.bd-card__footer {
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: var(--mm-text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--v-light);
+}
+
+.bd-card__footer:hover {
+  background: rgba(124, 77, 255, 0.08);
+}
+
+/* empty states */
+
+.bd-empty {
+  padding: 16px;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  color: var(--text-3);
+  font-size: var(--mm-text-sm);
+  background: rgba(255, 255, 255, 0.012);
+  margin: 12px 14px 14px;
+}
+
+.bd-empty--board {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .bd {
+    --bd-card-min: 100%;
+  }
+  .bd-head__title {
+    gap: 16px;
+  }
+  .bd-wordmark {
+    font-size: var(--mm-text-3xl);
+  }
+  .bd-counters {
+    gap: 16px;
+  }
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{background:var(--bg);color:var(--text);font:15px/1.55 var(--font-primary);
+background-image:radial-gradient(1100px 480px at 78% -12%,rgba(124,77,255,.16),transparent 62%),
+radial-gradient(900px 420px at 8% 4%,rgba(91,43,224,.10),transparent 55%)}
+a{color:var(--v-light);text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+.chase-header{position:sticky;top:0;z-index:50;background:rgba(8,9,15,.86);
+backdrop-filter:blur(14px);border-bottom:1px solid var(--border-soft)}
+.chase-nav{display:flex;align-items:center;gap:22px;height:64px}
+.chase-logo{display:flex;align-items:center;gap:10px}
+.chase-wordmark{font-family:var(--font-wordmark);font-weight:700;font-size:19px;
+letter-spacing:.04em;color:var(--text);font-style:italic}
+.chase-wordmark em{font-style:italic;background:var(--v-grad);-webkit-background-clip:text;
+background-clip:text;color:transparent}
+.nav-links{display:flex;gap:2px;flex:1;justify-content:center;flex-wrap:wrap}
+.nav-link{padding:7px 11px;border-radius:9px;color:var(--text-2);font-size:13px;font-weight:600}
+.nav-link:hover{color:var(--text);background:var(--ca-brand-dim);text-decoration:none}
+.chase-status{display:flex;gap:7px;align-items:center}
+.product-tag{font-family:var(--font-display);font-weight:700;font-size:11px;
+letter-spacing:.14em;color:var(--v-light);border:1px solid var(--ca-brand-border);
+border-radius:999px;padding:5px 11px;white-space:nowrap}
+.hero{padding:52px 0 32px;border-bottom:1px solid var(--border-soft)}
+.hero-eyebrow{font-family:var(--font-display);font-size:11px;font-weight:700;
+letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--gold);
+margin-bottom:14px}
+.hero-title{font-family:var(--font-display);font-size:var(--mm-text-hero);font-weight:700;
+line-height:1.08;letter-spacing:-.01em}
+.hero-sub{color:var(--text-2);max-width:720px;margin-top:12px;font-size:var(--mm-text-md)}
+.hero-meta{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+.pill{border:1px solid var(--border-soft);border-radius:999px;padding:4px 13px;
+font-size:var(--mm-text-xs);background:var(--bg-3);color:var(--text-2);white-space:nowrap}
+.pill.warn{color:var(--gold);border-color:var(--ca-brand-border)}
+.pill.dim{color:var(--text-3)}
+main{padding:14px 0 40px}
+section{margin-top:46px;scroll-margin-top:80px}
+.sec-head{margin-bottom:16px}
+.kicker{font-family:var(--font-display);font-size:11px;font-weight:700;
+letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--gold)}
+h2{font-family:var(--font-display);font-size:var(--mm-text-2xl);margin-top:5px;font-weight:700}
+.blurb{color:var(--text-2);max-width:860px;margin-top:8px;font-size:var(--mm-text-sm)}
+.blurb b{color:var(--text)}
+.note{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:11px;max-width:900px}
+.fine{color:var(--text-3);font-size:var(--mm-text-xs);margin-top:10px}
+.dim{color:var(--text-3)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;
+margin:14px 0}
+.tile{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);padding:15px;display:flex;flex-direction:column;gap:3px}
+.tile-v{font-family:var(--font-display);font-size:var(--mm-text-2xl);font-weight:800;
+color:var(--v-light);font-variant-numeric:tabular-nums}
+.tile-l{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:600;
+letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--text-2)}
+.tile-n{color:var(--text-3);font-size:var(--mm-text-2xs);line-height:1.4}
+.gate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+gap:10px;margin:14px 0}
+.gate-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);padding:14px;display:flex;flex-direction:column;gap:3px}
+.gate-k{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:600;
+letter-spacing:var(--ca-editorial-caps);text-transform:uppercase;color:var(--text-3)}
+.gate-v{font-family:var(--font-display);font-size:var(--mm-text-lg);font-weight:700;
+color:var(--text);font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);background:var(--bg-2)}
+table{width:100%;border-collapse:collapse;font-size:var(--mm-text-sm)}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border-soft);
+white-space:nowrap}
+th{font-family:var(--font-display);font-size:var(--mm-text-2xs);color:var(--text-3);
+text-transform:uppercase;letter-spacing:.08em;position:sticky;top:0;background:var(--bg-2)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(124,77,255,.05)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.gate-ok{color:var(--ca-green);width:28px}
+.gate-no{color:var(--text-4);width:28px}
+.empty{padding:16px;border:1px dashed var(--border-2);border-radius:var(--ca-card-radius);
+color:var(--text-3);font-size:var(--mm-text-sm)}
+/* Power ratings & unit tables */
+.tlogo{vertical-align:middle;border-radius:4px}
+.tname{display:inline-flex;align-items:center;gap:8px}
+.tname b{font-family:var(--font-display);font-weight:700;letter-spacing:.03em}
+.tname .dim{font-size:var(--mm-text-xs)}
+.pr .rank{color:var(--text-4);width:34px;font-variant-numeric:tabular-nums}
+.pr .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
+.pr .ratingbar{width:20%;min-width:120px}
+.pr .eff{color:var(--text-2)}
+.rb-track{position:relative;height:8px;border-radius:99px;background:var(--bg-4)}
+.rb-zero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--border-2)}
+.rb-track i{position:absolute;top:0;bottom:0;border-radius:99px}
+.rb-pos{background:var(--v-grad)}
+.rb-neg{background:var(--ca-red);opacity:.72}
+.units{display:grid;grid-template-columns:1fr;gap:16px}
+@media(min-width:1080px){.units{grid-template-columns:1fr 1fr}}
+.unit-h{font-family:var(--font-display);font-size:var(--mm-text-md);font-weight:700;
+margin-bottom:9px;color:var(--text)}
+.unit-tbl th,.unit-tbl td{padding:6px 9px;font-size:var(--mm-text-xs)}
+/* Division outlook cards */
+.dvs{display:grid;grid-template-columns:repeat(auto-fit,minmax(272px,1fr));gap:14px}
+.dv{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);padding:14px 15px 6px;box-shadow:var(--ca-card-shadow)}
+.dv-h{display:flex;align-items:center;justify-content:space-between;gap:10px;
+font-family:var(--font-display);font-weight:700;font-size:var(--mm-text-md);
+letter-spacing:.03em;padding-bottom:9px;border-bottom:1px solid var(--border-soft)}
+.dv-pick{display:inline-flex;align-items:center;gap:6px;font-size:var(--mm-text-2xs);
+font-weight:600;color:var(--v-light);border:1px solid var(--ca-brand-border);
+border-radius:999px;padding:3px 9px;letter-spacing:.02em}
+.dv-tbl{font-size:var(--mm-text-xs)}
+.dv-tbl th{background:transparent;position:static;padding:7px 4px}
+.dv-tbl td{padding:7px 4px;border-bottom:1px solid var(--border-soft)}
+.dv-tbl .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
+.oddsbar{width:34%;min-width:70px}
+.ob-track{position:relative;height:6px;border-radius:99px;background:var(--bg-4)}
+.ob-track i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--v-grad)}
+/* Methodology grid */
+.mth{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.mth-card{background:var(--ca-panel-glass);border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);padding:16px;font-size:var(--mm-text-sm);
+color:var(--text-2)}
+.mth-h{font-family:var(--font-display);font-size:var(--mm-text-md);font-weight:700;
+color:var(--text);margin-bottom:8px}
+.mth-card p+p{margin-top:9px}
+.mth-card b{color:var(--text)}
+.mth-tbl{margin-top:10px;font-size:var(--mm-text-xs)}
+.mth-tbl td{padding:5px 0;border-bottom:1px solid var(--border-soft);white-space:normal}
+.mth-tbl tr:last-child td{border-bottom:none}
+pre{overflow-x:auto;margin:10px 0;padding:11px 13px;background:var(--bg-3);
+border:1px solid var(--border-soft);border-radius:9px}
+code{font-family:var(--font-display);font-size:var(--mm-text-xs);color:var(--v-light)}
+footer{border-top:1px solid var(--border-soft);margin-top:52px;padding:24px 0 44px;
+font-size:var(--mm-text-xs);color:var(--text-3)}
+footer b{color:var(--text-2)}
+.foot-links{margin-top:9px;display:flex;gap:9px;flex-wrap:wrap}
+@media(max-width:820px){.hero-title{font-size:var(--mm-text-2xl)}.nav-links{display:none}}
+</style>
+</head>
+<body>
+
+<header class="chase-header">
+  <nav class="chase-nav wrap">
+    <a href="https://chase-analytics.com" class="chase-logo" title="Chase Analytics">
+      <svg viewBox="0 0 36 36" width="30" height="30" aria-hidden="true">
+      <path d="M18 5 C21 13 24 20 33 31 L3 31 C12 20 15 13 18 5 Z" fill="#7C4DFF"/></svg>
+      <span class="chase-wordmark">CHASE&nbsp;<em>ANALYTICS</em></span>
+    </a>
+    <div class="nav-links">
+      <a class="nav-link" href="#authority">Authority</a>
+      <a class="nav-link" href="#board">Board</a>
+      <a class="nav-link" href="#ratings">Power Ratings</a>
+      <a class="nav-link" href="#units">Offense &amp; Defense</a>
+      <a class="nav-link" href="#divisions">Divisions</a>
+      <a class="nav-link" href="#methodology">Method</a>
+    </div>
+    <div class="chase-status"><span class="product-tag">NFL MODEL</span>
+    <span class="pill dim">2026 &middot; WK 1</span></div>
+  </nav>
+</header>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-eyebrow">CHASE ANALYTICS&ensp;|&ensp;MODEL LAB</div>
+    <h1 class="hero-title">National Football League<br>projections, and the
+    permission to use them.</h1>
+    <p class="hero-sub">Opponent-adjusted power ratings, projected scores and totals for
+    every game, offensive and defensive unit rankings, and a simulated race for all eight
+    divisions &mdash; behind an explicit gate on what the numbers are allowed to be used for.
+    This model does not beat the closing market, and says so here rather than hiding it.</p>
+    <div class="hero-meta">
+      <span class="pill warn">RESEARCH_ONLY</span>
+      <span class="pill">16 games</span>
+      <span class="pill">32 teams rated</span>
+      <span class="pill">preseason prior &mdash; no 2026 games played yet</span>
+      <span class="pill dim">built Aug 31 2026 · 23:59 UTC</span>
+    </div>
+  </div>
+</header><main class="wrap">
+<section id="authority">
+  <div class="sec-head">
+    <span class="kicker">Authority &middot; 01</span>
+    <h2>What these numbers may be used for</h2>
+    <p class="blurb">A probability and a permission are different things, and conflating
+    them is how an unpromoted model becomes a bet. Measured out of sample this model is
+    <b>0.44 points worse</b> than the closing spread and covers <b>49.85%</b> of its own
+    disagreements &mdash; an interval that contains 50% and sits entirely below the 52.38%
+    breakeven. It is therefore <b>RESEARCH_ONLY</b> and may never emit a bet.</p>
+  </div>
+  <div class="gate-grid">
+    <div class="gate-card"><span class="gate-k">Authority</span>
+      <span class="gate-v">RESEARCH_ONLY</span></div>
+    <div class="gate-card"><span class="gate-k">May bet</span>
+      <span class="gate-v">no</span></div>
+    <div class="gate-card"><span class="gate-k">Gates met</span>
+      <span class="gate-v">3 / 12</span></div>
+    <div class="gate-card"><span class="gate-k">Spread &lambda;</span>
+      <span class="gate-v">0.000</span></div>
+  </div>
+  <div class="tiles"><div class="tile"><span class="tile-v">10.3134</span><span class="tile-l">Model margin MAE</span><span class="tile-n">points per game, 2017-2025 out of sample</span></div><div class="tile"><span class="tile-v">9.8708</span><span class="tile-l">Market margin MAE</span><span class="tile-n">closing spread on the same games</span></div><div class="tile"><span class="tile-v">49.85%</span><span class="tile-l">ATS on disagreements</span><span class="tile-n">1158-1165-60 &middot; 95% CI [47.8%, 51.9%] &middot; breakeven 52.38%</span></div><div class="tile"><span class="tile-v">2,383</span><span class="tile-l">Games evaluated</span><span class="tile-n">leave-one-season-out, point-in-time</span></div></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th></th><th>Production gate</th></tr></thead>
+    <tbody><tr><td class="gate-ok">&#10003;</td><td>historical seasons at least 6</td></tr><tr><td class="gate-ok">&#10003;</td><td>out of sample games at least 1500</td></tr><tr><td class="gate-ok">&#10003;</td><td>calibration ece at most 0.025</td></tr><tr><td class="gate-no">&#9675;</td><td>out of sample bets at least 300</td></tr><tr><td class="gate-no">&#9675;</td><td>timestamped quote coverage at least 0.98</td></tr><tr><td class="gate-no">&#9675;</td><td>model log loss below paired no vig market</td></tr><tr><td class="gate-no">&#9675;</td><td>model brier below paired no vig market</td></tr><tr><td class="gate-no">&#9675;</td><td>roi lower confidence bound above zero after cost</td></tr><tr><td class="gate-no">&#9675;</td><td>probability space clv above zero</td></tr><tr><td class="gate-no">&#9675;</td><td>deflated sharpe probability at least 0.95</td></tr><tr><td class="gate-no">&#9675;</td><td>probability backtest overfit at most 0.20</td></tr><tr><td class="gate-no">&#9675;</td><td>shadow days at least 90</td></tr></tbody></table></div>
+  <p class="note">nfl-genesis reports/EMPIRICAL_BASELINE_2016_2025.md — anchored stacker -0.000173 log loss vs paired closing market; selected lam = 0.000 in all five folds 2021-2025, i.e. no incremental signal over the closing line</p>
+</section>
+<section id="board">
+  <div class="sec-head">
+    <span class="kicker">Slate &middot; 02</span>
+    <h2>Week 1 board</h2>
+    <p class="blurb">Projected scores are the <b>model&rsquo;s</b>, built from its own margin
+    and total &mdash; not from the published margin, which at &lambda;&nbsp;=&nbsp;0 is just the
+    market wearing the model&rsquo;s label. Each card shows the market number beside it so the
+    disagreement is visible; that disagreement is reported as a <b>gap</b>, never an edge.
+    The <b>Picks</b> counter counts priced markets (16 of 16 games have
+    one) &mdash; it is not a count of recommendations, and this authority permits none.</p>
+  </div>
+  <section class="bd" data-board="NFL"><header class="bd-head"><div class="bd-head__title"><h2 class="bd-wordmark">NFL <em>Board</em></h2><div class="bd-counters"><div class="bd-counter"><span class="bd-counter__v">48</span><span class="bd-counter__k">Picks</span></div><div class="bd-counter is-gem"><span class="bd-counter__v">0</span><span class="bd-counter__k">Gems</span></div><div class="bd-counter"><span class="bd-counter__v">16</span><span class="bd-counter__k">Games</span></div></div></div><div class="bd-head__meta">// 16 games · 16 with a market price · authority RESEARCH_ONLY · 9 of 12 production gates unmet · lambda 0.000</div><div class="bd-controls"><div class="bd-filters" role="group" aria-label="Filter board"><button type="button" class="bd-filter on" data-filter="all" data-hits="16" onclick="boardFilter(this,'all')">All 16 <span class="bd-filter__n">16</span></button><button type="button" class="bd-filter" data-filter="fullgame" data-hits="16" onclick="boardFilter(this,'fullgame')">Priced <span class="bd-filter__n">16</span></button><button type="button" class="bd-filter" data-filter="matchup" data-hits="16" onclick="boardFilter(this,'matchup')">With form <span class="bd-filter__n">16</span></button></div><label class="bd-sort">Sort<select onchange="boardSort(this.value)" aria-label="Sort board"><option value="start">Kickoff</option><option value="picks">Priced markets</option></select></label></div></header><div class="bd-grid" id="bdGrid"><article class="bd-card" data-key="2026_01_NE_SEA" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Wed Sep 9 · 8:20 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 3.0 points on SEA — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">NE</span><span class="bd-side__detail">+150</span></span><span class="bd-side__score">19</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">SEA</span><span class="bd-side__detail">-180</span></span><span class="bd-side__score">26</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">M</span><span class="bd-principal__body"><span class="bd-principal__name">Mike Vrabel</span><span class="bd-principal__team">NE</span><span class="bd-principal__stat">team +0.0</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">M</span><span class="bd-principal__body"><span class="bd-principal__name">Mike Macdonald</span><span class="bd-principal__team">SEA</span><span class="bd-principal__stat">team +4.4</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">SEA -6.5</span><span class="bd-tile__state">market SEA -3.5 · gap +3.0</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">45.3</span><span class="bd-tile__state">market 44.5 · gap +0.8</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">SEA 60%</span><span class="bd-tile__state">market 62% · -180/+150</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.4</span><span class="bd-tile__state">SEA · NE +0.8 / SEA +1.2</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">4.0</span><span class="bd-tile__state">SEA · NE -0.8 / SEA +3.2</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+6.9</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_SF_LA" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Thu Sep 10 · 8:35 PM ET · neutral site</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 0.7 points on LA — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">SF</span><span class="bd-side__detail">+164</span></span><span class="bd-side__score">22</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">LA</span><span class="bd-side__detail">-198</span></span><span class="bd-side__score">27</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">K</span><span class="bd-principal__body"><span class="bd-principal__name">Kyle Shanahan</span><span class="bd-principal__team">SF</span><span class="bd-principal__stat">team +2.1</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">S</span><span class="bd-principal__body"><span class="bd-principal__name">Sean McVay</span><span class="bd-principal__team">LA</span><span class="bd-principal__stat">team +5.2</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">LA -4.2</span><span class="bd-tile__state">market LA -3.5 · gap +0.7</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">49.0</span><span class="bd-tile__state">market 48.5 · gap +0.5</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">LA 60%</span><span class="bd-tile__state">market 64% · -198/+164</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">1.3</span><span class="bd-tile__state">LA · SF +2.8 / LA +4.1</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.7</span><span class="bd-tile__state">LA · SF -0.7 / LA +1.0</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+5.3</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_ATL_PIT" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model agrees with the closing line</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">ATL</span><span class="bd-side__detail">+145</span></span><span class="bd-side__score">21</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">PIT</span><span class="bd-side__detail">-175</span></span><span class="bd-side__score">24</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">R</span><span class="bd-principal__body"><span class="bd-principal__name">Raheem Morris</span><span class="bd-principal__team">ATL</span><span class="bd-principal__stat">team +0.1</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">M</span><span class="bd-principal__body"><span class="bd-principal__name">Mike McCarthy</span><span class="bd-principal__team">PIT</span><span class="bd-principal__stat">team -0.1</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">PIT -3.1</span><span class="bd-tile__state">market PIT -3.0 · gap +0.1</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">44.9</span><span class="bd-tile__state">market 42.5 · gap +2.4</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">PIT 59%</span><span class="bd-tile__state">market 61% · -175/+145</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.4</span><span class="bd-tile__state">ATL · ATL -0.1 / PIT -0.5</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">0.3</span><span class="bd-tile__state">PIT · ATL +0.1 / PIT +0.4</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+4.7</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_BAL_IND" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 5.0 points on IND — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">BAL</span><span class="bd-side__detail">-175</span></span><span class="bd-side__score">24</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">IND</span><span class="bd-side__detail">+145</span></span><span class="bd-side__score">25</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">J</span><span class="bd-principal__body"><span class="bd-principal__name">Jesse Minter</span><span class="bd-principal__team">BAL</span><span class="bd-principal__stat">team +1.4</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">S</span><span class="bd-principal__body"><span class="bd-principal__name">Shane Steichen</span><span class="bd-principal__team">IND</span><span class="bd-principal__stat">team +1.2</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">IND -1.5</span><span class="bd-tile__state">market BAL -3.5 · gap +5.0</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">48.7</span><span class="bd-tile__state">market 48.5 · gap +0.2</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">BAL 60%</span><span class="bd-tile__state">market 61% · +145/-175</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.2</span><span class="bd-tile__state">BAL · BAL +1.8 / IND +1.7</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">0.0</span><span class="bd-tile__state">BAL · BAL -0.5 / IND -0.5</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+1.4</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_BUF_HOU" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 3.9 points on HOU — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">BUF</span><span class="bd-side__detail">-118</span></span><span class="bd-side__score">21</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">HOU</span><span class="bd-side__detail">-102</span></span><span class="bd-side__score">24</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">S</span><span class="bd-principal__body"><span class="bd-principal__name">Sean McDermott</span><span class="bd-principal__team">BUF</span><span class="bd-principal__stat">team +2.7</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">D</span><span class="bd-principal__body"><span class="bd-principal__name">DeMeco Ryans</span><span class="bd-principal__team">HOU</span><span class="bd-principal__stat">team +3.5</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">HOU -2.4</span><span class="bd-tile__state">market BUF -1.5 · gap +3.9</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">45.0</span><span class="bd-tile__state">market 44.5 · gap +0.5</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">BUF 54%</span><span class="bd-tile__state">market 52% · -102/-118</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">2.7</span><span class="bd-tile__state">BUF · BUF +2.7 / HOU -0.0</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">3.5</span><span class="bd-tile__state">HOU · BUF +0.0 / HOU +3.5</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+2.2</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_CHI_CAR" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 0.9 points on CHI — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">CHI</span><span class="bd-side__detail">-142</span></span><span class="bd-side__score">25</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/car.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">CAR</span><span class="bd-side__detail">+120</span></span><span class="bd-side__score">21</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">B</span><span class="bd-principal__body"><span class="bd-principal__name">Ben Johnson</span><span class="bd-principal__team">CHI</span><span class="bd-principal__stat">team +0.8</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">D</span><span class="bd-principal__body"><span class="bd-principal__name">Dave Canales</span><span class="bd-principal__team">CAR</span><span class="bd-principal__stat">team -3.2</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">CHI -3.4</span><span class="bd-tile__state">market CHI -2.5 · gap -0.9</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">46.0</span><span class="bd-tile__state">market 47.5 · gap -1.5</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">CHI 57%</span><span class="bd-tile__state">market 56% · +120/-142</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">3.5</span><span class="bd-tile__state">CHI · CHI +1.3 / CAR -2.2</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">0.6</span><span class="bd-tile__state">CHI · CHI -0.4 / CAR -1.0</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">-4.6</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_CLE_JAX" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 2.8 points on JAX — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">CLE</span><span class="bd-side__detail">+295</span></span><span class="bd-side__score">15</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">JAX</span><span class="bd-side__detail">-375</span></span><span class="bd-side__score">25</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">T</span><span class="bd-principal__body"><span class="bd-principal__name">Todd Monken</span><span class="bd-principal__team">CLE</span><span class="bd-principal__stat">team -4.0</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">L</span><span class="bd-principal__body"><span class="bd-principal__name">Liam Coen</span><span class="bd-principal__team">JAX</span><span class="bd-principal__stat">team +1.7</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">JAX -10.3</span><span class="bd-tile__state">market JAX -7.5 · gap +2.8</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">40.3</span><span class="bd-tile__state">market 40.5 · gap -0.2</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">JAX 71%</span><span class="bd-tile__state">market 76% · -375/+295</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">6.7</span><span class="bd-tile__state">JAX · CLE -5.8 / JAX +0.9</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.0</span><span class="bd-tile__state">CLE · CLE +1.8 / JAX +0.8</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+13.2</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_NO_DET" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 2.1 points on DET — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/no.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">NO</span><span class="bd-side__detail">+250</span></span><span class="bd-side__score">18</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">DET</span><span class="bd-side__detail">-310</span></span><span class="bd-side__score">27</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">K</span><span class="bd-principal__body"><span class="bd-principal__name">Kellen Moore</span><span class="bd-principal__team">NO</span><span class="bd-principal__stat">team -1.5</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">D</span><span class="bd-principal__body"><span class="bd-principal__name">Dan Campbell</span><span class="bd-principal__team">DET</span><span class="bd-principal__stat">team +3.5</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">DET -9.1</span><span class="bd-tile__state">market DET -7.0 · gap +2.1</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">45.0</span><span class="bd-tile__state">market 49.5 · gap -4.5</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">DET 70%</span><span class="bd-tile__state">market 73% · -310/+250</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">6.0</span><span class="bd-tile__state">DET · NO -2.7 / DET +3.3</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.0</span><span class="bd-tile__state">NO · NO +1.2 / DET +0.2</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+11.5</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_NYJ_TEN" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 2.5 points on TEN — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">NYJ</span><span class="bd-side__detail">+110</span></span><span class="bd-side__score">20</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">TEN</span><span class="bd-side__detail">-130</span></span><span class="bd-side__score">24</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">A</span><span class="bd-principal__body"><span class="bd-principal__name">Aaron Glenn</span><span class="bd-principal__team">NYJ</span><span class="bd-principal__stat">team -7.0</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">R</span><span class="bd-principal__body"><span class="bd-principal__name">Robert Saleh</span><span class="bd-principal__team">TEN</span><span class="bd-principal__stat">team -3.6</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">TEN -4.0</span><span class="bd-tile__state">market TEN -1.5 · gap +2.5</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">43.6</span><span class="bd-tile__state">market 38.5 · gap +5.1</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">TEN 54%</span><span class="bd-tile__state">market 54% · -130/+110</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">1.8</span><span class="bd-tile__state">TEN · NYJ -4.3 / TEN -2.4</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.6</span><span class="bd-tile__state">TEN · NYJ -2.7 / TEN -1.1</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+2.8</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_TB_CIN" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 1:00 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 4.7 points on TB — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">TB</span><span class="bd-side__detail">+164</span></span><span class="bd-side__score">25</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">CIN</span><span class="bd-side__detail">-198</span></span><span class="bd-side__score">24</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">T</span><span class="bd-principal__body"><span class="bd-principal__name">Todd Bowles</span><span class="bd-principal__team">TB</span><span class="bd-principal__stat">team +0.3</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">Z</span><span class="bd-principal__body"><span class="bd-principal__name">Zac Taylor</span><span class="bd-principal__team">CIN</span><span class="bd-principal__stat">team -2.4</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">TB -1.2</span><span class="bd-tile__state">market CIN -3.5 · gap -4.7</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">48.6</span><span class="bd-tile__state">market 51.5 · gap -2.9</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">CIN 60%</span><span class="bd-tile__state">market 64% · -198/+164</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.6</span><span class="bd-tile__state">TB · TB +0.8 / CIN +0.2</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">2.1</span><span class="bd-tile__state">TB · TB -0.5 / CIN -2.6</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">-1.5</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_ARI_LAC" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 4:25 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 5.3 points on ARI — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">ARI</span><span class="bd-side__detail">+425</span></span><span class="bd-side__score">20</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">LAC</span><span class="bd-side__detail">-575</span></span><span class="bd-side__score">25</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">J</span><span class="bd-principal__body"><span class="bd-principal__name">Jonathan Gannon</span><span class="bd-principal__team">ARI</span><span class="bd-principal__stat">team -1.1</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">J</span><span class="bd-principal__body"><span class="bd-principal__name">Jim Harbaugh</span><span class="bd-principal__team">LAC</span><span class="bd-principal__stat">team +1.1</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">LAC -5.2</span><span class="bd-tile__state">market LAC -10.5 · gap -5.3</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">45.0</span><span class="bd-tile__state">market 46.5 · gap -1.5</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">LAC 78%</span><span class="bd-tile__state">market 82% · -575/+425</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.7</span><span class="bd-tile__state">ARI · ARI +0.2 / LAC -0.6</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">2.9</span><span class="bd-tile__state">LAC · ARI -1.2 / LAC +1.7</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+6.5</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_GB_MIN" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 4:25 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 1.5 points on GB — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">GB</span><span class="bd-side__detail">-102</span></span><span class="bd-side__score">21</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">MIN</span><span class="bd-side__detail">-118</span></span><span class="bd-side__score">21</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">M</span><span class="bd-principal__body"><span class="bd-principal__name">Matt LaFleur</span><span class="bd-principal__team">GB</span><span class="bd-principal__stat">team +2.5</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">K</span><span class="bd-principal__body"><span class="bd-principal__name">Kevin O&#x27;Connell</span><span class="bd-principal__team">MIN</span><span class="bd-principal__stat">team +0.3</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">PK</span><span class="bd-tile__state">market MIN -1.5 · gap -1.5</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">42.1</span><span class="bd-tile__state">market 45.5 · gap -3.4</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">MIN 54%</span><span class="bd-tile__state">market 52% · -118/-102</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">5.9</span><span class="bd-tile__state">GB · GB +2.4 / MIN -3.5</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">3.7</span><span class="bd-tile__state">MIN · GB +0.1 / MIN +3.8</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+0.4</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_MIA_LV" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 4:25 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 5.1 points on MIA — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">MIA</span><span class="bd-side__detail">+164</span></span><span class="bd-side__score">22</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">LV</span><span class="bd-side__detail">-198</span></span><span class="bd-side__score">20</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">J</span><span class="bd-principal__body"><span class="bd-principal__name">Jeff Hafley</span><span class="bd-principal__team">MIA</span><span class="bd-principal__stat">team -2.2</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">K</span><span class="bd-principal__body"><span class="bd-principal__name">Klint Kubliak</span><span class="bd-principal__team">LV</span><span class="bd-principal__stat">team -3.9</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">MIA -1.6</span><span class="bd-tile__state">market LV -3.5 · gap -5.1</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">42.6</span><span class="bd-tile__state">market 40.5 · gap +2.1</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">LV 60%</span><span class="bd-tile__state">market 64% · -198/+164</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">3.7</span><span class="bd-tile__state">MIA · MIA -0.8 / LV -4.4</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">2.1</span><span class="bd-tile__state">LV · MIA -1.5 / LV +0.6</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">-3.3</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_WAS_PHI" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 4:25 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 3.1 points on PHI — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">WAS</span><span class="bd-side__detail">+170</span></span><span class="bd-side__score">19</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">PHI</span><span class="bd-side__detail">-205</span></span><span class="bd-side__score">27</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">D</span><span class="bd-principal__body"><span class="bd-principal__name">Dan Quinn</span><span class="bd-principal__team">WAS</span><span class="bd-principal__stat">team -2.9</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">N</span><span class="bd-principal__body"><span class="bd-principal__name">Nick Sirianni</span><span class="bd-principal__team">PHI</span><span class="bd-principal__stat">team +2.0</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">PHI -7.6</span><span class="bd-tile__state">market PHI -4.5 · gap +3.1</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">45.6</span><span class="bd-tile__state">market 45.5 · gap +0.1</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">PHI 63%</span><span class="bd-tile__state">market 64% · -205/+170</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.2</span><span class="bd-tile__state">PHI · WAS -0.3 / PHI -0.1</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">4.7</span><span class="bd-tile__state">PHI · WAS -2.6 / PHI +2.1</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+8.5</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_DAL_NYG" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Sun Sep 13 · 8:20 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 3.5 points on NYG — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">DAL</span><span class="bd-side__detail">-148</span></span><span class="bd-side__score">24</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">NYG</span><span class="bd-side__detail">+124</span></span><span class="bd-side__score">25</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">B</span><span class="bd-principal__body"><span class="bd-principal__name">Brian Schottenheimer</span><span class="bd-principal__team">DAL</span><span class="bd-principal__stat">team -2.2</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">J</span><span class="bd-principal__body"><span class="bd-principal__name">John Harbaugh</span><span class="bd-principal__team">NYG</span><span class="bd-principal__stat">team -3.0</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">NYG -1.0</span><span class="bd-tile__state">market DAL -2.5 · gap +3.5</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">48.9</span><span class="bd-tile__state">market 48.5 · gap +0.4</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">DAL 57%</span><span class="bd-tile__state">market 57% · +124/-148</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">2.8</span><span class="bd-tile__state">DAL · DAL +1.2 / NYG -1.5</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.9</span><span class="bd-tile__state">NYG · DAL -3.5 / NYG -1.5</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">+1.0</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article><article class="bd-card" data-key="2026_01_DEN_KC" data-tags="fullgame matchup" data-picks="3" data-gems="0"><header class="bd-card__head"><span class="bd-card__league">NFL</span><span class="bd-status is-side">MONITOR</span><span class="bd-card__start">Mon Sep 14 · 8:15 PM ET</span><span class="bd-card__counts"><span class="bd-count">3</span></span></header><button type="button" class="bd-headline is-mut" onclick="location.hash='authority'"><span class="bd-headline__text">Model is 3.0 points on DEN — a gap, not an edge</span><span class="bd-headline__cta">Gate →</span></button><div class="bd-score"><div class="bd-side bd-side--away"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">DEN</span><span class="bd-side__detail">+124</span></span><span class="bd-side__score">22</span></div><span class="bd-score__vs">vs</span><div class="bd-side bd-side--home is-fav"><span class="bd-side__logo"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" alt="" loading="lazy" width="34" height="34" style="border-radius:6px"></span><span class="bd-side__body"><span class="bd-side__abbr">KC</span><span class="bd-side__detail">-148</span></span><span class="bd-side__score">22</span></div></div><div class="bd-principals"><span class="bd-principals__label">Head coaches</span><div class="bd-principals__row"><div class="bd-principal"><span class="bd-face bd-face--na">S</span><span class="bd-principal__body"><span class="bd-principal__name">Sean Payton</span><span class="bd-principal__team">DEN</span><span class="bd-principal__stat">team +2.8</span></span></div><span class="bd-principals__vs">vs</span><div class="bd-principal"><span class="bd-face bd-face--na">A</span><span class="bd-principal__body"><span class="bd-principal__name">Andy Reid</span><span class="bd-principal__team">KC</span><span class="bd-principal__stat">team +1.6</span></span></div></div></div><div class="bd-card__groups"><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Full game</span><span class="bd-group__state">MONITOR</span><span class="bd-group__count">3 markets</span></div><div class="bd-group__tiles"><div class="bd-tile is-side" title="Model margin against the closing line. The published margin equals the market at lambda 0, so the difference is an information gap, not an edge."><span class="bd-tile__label">Spread</span><span class="bd-tile__value">PK</span><span class="bd-tile__state">market KC -3.0 · gap -3.0</span></div><div class="bd-tile is-side" title="Model total, shrunk 30% toward the league mean because the raw estimate is over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."><span class="bd-tile__label">Total</span><span class="bd-tile__value">43.9</span><span class="bd-tile__state">market 42.5 · gap +1.4</span></div><div class="bd-tile is-side" title="Win probability from the published margin at the model&#x27;s 13.32-point residual SD. De-vigging is paired only; a one-sided fair price is guesswork."><span class="bd-tile__label">Moneyline</span><span class="bd-tile__value">KC 59%</span><span class="bd-tile__state">market 57% · -148/+124</span></div></div></div><div class="bd-group"><div class="bd-group__head"><span class="bd-group__label">Why this projection</span></div><div class="bd-group__tiles"><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Offense edge</span><span class="bd-tile__value">0.3</span><span class="bd-tile__state">KC · DEN +0.4 / KC +0.7</span></div><div class="bd-tile is-mut is-idle" title="Points per game above an average unit, from the opponent-adjusted matchup model. Offence plus defence is the team&#x27;s efficiency rating."><span class="bd-tile__label">Defense edge</span><span class="bd-tile__value">1.5</span><span class="bd-tile__state">DEN · DEN +2.5 / KC +1.0</span></div><div class="bd-tile is-mut is-idle" title="The other half of the published margin: opponent-adjusted scoring margin, home field removed before rating and added back here."><span class="bd-tile__label">Rating gap</span><span class="bd-tile__value">-0.6</span><span class="bd-tile__state">power ratings + home field</span></div></div></div></div><button type="button" class="bd-card__footer" onclick="location.hash='authority'">Why this is research only →</button></article></div></section>
+</section>
+<section id="ratings">
+  <div class="sec-head">
+    <span class="kicker">Ratings &middot; 03</span>
+    <h2>Power ratings</h2>
+    <p class="blurb">Two independent estimates of team strength, side by side. <b>Rating</b>
+    is the opponent-adjusted scoring-margin solve: points relative to an average team on a
+    neutral field, so the projected neutral margin is the difference of two ratings and the
+    host adds 1.20. <b>Off</b> and <b>Def</b> come from the separate
+    matchup model, and <b>Eff</b> is exactly their sum. The two columns are <i>not</i> meant to
+    be equal &mdash; the published margin is the 50/50 blend of them, and a team where they
+    disagree sharply is a team whose record and whose per-play efficiency tell different
+    stories, which is worth seeing rather than averaging away. <b>Proj W</b> is the mean of
+    20,000 simulated seasons over the real 2026 fixture list, not a
+    league-average schedule.</p>
+  </div>
+  <div class="tablewrap"><table class="pr">
+    <thead><tr><th>#</th><th>Team</th><th>Division</th><th class="num">Rating</th>
+    <th class="num">Off</th><th class="num">Def</th><th class="num">Eff</th>
+    <th class="num">Proj W</th><th>vs average</th></tr></thead>
+    <tbody><tr><td class="rank">1</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="22" height="22"><b>SEA</b><span class="dim">Seahawks</span></span></td><td class="dim">NFC West</td><td class="num score">+9.46</td><td class="num">+1.21</td><td class="num">+3.17</td><td class="num eff">+4.38</td><td class="num">11.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:48.8%"></i></div></td></tr><tr><td class="rank">2</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" alt="" loading="lazy" width="22" height="22"><b>LA</b><span class="dim">Rams</span></span></td><td class="dim">NFC West</td><td class="num score">+8.98</td><td class="num">+4.14</td><td class="num">+1.03</td><td class="num eff">+5.17</td><td class="num">11.4</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:46.3%"></i></div></td></tr><tr><td class="rank">3</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="22" height="22"><b>HOU</b><span class="dim">Texans</span></span></td><td class="dim">AFC South</td><td class="num score">+6.11</td><td class="num">-0.02</td><td class="num">+3.50</td><td class="num eff">+3.49</td><td class="num">11.0</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:31.5%"></i></div></td></tr><tr><td class="rank">4</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" alt="" loading="lazy" width="22" height="22"><b>JAX</b><span class="dim">Jaguars</span></span></td><td class="dim">AFC South</td><td class="num score">+5.39</td><td class="num">+0.87</td><td class="num">+0.83</td><td class="num eff">+1.70</td><td class="num">10.3</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:27.8%"></i></div></td></tr><tr><td class="rank">5</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="22" height="22"><b>DET</b><span class="dim">Lions</span></span></td><td class="dim">NFC North</td><td class="num score">+5.36</td><td class="num">+3.30</td><td class="num">+0.24</td><td class="num eff">+3.54</td><td class="num">11.1</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:27.6%"></i></div></td></tr><tr><td class="rank">6</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="22" height="22"><b>BUF</b><span class="dim">Bills</span></span></td><td class="dim">AFC East</td><td class="num score">+5.12</td><td class="num">+2.66</td><td class="num">+0.01</td><td class="num eff">+2.68</td><td class="num">10.2</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:26.4%"></i></div></td></tr><tr><td class="rank">7</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" alt="" loading="lazy" width="22" height="22"><b>NE</b><span class="dim">Patriots</span></span></td><td class="dim">AFC East</td><td class="num score">+3.72</td><td class="num">+0.77</td><td class="num">-0.78</td><td class="num eff">-0.01</td><td class="num">9.3</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:19.2%"></i></div></td></tr><tr><td class="rank">8</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" alt="" loading="lazy" width="22" height="22"><b>SF</b><span class="dim">49ers</span></span></td><td class="dim">NFC West</td><td class="num score">+3.69</td><td class="num">+2.81</td><td class="num">-0.68</td><td class="num eff">+2.13</td><td class="num">9.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:19.0%"></i></div></td></tr><tr><td class="rank">9</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="22" height="22"><b>DEN</b><span class="dim">Broncos</span></span></td><td class="dim">AFC West</td><td class="num score">+3.65</td><td class="num">+0.36</td><td class="num">+2.45</td><td class="num eff">+2.81</td><td class="num">10.0</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:18.8%"></i></div></td></tr><tr><td class="rank">10</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="22" height="22"><b>PHI</b><span class="dim">Eagles</span></span></td><td class="dim">NFC East</td><td class="num score">+3.54</td><td class="num">-0.11</td><td class="num">+2.11</td><td class="num eff">+2.00</td><td class="num">10.0</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:18.3%"></i></div></td></tr><tr><td class="rank">11</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" alt="" loading="lazy" width="22" height="22"><b>IND</b><span class="dim">Colts</span></span></td><td class="dim">AFC South</td><td class="num score">+2.74</td><td class="num">+1.66</td><td class="num">-0.47</td><td class="num eff">+1.19</td><td class="num">9.7</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:14.2%"></i></div></td></tr><tr><td class="rank">12</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" alt="" loading="lazy" width="22" height="22"><b>GB</b><span class="dim">Packers</span></span></td><td class="dim">NFC North</td><td class="num score">+2.69</td><td class="num">+2.39</td><td class="num">+0.11</td><td class="num eff">+2.49</td><td class="num">9.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:13.9%"></i></div></td></tr><tr><td class="rank">13</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="22" height="22"><b>BAL</b><span class="dim">Ravens</span></span></td><td class="dim">AFC North</td><td class="num score">+2.57</td><td class="num">+1.82</td><td class="num">-0.46</td><td class="num eff">+1.36</td><td class="num">9.9</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:13.3%"></i></div></td></tr><tr><td class="rank">14</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" alt="" loading="lazy" width="22" height="22"><b>KC</b><span class="dim">Chiefs</span></span></td><td class="dim">AFC West</td><td class="num score">+1.89</td><td class="num">+0.66</td><td class="num">+0.97</td><td class="num eff">+1.62</td><td class="num">9.3</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:9.8%"></i></div></td></tr><tr><td class="rank">15</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="" loading="lazy" width="22" height="22"><b>MIN</b><span class="dim">Vikings</span></span></td><td class="dim">NFC North</td><td class="num score">+1.88</td><td class="num">-3.52</td><td class="num">+3.80</td><td class="num eff">+0.27</td><td class="num">9.0</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:9.7%"></i></div></td></tr><tr><td class="rank">16</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" alt="" loading="lazy" width="22" height="22"><b>LAC</b><span class="dim">Chargers</span></span></td><td class="dim">AFC West</td><td class="num score">+1.37</td><td class="num">-0.59</td><td class="num">+1.67</td><td class="num eff">+1.08</td><td class="num">8.7</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:7.1%"></i></div></td></tr><tr><td class="rank">17</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" alt="" loading="lazy" width="22" height="22"><b>CHI</b><span class="dim">Bears</span></span></td><td class="dim">NFC North</td><td class="num score">+0.96</td><td class="num">+1.28</td><td class="num">-0.45</td><td class="num eff">+0.83</td><td class="num">8.5</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:5.0%"></i></div></td></tr><tr><td class="rank">18</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" alt="" loading="lazy" width="22" height="22"><b>PIT</b><span class="dim">Steelers</span></span></td><td class="dim">AFC North</td><td class="num score">+0.73</td><td class="num">-0.49</td><td class="num">+0.40</td><td class="num eff">-0.09</td><td class="num">8.9</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-pos" style="left:50.0%;width:3.7%"></i></div></td></tr><tr><td class="rank">19</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="22" height="22"><b>TB</b><span class="dim">Buccaneers</span></span></td><td class="dim">NFC South</td><td class="num score">-0.55</td><td class="num">+0.83</td><td class="num">-0.55</td><td class="num eff">+0.29</td><td class="num">8.8</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:47.1%;width:2.9%"></i></div></td></tr><tr><td class="rank">20</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" alt="" loading="lazy" width="22" height="22"><b>ATL</b><span class="dim">Falcons</span></span></td><td class="dim">NFC South</td><td class="num score">-2.75</td><td class="num">-0.06</td><td class="num">+0.11</td><td class="num eff">+0.05</td><td class="num">8.1</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:35.8%;width:14.2%"></i></div></td></tr><tr><td class="rank">21</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" alt="" loading="lazy" width="22" height="22"><b>CIN</b><span class="dim">Bengals</span></span></td><td class="dim">AFC North</td><td class="num score">-3.22</td><td class="num">+0.24</td><td class="num">-2.62</td><td class="num eff">-2.38</td><td class="num">7.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:33.4%;width:16.6%"></i></div></td></tr><tr><td class="rank">22</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" alt="" loading="lazy" width="22" height="22"><b>WAS</b><span class="dim">Commanders</span></span></td><td class="dim">NFC East</td><td class="num score">-3.77</td><td class="num">-0.35</td><td class="num">-2.59</td><td class="num eff">-2.94</td><td class="num">6.7</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:30.6%;width:19.4%"></i></div></td></tr><tr><td class="rank">23</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" alt="" loading="lazy" width="22" height="22"><b>DAL</b><span class="dim">Cowboys</span></span></td><td class="dim">NFC East</td><td class="num score">-3.78</td><td class="num">+1.24</td><td class="num">-3.47</td><td class="num eff">-2.23</td><td class="num">6.7</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:30.5%;width:19.5%"></i></div></td></tr><tr><td class="rank">24</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" alt="" loading="lazy" width="22" height="22"><b>ARI</b><span class="dim">Cardinals</span></span></td><td class="dim">NFC West</td><td class="num score">-3.90</td><td class="num">+0.16</td><td class="num">-1.21</td><td class="num eff">-1.05</td><td class="num">6.8</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:29.9%;width:20.1%"></i></div></td></tr><tr><td class="rank">25</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" alt="" loading="lazy" width="22" height="22"><b>NYG</b><span class="dim">Giants</span></span></td><td class="dim">NFC East</td><td class="num score">-4.00</td><td class="num">-1.52</td><td class="num">-1.52</td><td class="num eff">-3.05</td><td class="num">6.7</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:29.4%;width:20.6%"></i></div></td></tr><tr><td class="rank">26</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" alt="" loading="lazy" width="22" height="22"><b>MIA</b><span class="dim">Dolphins</span></span></td><td class="dim">AFC East</td><td class="num score">-4.61</td><td class="num">-0.77</td><td class="num">-1.46</td><td class="num eff">-2.23</td><td class="num">6.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:26.2%;width:23.8%"></i></div></td></tr><tr><td class="rank">27</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/car.png" alt="" loading="lazy" width="22" height="22"><b>CAR</b><span class="dim">Panthers</span></span></td><td class="dim">NFC South</td><td class="num score">-4.80</td><td class="num">-2.22</td><td class="num">-1.01</td><td class="num eff">-3.22</td><td class="num">6.4</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:25.2%;width:24.8%"></i></div></td></tr><tr><td class="rank">28</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/no.png" alt="" loading="lazy" width="22" height="22"><b>NO</b><span class="dim">Saints</span></span></td><td class="dim">NFC South</td><td class="num score">-4.90</td><td class="num">-2.68</td><td class="num">+1.21</td><td class="num eff">-1.47</td><td class="num">7.5</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:24.7%;width:25.3%"></i></div></td></tr><tr><td class="rank">29</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" alt="" loading="lazy" width="22" height="22"><b>CLE</b><span class="dim">Browns</span></span></td><td class="dim">AFC North</td><td class="num score">-6.64</td><td class="num">-5.82</td><td class="num">+1.80</td><td class="num eff">-4.02</td><td class="num">6.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:15.7%;width:34.3%"></i></div></td></tr><tr><td class="rank">30</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" alt="" loading="lazy" width="22" height="22"><b>TEN</b><span class="dim">Titans</span></span></td><td class="dim">AFC South</td><td class="num score">-8.09</td><td class="num">-2.42</td><td class="num">-1.14</td><td class="num eff">-3.56</td><td class="num">5.8</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:8.2%;width:41.8%"></i></div></td></tr><tr><td class="rank">31</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" alt="" loading="lazy" width="22" height="22"><b>LV</b><span class="dim">Raiders</span></span></td><td class="dim">AFC West</td><td class="num score">-9.14</td><td class="num">-4.45</td><td class="num">+0.60</td><td class="num eff">-3.85</td><td class="num">5.2</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:2.8%;width:47.2%"></i></div></td></tr><tr><td class="rank">32</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" alt="" loading="lazy" width="22" height="22"><b>NYJ</b><span class="dim">Jets</span></span></td><td class="dim">AFC East</td><td class="num score">-9.69</td><td class="num">-4.25</td><td class="num">-2.73</td><td class="num eff">-6.98</td><td class="num">4.6</td><td class="ratingbar"><div class="rb-track"><span class="rb-zero"></span><i class="rb-neg" style="left:0.0%;width:50.0%"></i></div></td></tr></tbody></table></div>
+</section>
+<section id="units">
+  <div class="sec-head">
+    <span class="kicker">Units &middot; 04</span>
+    <h2>Offensive &amp; defensive power rankings</h2>
+    <p class="blurb"><b>Pts</b> is points per game above an average unit, on the same scale as
+    the overall rating &mdash; an offence at +3.1 and a defence at +1.4 add to a +4.5 team, and
+    they add exactly, because both come from the one matchup fit rather than from three models
+    that disagree at the edges. Component rates are opponent-adjusted and coloured by league
+    percentile. A defensive row records what <em>opponents</em> did, so a low EPA allowed and a
+    high sack rate are both good defence; the colouring already accounts for that.</p>
+  </div>
+  <div class="units"><div class="unit">
+<div class="unit-h">Offense power ranking</div>
+<div class="tablewrap"><table class="pr unit-tbl">
+<thead><tr><th>#</th><th>Team</th><th class="num">Pts</th><th class="num">EPA/pl</th>
+<th class="num">1st dn</th><th class="num">Expl</th><th class="num">Sack%</th>
+<th class="num">Give%</th></tr></thead>
+<tbody><tr><td class="rank">1</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" alt="" loading="lazy" width="20" height="20"><b>LA</b></span></td><td class="num score">+4.14</td><td class="num"><span style="color:var(--metric-elite)">0.108</span></td><td class="num"><span style="color:var(--metric-elite)">32.5%</span></td><td class="num"><span style="color:var(--metric-elite)">7.3%</span></td><td class="num"><span style="color:var(--metric-elite)">4.4%</span></td><td class="num"><span style="color:var(--metric-elite)">1.3%</span></td></tr><tr><td class="rank">2</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="20" height="20"><b>DET</b></span></td><td class="num score">+3.30</td><td class="num"><span style="color:var(--metric-strong)">0.087</span></td><td class="num"><span style="color:var(--metric-elite)">31.3%</span></td><td class="num"><span style="color:var(--metric-elite)">7.4%</span></td><td class="num"><span style="color:var(--metric-strong)">5.9%</span></td><td class="num"><span style="color:var(--metric-elite)">1.4%</span></td></tr><tr><td class="rank">3</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" alt="" loading="lazy" width="20" height="20"><b>SF</b></span></td><td class="num score">+2.81</td><td class="num"><span style="color:var(--metric-elite)">0.096</span></td><td class="num"><span style="color:var(--metric-elite)">33.0%</span></td><td class="num"><span style="color:var(--metric-above)">5.9%</span></td><td class="num"><span style="color:var(--metric-elite)">4.9%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">4</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="20" height="20"><b>BUF</b></span></td><td class="num score">+2.66</td><td class="num"><span style="color:var(--metric-elite)">0.127</span></td><td class="num"><span style="color:var(--metric-elite)">31.6%</span></td><td class="num"><span style="color:var(--metric-strong)">6.7%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.4%</span></td><td class="num"><span style="color:var(--metric-above)">1.8%</span></td></tr><tr><td class="rank">5</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" alt="" loading="lazy" width="20" height="20"><b>GB</b></span></td><td class="num score">+2.39</td><td class="num"><span style="color:var(--metric-elite)">0.091</span></td><td class="num"><span style="color:var(--metric-strong)">29.9%</span></td><td class="num"><span style="color:var(--metric-strong)">6.5%</span></td><td class="num"><span style="color:var(--metric-strong)">5.5%</span></td><td class="num"><span style="color:var(--metric-elite)">1.4%</span></td></tr><tr><td class="rank">6</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="20" height="20"><b>BAL</b></span></td><td class="num score">+1.82</td><td class="num"><span style="color:var(--metric-strong)">0.086</span></td><td class="num"><span style="color:var(--metric-strong)">30.7%</span></td><td class="num"><span style="color:var(--metric-elite)">7.4%</span></td><td class="num"><span style="color:var(--metric-weak)">8.3%</span></td><td class="num"><span style="color:var(--metric-below)">2.1%</span></td></tr><tr><td class="rank">7</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" alt="" loading="lazy" width="20" height="20"><b>IND</b></span></td><td class="num score">+1.66</td><td class="num"><span style="color:var(--metric-strong)">0.066</span></td><td class="num"><span style="color:var(--metric-strong)">31.2%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.7%</span></td><td class="num"><span style="color:var(--metric-elite)">5.0%</span></td><td class="num"><span style="color:var(--metric-below)">2.0%</span></td></tr><tr><td class="rank">8</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" alt="" loading="lazy" width="20" height="20"><b>CHI</b></span></td><td class="num score">+1.28</td><td class="num"><span style="color:var(--metric-above)">0.026</span></td><td class="num"><span style="color:var(--metric-neutral)">28.6%</span></td><td class="num"><span style="color:var(--metric-above)">6.1%</span></td><td class="num"><span style="color:var(--metric-strong)">5.7%</span></td><td class="num"><span style="color:var(--metric-elite)">1.4%</span></td></tr><tr><td class="rank">9</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" alt="" loading="lazy" width="20" height="20"><b>DAL</b></span></td><td class="num score">+1.24</td><td class="num"><span style="color:var(--metric-strong)">0.049</span></td><td class="num"><span style="color:var(--metric-strong)">29.8%</span></td><td class="num"><span style="color:var(--metric-above)">6.1%</span></td><td class="num"><span style="color:var(--metric-elite)">4.4%</span></td><td class="num"><span style="color:var(--metric-below)">2.2%</span></td></tr><tr><td class="rank">10</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="20" height="20"><b>SEA</b></span></td><td class="num score">+1.21</td><td class="num"><span style="color:var(--metric-above)">0.030</span></td><td class="num"><span style="color:var(--metric-above)">29.5%</span></td><td class="num"><span style="color:var(--metric-elite)">7.4%</span></td><td class="num"><span style="color:var(--metric-above)">6.1%</span></td><td class="num"><span style="color:var(--metric-weak)">2.3%</span></td></tr><tr><td class="rank">11</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" alt="" loading="lazy" width="20" height="20"><b>JAX</b></span></td><td class="num score">+0.87</td><td class="num"><span style="color:var(--metric-neutral)">0.021</span></td><td class="num"><span style="color:var(--metric-above)">29.3%</span></td><td class="num"><span style="color:var(--metric-strong)">6.2%</span></td><td class="num"><span style="color:var(--metric-above)">6.1%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">12</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="20" height="20"><b>TB</b></span></td><td class="num score">+0.83</td><td class="num"><span style="color:var(--metric-neutral)">0.024</span></td><td class="num"><span style="color:var(--metric-neutral)">28.4%</span></td><td class="num"><span style="color:var(--metric-strong)">6.3%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.4%</span></td><td class="num"><span style="color:var(--metric-strong)">1.6%</span></td></tr><tr><td class="rank">13</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" alt="" loading="lazy" width="20" height="20"><b>NE</b></span></td><td class="num score">+0.77</td><td class="num"><span style="color:var(--metric-strong)">0.043</span></td><td class="num"><span style="color:var(--metric-above)">29.4%</span></td><td class="num"><span style="color:var(--metric-strong)">6.7%</span></td><td class="num"><span style="color:var(--metric-weak)">8.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">14</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" alt="" loading="lazy" width="20" height="20"><b>KC</b></span></td><td class="num score">+0.66</td><td class="num"><span style="color:var(--metric-above)">0.033</span></td><td class="num"><span style="color:var(--metric-neutral)">29.3%</span></td><td class="num"><span style="color:var(--metric-weak)">5.2%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.7%</span></td><td class="num"><span style="color:var(--metric-strong)">1.5%</span></td></tr><tr><td class="rank">15</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="20" height="20"><b>DEN</b></span></td><td class="num score">+0.36</td><td class="num"><span style="color:var(--metric-neutral)">0.022</span></td><td class="num"><span style="color:var(--metric-below)">27.6%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.6%</span></td><td class="num"><span style="color:var(--metric-elite)">4.5%</span></td><td class="num"><span style="color:var(--metric-above)">1.8%</span></td></tr><tr><td class="rank">16</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" alt="" loading="lazy" width="20" height="20"><b>CIN</b></span></td><td class="num score">+0.24</td><td class="num"><span style="color:var(--metric-above)">0.030</span></td><td class="num"><span style="color:var(--metric-strong)">30.0%</span></td><td class="num"><span style="color:var(--metric-weak)">5.1%</span></td><td class="num"><span style="color:var(--metric-strong)">6.0%</span></td><td class="num"><span style="color:var(--metric-weak)">2.2%</span></td></tr><tr><td class="rank">17</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" alt="" loading="lazy" width="20" height="20"><b>ARI</b></span></td><td class="num score">+0.16</td><td class="num"><span style="color:var(--metric-below)">0.005</span></td><td class="num"><span style="color:var(--metric-above)">29.3%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.5%</span></td><td class="num"><span style="color:var(--metric-below)">7.9%</span></td><td class="num"><span style="color:var(--metric-strong)">1.7%</span></td></tr><tr><td class="rank">18</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="20" height="20"><b>HOU</b></span></td><td class="num score">-0.02</td><td class="num"><span style="color:var(--metric-below)">-0.017</span></td><td class="num"><span style="color:var(--metric-weak)">26.5%</span></td><td class="num"><span style="color:var(--metric-below)">5.5%</span></td><td class="num"><span style="color:var(--metric-above)">6.3%</span></td><td class="num"><span style="color:var(--metric-elite)">1.1%</span></td></tr><tr><td class="rank">19</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" alt="" loading="lazy" width="20" height="20"><b>ATL</b></span></td><td class="num score">-0.06</td><td class="num"><span style="color:var(--metric-weak)">-0.028</span></td><td class="num"><span style="color:var(--metric-below)">28.2%</span></td><td class="num"><span style="color:var(--metric-below)">5.5%</span></td><td class="num"><span style="color:var(--metric-strong)">5.3%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">20</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="20" height="20"><b>PHI</b></span></td><td class="num score">-0.11</td><td class="num"><span style="color:var(--metric-neutral)">0.019</span></td><td class="num"><span style="color:var(--metric-below)">27.7%</span></td><td class="num"><span style="color:var(--metric-weak)">5.4%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.9%</span></td><td class="num"><span style="color:var(--metric-strong)">1.7%</span></td></tr><tr><td class="rank">21</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" alt="" loading="lazy" width="20" height="20"><b>WAS</b></span></td><td class="num score">-0.35</td><td class="num"><span style="color:var(--metric-neutral)">0.017</span></td><td class="num"><span style="color:var(--metric-neutral)">28.9%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.6%</span></td><td class="num"><span style="color:var(--metric-below)">7.4%</span></td><td class="num"><span style="color:var(--metric-weak)">2.3%</span></td></tr><tr><td class="rank">22</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" alt="" loading="lazy" width="20" height="20"><b>PIT</b></span></td><td class="num score">-0.49</td><td class="num"><span style="color:var(--metric-below)">0.002</span></td><td class="num"><span style="color:var(--metric-weak)">26.6%</span></td><td class="num"><span style="color:var(--metric-weak)">5.1%</span></td><td class="num"><span style="color:var(--metric-above)">6.0%</span></td><td class="num"><span style="color:var(--metric-strong)">1.6%</span></td></tr><tr><td class="rank">23</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" alt="" loading="lazy" width="20" height="20"><b>LAC</b></span></td><td class="num score">-0.59</td><td class="num"><span style="color:var(--metric-below)">-0.019</span></td><td class="num"><span style="color:var(--metric-below)">27.7%</span></td><td class="num"><span style="color:var(--metric-above)">6.0%</span></td><td class="num"><span style="color:var(--metric-weak)">8.7%</span></td><td class="num"><span style="color:var(--metric-above)">1.8%</span></td></tr><tr><td class="rank">24</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" alt="" loading="lazy" width="20" height="20"><b>MIA</b></span></td><td class="num score">-0.77</td><td class="num"><span style="color:var(--metric-weak)">-0.025</span></td><td class="num"><span style="color:var(--metric-neutral)">28.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.8%</span></td><td class="num"><span style="color:var(--metric-below)">7.3%</span></td><td class="num"><span style="color:var(--metric-very-weak)">2.6%</span></td></tr><tr><td class="rank">25</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" alt="" loading="lazy" width="20" height="20"><b>NYG</b></span></td><td class="num score">-1.52</td><td class="num"><span style="color:var(--metric-weak)">-0.037</span></td><td class="num"><span style="color:var(--metric-weak)">26.4%</span></td><td class="num"><span style="color:var(--metric-below)">5.5%</span></td><td class="num"><span style="color:var(--metric-very-weak)">9.2%</span></td><td class="num"><span style="color:var(--metric-above)">1.8%</span></td></tr><tr><td class="rank">26</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/car.png" alt="" loading="lazy" width="20" height="20"><b>CAR</b></span></td><td class="num score">-2.22</td><td class="num"><span style="color:var(--metric-weak)">-0.080</span></td><td class="num"><span style="color:var(--metric-weak)">26.6%</span></td><td class="num"><span style="color:var(--metric-very-weak)">4.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">7.0%</span></td><td class="num"><span style="color:var(--metric-weak)">2.4%</span></td></tr><tr><td class="rank">27</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" alt="" loading="lazy" width="20" height="20"><b>TEN</b></span></td><td class="num score">-2.42</td><td class="num"><span style="color:var(--metric-very-weak)">-0.106</span></td><td class="num"><span style="color:var(--metric-very-weak)">25.5%</span></td><td class="num"><span style="color:var(--metric-below)">5.5%</span></td><td class="num"><span style="color:var(--metric-weak)">9.2%</span></td><td class="num"><span style="color:var(--metric-neutral)">2.0%</span></td></tr><tr><td class="rank">28</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/no.png" alt="" loading="lazy" width="20" height="20"><b>NO</b></span></td><td class="num score">-2.68</td><td class="num"><span style="color:var(--metric-weak)">-0.078</span></td><td class="num"><span style="color:var(--metric-very-weak)">26.1%</span></td><td class="num"><span style="color:var(--metric-very-weak)">4.0%</span></td><td class="num"><span style="color:var(--metric-below)">7.3%</span></td><td class="num"><span style="color:var(--metric-below)">2.2%</span></td></tr><tr><td class="rank">29</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="" loading="lazy" width="20" height="20"><b>MIN</b></span></td><td class="num score">-3.52</td><td class="num"><span style="color:var(--metric-very-weak)">-0.105</span></td><td class="num"><span style="color:var(--metric-weak)">27.1%</span></td><td class="num"><span style="color:var(--metric-weak)">5.1%</span></td><td class="num"><span style="color:var(--metric-very-weak)">10.7%</span></td><td class="num"><span style="color:var(--metric-very-weak)">3.0%</span></td></tr><tr><td class="rank">30</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" alt="" loading="lazy" width="20" height="20"><b>NYJ</b></span></td><td class="num score">-4.25</td><td class="num"><span style="color:var(--metric-very-weak)">-0.136</span></td><td class="num"><span style="color:var(--metric-very-weak)">24.7%</span></td><td class="num"><span style="color:var(--metric-very-weak)">4.1%</span></td><td class="num"><span style="color:var(--metric-very-weak)">10.3%</span></td><td class="num"><span style="color:var(--metric-weak)">2.3%</span></td></tr><tr><td class="rank">31</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" alt="" loading="lazy" width="20" height="20"><b>LV</b></span></td><td class="num score">-4.45</td><td class="num"><span style="color:var(--metric-very-weak)">-0.185</span></td><td class="num"><span style="color:var(--metric-very-weak)">24.8%</span></td><td class="num"><span style="color:var(--metric-very-weak)">4.5%</span></td><td class="num"><span style="color:var(--metric-very-weak)">9.3%</span></td><td class="num"><span style="color:var(--metric-very-weak)">2.6%</span></td></tr><tr><td class="rank">32</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" alt="" loading="lazy" width="20" height="20"><b>CLE</b></span></td><td class="num score">-5.82</td><td class="num"><span style="color:var(--metric-very-weak)">-0.204</span></td><td class="num"><span style="color:var(--metric-very-weak)">22.3%</span></td><td class="num"><span style="color:var(--metric-very-weak)">3.9%</span></td><td class="num"><span style="color:var(--metric-weak)">9.0%</span></td><td class="num"><span style="color:var(--metric-very-weak)">2.7%</span></td></tr></tbody></table></div></div><div class="unit">
+<div class="unit-h">Defense power ranking</div>
+<div class="tablewrap"><table class="pr unit-tbl">
+<thead><tr><th>#</th><th>Team</th><th class="num">Pts</th><th class="num">EPA/pl a</th>
+<th class="num">1st dn a</th><th class="num">Expl a</th><th class="num">Sack%</th>
+<th class="num">Take%</th></tr></thead>
+<tbody><tr><td class="rank">1</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="" loading="lazy" width="20" height="20"><b>MIN</b></span></td><td class="num score">+3.80</td><td class="num"><span style="color:var(--metric-elite)">-0.110</span></td><td class="num"><span style="color:var(--metric-strong)">26.6%</span></td><td class="num"><span style="color:var(--metric-elite)">3.7%</span></td><td class="num"><span style="color:var(--metric-elite)">10.3%</span></td><td class="num"><span style="color:var(--metric-elite)">2.4%</span></td></tr><tr><td class="rank">2</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="20" height="20"><b>HOU</b></span></td><td class="num score">+3.50</td><td class="num"><span style="color:var(--metric-elite)">-0.112</span></td><td class="num"><span style="color:var(--metric-elite)">24.7%</span></td><td class="num"><span style="color:var(--metric-above)">5.5%</span></td><td class="num"><span style="color:var(--metric-strong)">8.1%</span></td><td class="num"><span style="color:var(--metric-elite)">2.9%</span></td></tr><tr><td class="rank">3</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="20" height="20"><b>SEA</b></span></td><td class="num score">+3.17</td><td class="num"><span style="color:var(--metric-elite)">-0.107</span></td><td class="num"><span style="color:var(--metric-elite)">24.7%</span></td><td class="num"><span style="color:var(--metric-elite)">4.9%</span></td><td class="num"><span style="color:var(--metric-strong)">7.7%</span></td><td class="num"><span style="color:var(--metric-strong)">2.4%</span></td></tr><tr><td class="rank">4</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="20" height="20"><b>DEN</b></span></td><td class="num score">+2.45</td><td class="num"><span style="color:var(--metric-strong)">-0.076</span></td><td class="num"><span style="color:var(--metric-elite)">25.0%</span></td><td class="num"><span style="color:var(--metric-elite)">4.9%</span></td><td class="num"><span style="color:var(--metric-elite)">9.9%</span></td><td class="num"><span style="color:var(--metric-very-weak)">1.5%</span></td></tr><tr><td class="rank">5</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="20" height="20"><b>PHI</b></span></td><td class="num score">+2.11</td><td class="num"><span style="color:var(--metric-elite)">-0.091</span></td><td class="num"><span style="color:var(--metric-elite)">26.5%</span></td><td class="num"><span style="color:var(--metric-elite)">4.7%</span></td><td class="num"><span style="color:var(--metric-above)">7.3%</span></td><td class="num"><span style="color:var(--metric-above)">2.1%</span></td></tr><tr><td class="rank">6</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" alt="" loading="lazy" width="20" height="20"><b>CLE</b></span></td><td class="num score">+1.80</td><td class="num"><span style="color:var(--metric-elite)">-0.090</span></td><td class="num"><span style="color:var(--metric-elite)">25.5%</span></td><td class="num"><span style="color:var(--metric-below)">6.0%</span></td><td class="num"><span style="color:var(--metric-elite)">9.0%</span></td><td class="num"><span style="color:var(--metric-weak)">1.7%</span></td></tr><tr><td class="rank">7</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" alt="" loading="lazy" width="20" height="20"><b>LAC</b></span></td><td class="num score">+1.67</td><td class="num"><span style="color:var(--metric-strong)">-0.062</span></td><td class="num"><span style="color:var(--metric-strong)">27.0%</span></td><td class="num"><span style="color:var(--metric-strong)">5.4%</span></td><td class="num"><span style="color:var(--metric-strong)">8.2%</span></td><td class="num"><span style="color:var(--metric-above)">2.1%</span></td></tr><tr><td class="rank">8</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/no.png" alt="" loading="lazy" width="20" height="20"><b>NO</b></span></td><td class="num score">+1.21</td><td class="num"><span style="color:var(--metric-strong)">-0.051</span></td><td class="num"><span style="color:var(--metric-strong)">27.0%</span></td><td class="num"><span style="color:var(--metric-strong)">5.4%</span></td><td class="num"><span style="color:var(--metric-above)">7.5%</span></td><td class="num"><span style="color:var(--metric-neutral)">2.0%</span></td></tr><tr><td class="rank">9</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" alt="" loading="lazy" width="20" height="20"><b>LA</b></span></td><td class="num score">+1.03</td><td class="num"><span style="color:var(--metric-above)">-0.029</span></td><td class="num"><span style="color:var(--metric-strong)">27.5%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.8%</span></td><td class="num"><span style="color:var(--metric-above)">7.4%</span></td><td class="num"><span style="color:var(--metric-strong)">2.3%</span></td></tr><tr><td class="rank">10</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" alt="" loading="lazy" width="20" height="20"><b>KC</b></span></td><td class="num score">+0.97</td><td class="num"><span style="color:var(--metric-strong)">-0.038</span></td><td class="num"><span style="color:var(--metric-strong)">26.7%</span></td><td class="num"><span style="color:var(--metric-strong)">5.0%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.9%</span></td><td class="num"><span style="color:var(--metric-weak)">1.6%</span></td></tr><tr><td class="rank">11</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" alt="" loading="lazy" width="20" height="20"><b>JAX</b></span></td><td class="num score">+0.83</td><td class="num"><span style="color:var(--metric-strong)">-0.043</span></td><td class="num"><span style="color:var(--metric-above)">27.9%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.6%</span></td><td class="num"><span style="color:var(--metric-very-weak)">5.0%</span></td><td class="num"><span style="color:var(--metric-elite)">2.6%</span></td></tr><tr><td class="rank">12</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" alt="" loading="lazy" width="20" height="20"><b>LV</b></span></td><td class="num score">+0.60</td><td class="num"><span style="color:var(--metric-above)">-0.014</span></td><td class="num"><span style="color:var(--metric-above)">27.9%</span></td><td class="num"><span style="color:var(--metric-elite)">4.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.8%</span></td><td class="num"><span style="color:var(--metric-weak)">1.7%</span></td></tr><tr><td class="rank">13</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" alt="" loading="lazy" width="20" height="20"><b>PIT</b></span></td><td class="num score">+0.40</td><td class="num"><span style="color:var(--metric-neutral)">0.005</span></td><td class="num"><span style="color:var(--metric-neutral)">28.7%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.7%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.6%</span></td><td class="num"><span style="color:var(--metric-strong)">2.4%</span></td></tr><tr><td class="rank">14</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="20" height="20"><b>DET</b></span></td><td class="num score">+0.24</td><td class="num"><span style="color:var(--metric-above)">-0.021</span></td><td class="num"><span style="color:var(--metric-above)">27.6%</span></td><td class="num"><span style="color:var(--metric-weak)">6.4%</span></td><td class="num"><span style="color:var(--metric-strong)">7.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">15</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" alt="" loading="lazy" width="20" height="20"><b>ATL</b></span></td><td class="num score">+0.11</td><td class="num"><span style="color:var(--metric-neutral)">0.006</span></td><td class="num"><span style="color:var(--metric-neutral)">28.5%</span></td><td class="num"><span style="color:var(--metric-below)">6.0%</span></td><td class="num"><span style="color:var(--metric-elite)">8.2%</span></td><td class="num"><span style="color:var(--metric-neutral)">2.0%</span></td></tr><tr><td class="rank">16</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" alt="" loading="lazy" width="20" height="20"><b>GB</b></span></td><td class="num score">+0.11</td><td class="num"><span style="color:var(--metric-neutral)">0.008</span></td><td class="num"><span style="color:var(--metric-neutral)">28.4%</span></td><td class="num"><span style="color:var(--metric-strong)">5.0%</span></td><td class="num"><span style="color:var(--metric-below)">6.4%</span></td><td class="num"><span style="color:var(--metric-below)">1.7%</span></td></tr><tr><td class="rank">17</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="20" height="20"><b>BUF</b></span></td><td class="num score">+0.01</td><td class="num"><span style="color:var(--metric-neutral)">0.003</span></td><td class="num"><span style="color:var(--metric-below)">29.7%</span></td><td class="num"><span style="color:var(--metric-above)">5.6%</span></td><td class="num"><span style="color:var(--metric-below)">6.6%</span></td><td class="num"><span style="color:var(--metric-strong)">2.4%</span></td></tr><tr><td class="rank">18</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" alt="" loading="lazy" width="20" height="20"><b>CHI</b></span></td><td class="num score">-0.45</td><td class="num"><span style="color:var(--metric-below)">0.012</span></td><td class="num"><span style="color:var(--metric-weak)">30.0%</span></td><td class="num"><span style="color:var(--metric-very-weak)">7.0%</span></td><td class="num"><span style="color:var(--metric-weak)">5.9%</span></td><td class="num"><span style="color:var(--metric-elite)">3.0%</span></td></tr><tr><td class="rank">19</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="20" height="20"><b>BAL</b></span></td><td class="num score">-0.46</td><td class="num"><span style="color:var(--metric-above)">-0.010</span></td><td class="num"><span style="color:var(--metric-above)">27.8%</span></td><td class="num"><span style="color:var(--metric-very-weak)">6.8%</span></td><td class="num"><span style="color:var(--metric-weak)">5.8%</span></td><td class="num"><span style="color:var(--metric-neutral)">2.0%</span></td></tr><tr><td class="rank">20</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" alt="" loading="lazy" width="20" height="20"><b>IND</b></span></td><td class="num score">-0.47</td><td class="num"><span style="color:var(--metric-below)">0.013</span></td><td class="num"><span style="color:var(--metric-weak)">30.0%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.6%</span></td><td class="num"><span style="color:var(--metric-weak)">6.0%</span></td><td class="num"><span style="color:var(--metric-above)">2.2%</span></td></tr><tr><td class="rank">21</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="20" height="20"><b>TB</b></span></td><td class="num score">-0.55</td><td class="num"><span style="color:var(--metric-below)">0.019</span></td><td class="num"><span style="color:var(--metric-neutral)">28.9%</span></td><td class="num"><span style="color:var(--metric-weak)">6.7%</span></td><td class="num"><span style="color:var(--metric-neutral)">6.8%</span></td><td class="num"><span style="color:var(--metric-strong)">2.2%</span></td></tr><tr><td class="rank">22</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" alt="" loading="lazy" width="20" height="20"><b>SF</b></span></td><td class="num score">-0.68</td><td class="num"><span style="color:var(--metric-below)">0.035</span></td><td class="num"><span style="color:var(--metric-below)">29.6%</span></td><td class="num"><span style="color:var(--metric-strong)">5.1%</span></td><td class="num"><span style="color:var(--metric-very-weak)">5.0%</span></td><td class="num"><span style="color:var(--metric-neutral)">1.9%</span></td></tr><tr><td class="rank">23</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" alt="" loading="lazy" width="20" height="20"><b>NE</b></span></td><td class="num score">-0.78</td><td class="num"><span style="color:var(--metric-neutral)">0.009</span></td><td class="num"><span style="color:var(--metric-below)">29.0%</span></td><td class="num"><span style="color:var(--metric-above)">5.5%</span></td><td class="num"><span style="color:var(--metric-very-weak)">5.0%</span></td><td class="num"><span style="color:var(--metric-weak)">1.6%</span></td></tr><tr><td class="rank">24</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/car.png" alt="" loading="lazy" width="20" height="20"><b>CAR</b></span></td><td class="num score">-1.01</td><td class="num"><span style="color:var(--metric-weak)">0.061</span></td><td class="num"><span style="color:var(--metric-weak)">29.8%</span></td><td class="num"><span style="color:var(--metric-above)">5.5%</span></td><td class="num"><span style="color:var(--metric-weak)">5.9%</span></td><td class="num"><span style="color:var(--metric-below)">1.9%</span></td></tr><tr><td class="rank">25</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" alt="" loading="lazy" width="20" height="20"><b>TEN</b></span></td><td class="num score">-1.14</td><td class="num"><span style="color:var(--metric-weak)">0.062</span></td><td class="num"><span style="color:var(--metric-neutral)">28.8%</span></td><td class="num"><span style="color:var(--metric-weak)">6.3%</span></td><td class="num"><span style="color:var(--metric-strong)">7.6%</span></td><td class="num"><span style="color:var(--metric-very-weak)">1.5%</span></td></tr><tr><td class="rank">26</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" alt="" loading="lazy" width="20" height="20"><b>ARI</b></span></td><td class="num score">-1.21</td><td class="num"><span style="color:var(--metric-weak)">0.044</span></td><td class="num"><span style="color:var(--metric-very-weak)">30.7%</span></td><td class="num"><span style="color:var(--metric-neutral)">5.7%</span></td><td class="num"><span style="color:var(--metric-below)">6.5%</span></td><td class="num"><span style="color:var(--metric-below)">1.9%</span></td></tr><tr><td class="rank">27</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" alt="" loading="lazy" width="20" height="20"><b>MIA</b></span></td><td class="num score">-1.46</td><td class="num"><span style="color:var(--metric-weak)">0.060</span></td><td class="num"><span style="color:var(--metric-below)">29.6%</span></td><td class="num"><span style="color:var(--metric-weak)">6.4%</span></td><td class="num"><span style="color:var(--metric-weak)">6.2%</span></td><td class="num"><span style="color:var(--metric-below)">1.8%</span></td></tr><tr><td class="rank">28</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" alt="" loading="lazy" width="20" height="20"><b>NYG</b></span></td><td class="num score">-1.52</td><td class="num"><span style="color:var(--metric-weak)">0.053</span></td><td class="num"><span style="color:var(--metric-weak)">30.1%</span></td><td class="num"><span style="color:var(--metric-weak)">6.3%</span></td><td class="num"><span style="color:var(--metric-neutral)">7.2%</span></td><td class="num"><span style="color:var(--metric-weak)">1.6%</span></td></tr><tr><td class="rank">29</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" alt="" loading="lazy" width="20" height="20"><b>WAS</b></span></td><td class="num score">-2.59</td><td class="num"><span style="color:var(--metric-very-weak)">0.106</span></td><td class="num"><span style="color:var(--metric-very-weak)">31.4%</span></td><td class="num"><span style="color:var(--metric-below)">6.0%</span></td><td class="num"><span style="color:var(--metric-above)">7.4%</span></td><td class="num"><span style="color:var(--metric-very-weak)">1.1%</span></td></tr><tr><td class="rank">30</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" alt="" loading="lazy" width="20" height="20"><b>CIN</b></span></td><td class="num score">-2.62</td><td class="num"><span style="color:var(--metric-very-weak)">0.106</span></td><td class="num"><span style="color:var(--metric-very-weak)">31.8%</span></td><td class="num"><span style="color:var(--metric-very-weak)">7.3%</span></td><td class="num"><span style="color:var(--metric-below)">6.4%</span></td><td class="num"><span style="color:var(--metric-above)">2.1%</span></td></tr><tr><td class="rank">31</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" alt="" loading="lazy" width="20" height="20"><b>NYJ</b></span></td><td class="num score">-2.73</td><td class="num"><span style="color:var(--metric-very-weak)">0.081</span></td><td class="num"><span style="color:var(--metric-weak)">29.8%</span></td><td class="num"><span style="color:var(--metric-below)">6.1%</span></td><td class="num"><span style="color:var(--metric-very-weak)">5.5%</span></td><td class="num"><span style="color:var(--metric-very-weak)">0.7%</span></td></tr><tr><td class="rank">32</td><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" alt="" loading="lazy" width="20" height="20"><b>DAL</b></span></td><td class="num score">-3.47</td><td class="num"><span style="color:var(--metric-very-weak)">0.132</span></td><td class="num"><span style="color:var(--metric-very-weak)">32.3%</span></td><td class="num"><span style="color:var(--metric-very-weak)">6.8%</span></td><td class="num"><span style="color:var(--metric-very-weak)">5.8%</span></td><td class="num"><span style="color:var(--metric-very-weak)">1.5%</span></td></tr></tbody></table></div></div></div>
+</section>
+<section id="divisions">
+  <div class="sec-head">
+    <span class="kicker">Season &middot; 05</span>
+    <h2>Projected division winners</h2>
+    <p class="blurb">Every regular-season game on the real 2026 fixture list, replayed
+    20,000 times from the same margins the board publishes. Division
+    ties are broken by head-to-head, then division record, then conference record, then a coin
+    flip &mdash; the later NFL tiebreakers are not implemented, and ordering by power rating
+    instead would quietly hand every tie to the favourite. Ratings do not change during a
+    simulated season, nobody gets injured, and draws are independent, so these tails are
+    thinner than reality&rsquo;s.</p>
+  </div>
+  <div class="dvs"><div class="dv"><div class="dv-h">AFC East<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="18" height="18">BUF &middot; 60%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" loading="lazy" width="20" height="20"><b>BUF</b><span class="dim">Bills</span></span></td><td class="num">10.2&#8209;6.8</td><td class="oddsbar"><div class="ob-track"><i style="width:59.6%"></i></div></td><td class="num score">60%</td><td class="num dim">78%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ne.png" alt="" loading="lazy" width="20" height="20"><b>NE</b><span class="dim">Patriots</span></span></td><td class="num">9.3&#8209;7.7</td><td class="oddsbar"><div class="ob-track"><i style="width:34.6%"></i></div></td><td class="num score">35%</td><td class="num dim">58%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" alt="" loading="lazy" width="20" height="20"><b>MIA</b><span class="dim">Dolphins</span></span></td><td class="num">6.6&#8209;10.4</td><td class="oddsbar"><div class="ob-track"><i style="width:5.2%"></i></div></td><td class="num score">5%</td><td class="num dim">13%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyj.png" alt="" loading="lazy" width="20" height="20"><b>NYJ</b><span class="dim">Jets</span></span></td><td class="num">4.6&#8209;12.4</td><td class="oddsbar"><div class="ob-track"><i style="width:0.6%"></i></div></td><td class="num score">1%</td><td class="num dim">1%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">AFC North<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="18" height="18">BAL &middot; 53%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/bal.png" alt="" loading="lazy" width="20" height="20"><b>BAL</b><span class="dim">Ravens</span></span></td><td class="num">9.9&#8209;7.1</td><td class="oddsbar"><div class="ob-track"><i style="width:53.1%"></i></div></td><td class="num score">53%</td><td class="num dim">70%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/pit.png" alt="" loading="lazy" width="20" height="20"><b>PIT</b><span class="dim">Steelers</span></span></td><td class="num">8.9&#8209;8.1</td><td class="oddsbar"><div class="ob-track"><i style="width:29.7%"></i></div></td><td class="num score">30%</td><td class="num dim">50%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cin.png" alt="" loading="lazy" width="20" height="20"><b>CIN</b><span class="dim">Bengals</span></span></td><td class="num">7.6&#8209;9.4</td><td class="oddsbar"><div class="ob-track"><i style="width:12.1%"></i></div></td><td class="num score">12%</td><td class="num dim">24%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/cle.png" alt="" loading="lazy" width="20" height="20"><b>CLE</b><span class="dim">Browns</span></span></td><td class="num">6.6&#8209;10.4</td><td class="oddsbar"><div class="ob-track"><i style="width:5.1%"></i></div></td><td class="num score">5%</td><td class="num dim">11%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">AFC South<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="18" height="18">HOU &middot; 47%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/hou.png" alt="" loading="lazy" width="20" height="20"><b>HOU</b><span class="dim">Texans</span></span></td><td class="num">11.0&#8209;6.0</td><td class="oddsbar"><div class="ob-track"><i style="width:47.0%"></i></div></td><td class="num score">47%</td><td class="num dim">83%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" alt="" loading="lazy" width="20" height="20"><b>JAX</b><span class="dim">Jaguars</span></span></td><td class="num">10.3&#8209;6.7</td><td class="oddsbar"><div class="ob-track"><i style="width:31.1%"></i></div></td><td class="num score">31%</td><td class="num dim">72%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ind.png" alt="" loading="lazy" width="20" height="20"><b>IND</b><span class="dim">Colts</span></span></td><td class="num">9.7&#8209;7.3</td><td class="oddsbar"><div class="ob-track"><i style="width:21.2%"></i></div></td><td class="num score">21%</td><td class="num dim">61%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ten.png" alt="" loading="lazy" width="20" height="20"><b>TEN</b><span class="dim">Titans</span></span></td><td class="num">5.8&#8209;11.2</td><td class="oddsbar"><div class="ob-track"><i style="width:0.7%"></i></div></td><td class="num score">1%</td><td class="num dim">5%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">AFC West<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="18" height="18">DEN &middot; 46%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/den.png" alt="" loading="lazy" width="20" height="20"><b>DEN</b><span class="dim">Broncos</span></span></td><td class="num">10.0&#8209;7.0</td><td class="oddsbar"><div class="ob-track"><i style="width:46.4%"></i></div></td><td class="num score">46%</td><td class="num dim">70%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/kc.png" alt="" loading="lazy" width="20" height="20"><b>KC</b><span class="dim">Chiefs</span></span></td><td class="num">9.3&#8209;7.7</td><td class="oddsbar"><div class="ob-track"><i style="width:30.8%"></i></div></td><td class="num score">31%</td><td class="num dim">56%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lac.png" alt="" loading="lazy" width="20" height="20"><b>LAC</b><span class="dim">Chargers</span></span></td><td class="num">8.7&#8209;8.3</td><td class="oddsbar"><div class="ob-track"><i style="width:21.8%"></i></div></td><td class="num score">22%</td><td class="num dim">45%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lv.png" alt="" loading="lazy" width="20" height="20"><b>LV</b><span class="dim">Raiders</span></span></td><td class="num">5.2&#8209;11.8</td><td class="oddsbar"><div class="ob-track"><i style="width:1.0%"></i></div></td><td class="num score">1%</td><td class="num dim">3%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">NFC East<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="18" height="18">PHI &middot; 72%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/phi.png" alt="" loading="lazy" width="20" height="20"><b>PHI</b><span class="dim">Eagles</span></span></td><td class="num">10.0&#8209;7.0</td><td class="oddsbar"><div class="ob-track"><i style="width:72.4%"></i></div></td><td class="num score">72%</td><td class="num dim">77%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png" alt="" loading="lazy" width="20" height="20"><b>NYG</b><span class="dim">Giants</span></span></td><td class="num">6.7&#8209;10.3</td><td class="oddsbar"><div class="ob-track"><i style="width:9.5%"></i></div></td><td class="num score">9%</td><td class="num dim">14%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/dal.png" alt="" loading="lazy" width="20" height="20"><b>DAL</b><span class="dim">Cowboys</span></span></td><td class="num">6.7&#8209;10.3</td><td class="oddsbar"><div class="ob-track"><i style="width:9.2%"></i></div></td><td class="num score">9%</td><td class="num dim">14%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/wsh.png" alt="" loading="lazy" width="20" height="20"><b>WAS</b><span class="dim">Commanders</span></span></td><td class="num">6.7&#8209;10.3</td><td class="oddsbar"><div class="ob-track"><i style="width:9.0%"></i></div></td><td class="num score">9%</td><td class="num dim">14%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">NFC North<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="18" height="18">DET &middot; 53%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" loading="lazy" width="20" height="20"><b>DET</b><span class="dim">Lions</span></span></td><td class="num">11.1&#8209;5.9</td><td class="oddsbar"><div class="ob-track"><i style="width:53.0%"></i></div></td><td class="num score">53%</td><td class="num dim">82%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/gb.png" alt="" loading="lazy" width="20" height="20"><b>GB</b><span class="dim">Packers</span></span></td><td class="num">9.6&#8209;7.4</td><td class="oddsbar"><div class="ob-track"><i style="width:21.9%"></i></div></td><td class="num score">22%</td><td class="num dim">56%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="" loading="lazy" width="20" height="20"><b>MIN</b><span class="dim">Vikings</span></span></td><td class="num">9.0&#8209;8.0</td><td class="oddsbar"><div class="ob-track"><i style="width:14.8%"></i></div></td><td class="num score">15%</td><td class="num dim">44%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/chi.png" alt="" loading="lazy" width="20" height="20"><b>CHI</b><span class="dim">Bears</span></span></td><td class="num">8.5&#8209;8.5</td><td class="oddsbar"><div class="ob-track"><i style="width:10.4%"></i></div></td><td class="num score">10%</td><td class="num dim">35%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">NFC South<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="18" height="18">TB &middot; 43%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt="" loading="lazy" width="20" height="20"><b>TB</b><span class="dim">Buccaneers</span></span></td><td class="num">8.8&#8209;8.2</td><td class="oddsbar"><div class="ob-track"><i style="width:43.1%"></i></div></td><td class="num score">43%</td><td class="num dim">51%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/atl.png" alt="" loading="lazy" width="20" height="20"><b>ATL</b><span class="dim">Falcons</span></span></td><td class="num">8.1&#8209;8.9</td><td class="oddsbar"><div class="ob-track"><i style="width:29.0%"></i></div></td><td class="num score">29%</td><td class="num dim">37%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/no.png" alt="" loading="lazy" width="20" height="20"><b>NO</b><span class="dim">Saints</span></span></td><td class="num">7.5&#8209;9.5</td><td class="oddsbar"><div class="ob-track"><i style="width:18.9%"></i></div></td><td class="num score">19%</td><td class="num dim">25%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/car.png" alt="" loading="lazy" width="20" height="20"><b>CAR</b><span class="dim">Panthers</span></span></td><td class="num">6.4&#8209;10.6</td><td class="oddsbar"><div class="ob-track"><i style="width:9.0%"></i></div></td><td class="num score">9%</td><td class="num dim">12%</td></tr></tbody></table></div><div class="dv"><div class="dv-h">NFC West<span class="dv-pick"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="18" height="18">SEA &middot; 46%</span></div><table class="dv-tbl"><thead><tr><th>Team</th><th class="num">Proj</th><th>Division odds</th><th class="num">Div</th><th class="num">Playoff</th></tr></thead><tbody><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sea.png" alt="" loading="lazy" width="20" height="20"><b>SEA</b><span class="dim">Seahawks</span></span></td><td class="num">11.6&#8209;5.4</td><td class="oddsbar"><div class="ob-track"><i style="width:45.7%"></i></div></td><td class="num score">46%</td><td class="num dim">88%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/lar.png" alt="" loading="lazy" width="20" height="20"><b>LA</b><span class="dim">Rams</span></span></td><td class="num">11.4&#8209;5.6</td><td class="oddsbar"><div class="ob-track"><i style="width:41.1%"></i></div></td><td class="num score">41%</td><td class="num dim">86%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/sf.png" alt="" loading="lazy" width="20" height="20"><b>SF</b><span class="dim">49ers</span></span></td><td class="num">9.6&#8209;7.4</td><td class="oddsbar"><div class="ob-track"><i style="width:12.3%"></i></div></td><td class="num score">12%</td><td class="num dim">55%</td></tr><tr><td class="team"><span class="tname"><img class="tlogo" src="https://a.espncdn.com/i/teamlogos/nfl/500/ari.png" alt="" loading="lazy" width="20" height="20"><b>ARI</b><span class="dim">Cardinals</span></span></td><td class="num">6.8&#8209;10.2</td><td class="oddsbar"><div class="ob-track"><i style="width:0.9%"></i></div></td><td class="num score">1%</td><td class="num dim">10%</td></tr></tbody></table></div></div>
+</section>
+<section id="methodology">
+  <div class="sec-head">
+    <span class="kicker">Method &middot; 06</span>
+    <h2>How the numbers are built</h2>
+    <p class="blurb">Every constant below was measured on 2,383
+    out-of-sample games rather than assumed, and the sweeps that came back flat are labelled
+    as flat. Reproduce with <code>python scripts/fit_matrix.py</code>.</p>
+  </div>
+  <div class="mth">
+    <div class="mth-card"><div class="mth-h">The matchup model</div>
+      <p>One fit produces everything: margin, total, scoreline and both unit rankings.
+      It predicts the points <em>one</em> team scores, from that team&rsquo;s offence and its
+      opponent&rsquo;s defence.</p>
+      <pre><code>points(A vs B) = intercept
+   + &Sigma; g&#8339; &middot; ( off&#8339;(A) + def&#8339;(B) )
+   + home_field</code></pre>
+      <p>Offence and defence share a coefficient because they measure the same per-play
+      quantity from opposite sides. Given them free coefficients instead and
+      <code>def_epa</code> fits <b>positive</b> &mdash; allowing more EPA per play
+      &ldquo;improves&rdquo; the margin &mdash; because EPA and first-down rate correlate at
+      r&nbsp;=&nbsp;0.83 and the pair splits the effect with opposite signs. The symmetric form
+      costs 0.016 points of MAE and every sign it produces is the one football says it should
+      be.</p>
+      <table class="mth-tbl"><tr><td>EPA per play</td><td class="num">+6.988</td></tr><tr><td>First-down rate</td><td class="num">+34.493</td></tr><tr><td>Explosive-play rate</td><td class="num">+54.625</td></tr><tr><td>Sack rate</td><td class="num">-21.454</td></tr><tr><td>Turnover rate</td><td class="num">-101.795</td></tr>
+      <tr><td>Home field (fitted)</td>
+      <td class="num">+1.74</td></tr></table></div>
+
+    <div class="mth-card"><div class="mth-h">Offense weights</div>
+      <p>Standardised importance &mdash; |coefficient| &times; the spread of that rate across
+      teams &mdash; normalised within the group.</p>
+      <table class="mth-tbl"><tr><td>first down rate</td><td class="num">0.2968</td></tr><tr><td>epa per play</td><td class="num">0.1960</td></tr><tr><td>explosive rate</td><td class="num">0.1886</td></tr><tr><td>giveaway rate</td><td class="num">0.1820</td></tr><tr><td>sack rate allowed</td><td class="num">0.1366</td></tr></table></div>
+
+    <div class="mth-card"><div class="mth-h">Defense weights</div>
+      <p>Not the offence table relabelled. The coefficients are shared; the spreads are not.
+      Takeaways separate defences (0.222) more than giveaways separate offences (0.182), and
+      EPA separates offences more than defences &mdash; the fitted version of an old scouting
+      claim.</p>
+      <table class="mth-tbl"><tr><td>first down allowed</td><td class="num">0.2877</td></tr><tr><td>takeaway rate</td><td class="num">0.2221</td></tr><tr><td>explosive allowed</td><td class="num">0.1917</td></tr><tr><td>epa allowed</td><td class="num">0.1811</td></tr><tr><td>sack rate</td><td class="num">0.1174</td></tr></table></div>
+
+    <div class="mth-card"><div class="mth-h">Power ratings</div>
+      <p>Opponent-adjusted scoring margin, solved iteratively, home field removed before
+      rating so a soft home schedule earns nothing.</p>
+      <p>Margins pass through <code>cap &middot; tanh(margin / cap)</code>, but the cap barely
+      matters here: 7.0% of NFL games are decided by 28+ against 36% in FBS, and the sweep moves
+      MAE by 0.004 points from cap 17 to no cap at all. It is kept to bound a freak result, not
+      because it contributes.</p>
+      <table class="mth-tbl">
+      <tr><td>Home field, rating path</td>
+      <td class="num">1.20</td></tr>
+      <tr><td>Blowout cap</td><td class="num">42</td></tr>
+      <tr><td>Recency half-life</td>
+      <td class="num">8 wks</td></tr>
+      <tr><td>Margin residual SD</td><td class="num">13.32</td></tr></table>
+      <p class="fine">Measured mean home margin is +2.06 (2021&ndash;2025). The rating path
+      publishes 1.20 because the published margin is a 50/50 blend with the efficiency path,
+      which carries its own fitted +1.74 &mdash; an effective
+      <b>1.47</b>. Using
+      the measured 2.06 here would double-count.</p></div>
+
+    <div class="mth-card"><div class="mth-h">Totals &amp; scorelines</div>
+      <p>The raw model total is over-dispersed &mdash; regressing actual on predicted gives a
+      slope near 0.63 &mdash; so it is shrunk 30% toward the league
+      mean, which lifts the slope to 0.91.</p>
+      <table class="mth-tbl">
+      <tr><td>League mean total</td><td class="num">11.0423</td></tr>
+      <tr><td>Model total</td><td class="num">10.8076</td></tr>
+      <tr><td>Market total</td><td class="num">10.4700</td></tr>
+      <tr><td>O/U on disagreements</td><td class="num">49.09%</td></tr>
+      <tr><td>Total residual SD</td><td class="num">13.69</td></tr></table>
+      <p class="fine">Scores are algebra: home = (total + margin) / 2. They inherit the error
+      of <em>both</em> models, so read a scoreline as a centre of mass. A total marked
+      <b>*</b> is the league mean, not a modelled figure.</p></div>
+
+    <div class="mth-card"><div class="mth-h">Point-in-time</div>
+      <p>A game in week <em>W</em> is forecast only from completed games before <em>W</em>,
+      blended with earlier seasons on a shrinkage of
+      6 games. Coefficients are
+      fitted leave-one-season-out, so no game is ever scored by a model that saw it &mdash;
+      the only fit whose MAE is comparable with the market&rsquo;s, because the market never
+      saw the answer either.</p></div>
+
+    <div class="mth-card"><div class="mth-h">Where this is weakest</div>
+      <p>The model is 0.44 points behind the closing line overall, and the gap is
+      <em>widest</em> late (weeks 10&ndash;18: +0.55) rather than early (weeks 1&ndash;4:
+      +0.39). That is the opposite of the college case, and the reason is availability: by
+      November the market is pricing injuries and roster news this repo does not model at all,
+      while in September there is less of it to know.</p>
+      <p>Three families the inherited research prior asserted &mdash; early-down pass
+      efficiency, red-zone conversion and special-teams field position &mdash; are not
+      derivable from the weekly team box score and are <b>not</b> in the model. They were
+      dropped rather than shipped as decorative weights.</p></div>
+  </div>
+</section></main>
+<footer>
+  <div class="wrap">
+    <p><b>Chase Analytics &mdash; NFL Model</b> is analysis infrastructure, not betting advice.
+    The model does not beat the closing market, its authority is RESEARCH_ONLY, and nothing
+    here is a recommendation to wager. If gambling stops being fun, call 1-800-GAMBLER.</p>
+    <p class="foot-links">
+      <a href="https://github.com/Alphakiller1/nfl-model">Source</a><span>&middot;</span>
+      <a href="https://alphakiller1.github.io/mlb-model/">MLB Model</a><span>&middot;</span>
+      <a href="https://alphakiller1.github.io/wnba-edge-model/">WNBA Model</a><span>&middot;</span>
+      <a href="https://alphakiller1.github.io/cfb-model/">CFB Model</a><span>&middot;</span>
+      <a href="https://chase-analytics.com/">chase-analytics.com</a>
+    </p>
+    <p class="dim">Generated Aug 31 2026 · 23:59 UTC &middot; data from nflverse &middot;
+    ratings, projections and division odds all derived from one fit.</p>
+  </div>
+</footer>
+<script>function boardFilter(btn,tag){document.querySelectorAll('.bd-filter').forEach(function(b){b.classList.toggle('on',b===btn);});document.querySelectorAll('.bd-card').forEach(function(c){var tags=(c.dataset.tags||'').split(' ');c.hidden=!(tag==='all'||tags.indexOf(tag)>=0);});var grid=document.getElementById('bdGrid');if(grid){var vis=grid.querySelectorAll('.bd-card:not([hidden])').length;var msg=document.getElementById('bdFilterEmpty');if(!vis){if(!msg){msg=document.createElement('div');msg.id='bdFilterEmpty';msg.className='bd-empty bd-empty--board';grid.appendChild(msg);}msg.textContent='No games on this slate offer '+tag.replace('f5','a First 5').replace('fullgame','a full-game').replace('gems','a gem-grade')+' market.';}else if(msg){msg.remove();}}}function boardSort(key){var grid=document.getElementById('bdGrid');if(!grid)return;var cards=Array.prototype.slice.call(grid.querySelectorAll('.bd-card'));cards.sort(function(a,b){if(key==='picks')return (+b.dataset.picks)-(+a.dataset.picks);if(key==='gems')return (+b.dataset.gems)-(+a.dataset.gems);return (a.dataset.key||'').localeCompare(b.dataset.key||'');});cards.forEach(function(c){grid.appendChild(c);});}</script>
+</body>
+</html>

@@ -1,18 +1,38 @@
-"""Produce NFL game probabilities and the authority attached to them.
+"""Two forecasts, one authority.
 
-The forecast is market-anchored, exactly as `nfl-genesis` measured:
+**Probabilities** (`forecast_game`, `forecast_slate`) are market-anchored, exactly
+as `nfl-genesis` measured:
 
     logit(p) = logit(market_fair) + lam * (logit(structural) - logit(market_fair))
 
-`lam` is NOT fitted here. It is read from the research repo's published evidence,
-which selected 0.000 in all five folds from 2021 onward. At lam = 0 the forecast is
-identical to the paired no-vig market, and that is the honest output — the
-structural component carried no incremental information over a closing line.
+`lam` is not fitted here. It is read from the research repo's published evidence,
+which selected 0.000 in all five folds from 2021 onward, so the probability
+forecast equals the paired no-vig market by construction. This is the contract
+`profit-priority` consumes and its shape must not change casually.
 
-That makes this module look almost trivial today, and it should. The value is that
-the shape is correct and auditable: when a challenger in nfl-genesis finally moves
-lam off zero, only `DEFAULT_LAMBDA` and the evidence pointer change, and every
-consumer inherits the improvement together with the promotion state.
+**Points** (`project_game`) are new, and they are a different claim. A win
+probability anchored to the market says nothing about *how* a game gets there, so
+this repo now also produces an opponent-adjusted margin, total and scoreline from
+`matrix.py`, `ratings.py` and `totals.py`. Those are model output, not market
+output, and they are published as such.
+
+What the points model is worth, measured leave-one-season-out on 2,383 games
+(2017-2025), is stated on every board rather than buried:
+
+    margin: model 10.3134   market 9.8708   ATS on disagreements 49.8%
+    total:  model 10.8076   market 10.4700  O/U on disagreements 49.1%
+
+So the margin is published **anchored to the market** at `SPREAD_LAMBDA = 0`, for
+the same reason the probability is: it does not beat the closing line. The model's
+own number is shown beside it so the disagreement is visible, and that
+disagreement is reported as a `market_gap`, never as an `edge`. Calling it an edge
+would assert the model has found something, when a 49.8% ATS record says it has
+not.
+
+The **projected scoreline is built from the model's margin, not the published
+one.** At lam = 0 the published margin is the market, and a "projected score"
+silently derived from it would be the market's projection wearing the model's
+label.
 """
 
 from __future__ import annotations
@@ -162,3 +182,176 @@ def write_slate(games: list[dict], destination: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return str(path)
+
+
+# ── points: margin, total and the scoreline ──────────────────────────────────
+# Fraction of the model's disagreement with the closing spread that is kept in
+# the published margin. Zero, and that is a measurement rather than caution: the
+# model's MAE is 10.3134 against the market's 9.8708 and its ATS record on
+# disagreements is 1158-1165-60 (49.85%, 95% CI [47.81%, 51.88%]) against a
+# 52.38% breakeven. Raising it is a claim about evidence and belongs with a gate
+# record, not a config tweak.
+SPREAD_LAMBDA = 0.0
+
+POINTS_EVIDENCE = (
+    "reports/BASELINE_2016_2025.md — leave-one-season-out on 2,383 games "
+    "(2017-2025): margin MAE 10.3134 vs market 9.8708, ATS 49.85%"
+)
+
+
+@dataclass(frozen=True)
+class GameProjection:
+    """One game's points forecast, with everything needed to audit it."""
+
+    home: str
+    away: str
+    neutral: bool
+    season: int = 0
+    week: int = 0
+    kickoff: str = ""
+    # The two components of the model margin, kept separate so a breakdown can
+    # show which one is doing the work.
+    rating_margin: float | None = None
+    efficiency_margin: float | None = None
+    model_margin: float | None = None
+    market_margin: float | None = None
+    # What the board publishes. Equals the market at SPREAD_LAMBDA = 0.
+    margin: float | None = None
+    win_probability: float | None = None
+    # Model minus market. Always a gap, never an edge, while the ATS record
+    # straddles 50% — see `_points_edge`.
+    market_gap: float | None = None
+    edge_points: float | None = None
+    edge_withheld_reason: str | None = None
+    projected_total: float | None = None
+    market_total: float | None = None
+    projected_home_score: float | None = None
+    projected_away_score: float | None = None
+    total_modelled: bool = False
+    home_moneyline: float | None = None
+    away_moneyline: float | None = None
+    market_fair_home: float | None = None
+    home_form: object | None = None
+    away_form: object | None = None
+    used_efficiency: bool = False
+    action: str = auth.Action.AVOID.value
+    authority: str = auth.Level.RESEARCH_ONLY.value
+
+    @property
+    def has_price(self) -> bool:
+        return self.market_margin is not None
+
+    @property
+    def total_gap(self) -> float | None:
+        """Model total minus market total, or None without both."""
+        if self.projected_total is None or self.market_total is None:
+            return None
+        return self.projected_total - self.market_total
+
+
+def _points_edge(market_gap: float | None, *, used_efficiency: bool
+                 ) -> tuple[float | None, str | None]:
+    """Decide whether the model-minus-market difference may be called an edge.
+
+    It may not, and the reason is a measurement rather than a policy. Across
+    2,383 out-of-sample games the model's margin MAE is 0.44 points worse than
+    the closing line and its ATS record on disagreements is 49.85% with a 95%
+    interval of [47.81%, 51.88%] — an interval that contains 50% and sits
+    entirely below the 52.38% breakeven. Both estimators are calibrated (slope
+    1.035); the market simply conditions on more, chiefly injuries and
+    availability this repo does not model.
+
+    So the difference between the two numbers is dominated by what the market
+    knows and the model does not. It stays visible as `market_gap` and is not
+    called an edge. When a challenger moves the ATS interval above breakeven,
+    this function is where that changes.
+    """
+    if market_gap is None:
+        return None, None
+    if not used_efficiency:
+        return None, "no opponent-adjusted form — rating prior only"
+    return None, "model does not beat the closing line (ATS 49.85%) — gap, not edge"
+
+
+def project_game(
+    *,
+    home: str,
+    away: str,
+    team_ratings: dict[str, float],
+    home_form=None,
+    away_form=None,
+    neutral: bool = False,
+    market_margin: float | None = None,
+    market_total: float | None = None,
+    home_moneyline: float | None = None,
+    away_moneyline: float | None = None,
+    season: int = 0,
+    week: int = 0,
+    kickoff: str = "",
+    lam: float = SPREAD_LAMBDA,
+    authority: auth.Authority | None = None,
+) -> GameProjection:
+    """Forecast one game's points. `market_margin` is the expected HOME margin."""
+    from . import ratings as ratings_mod
+    from . import totals as totals_mod
+
+    a = authority or auth.current()
+    rating_margin = ratings_mod.projected_margin(team_ratings, home, away, neutral=neutral)
+    projection = totals_mod.project(home_form, away_form, rating_margin=rating_margin,
+                                    neutral=neutral)
+    model_margin = projection.margin
+    used_efficiency = projection.modelled
+
+    if market_margin is None:
+        published, market_gap = model_margin, None
+    else:
+        market_gap = None if model_margin is None else model_margin - market_margin
+        published = market_margin if market_gap is None else market_margin + lam * market_gap
+
+    edge, withheld = _points_edge(market_gap, used_efficiency=used_efficiency)
+    win_p = None if published is None else ratings_mod.win_probability(published)
+
+    market_fair = None
+    if home_moneyline is not None and away_moneyline is not None:
+        try:
+            market_fair = PairedQuote(home_american=home_moneyline,
+                                      away_american=away_moneyline).home_fair
+        except (TypeError, ValueError):
+            market_fair = None
+
+    return GameProjection(
+        home=home, away=away, neutral=neutral, season=season, week=week, kickoff=kickoff,
+        rating_margin=rating_margin,
+        efficiency_margin=(matrix_margin(home_form, away_form, neutral)
+                           if used_efficiency else None),
+        model_margin=model_margin,
+        market_margin=market_margin,
+        margin=published,
+        win_probability=win_p,
+        market_gap=market_gap,
+        edge_points=edge,
+        edge_withheld_reason=withheld,
+        projected_total=projection.total,
+        market_total=market_total,
+        projected_home_score=projection.home_score,
+        projected_away_score=projection.away_score,
+        total_modelled=projection.modelled,
+        home_moneyline=home_moneyline,
+        away_moneyline=away_moneyline,
+        market_fair_home=market_fair,
+        home_form=home_form,
+        away_form=away_form,
+        used_efficiency=used_efficiency,
+        action=a.action_for(edge, market_margin is not None,
+                            modelled=model_margin is not None,
+                            implausible=auth.IMPLAUSIBLE_EDGE_POINTS).value,
+        authority=a.level.value,
+    )
+
+
+def matrix_margin(home_form, away_form, neutral: bool) -> float | None:
+    """The efficiency component on its own, for the breakdown."""
+    from . import matrix
+    if home_form is None or away_form is None:
+        return None
+    return matrix.margin_points(home_form, away_form, neutral=neutral)

@@ -13,21 +13,78 @@ jobs:
       - name: install
         run: pip install -e ".[dev]"
       - name: ruff
-        run: ruff check src tests
+        run: ruff check src tests scripts
       - name: pytest
+        # The suite is offline by design: `season.assemble` would download ten
+        # seasons from nflverse, which makes CI depend on GitHub being up and on
+        # the schedule not changing underneath it. A test that fails for either
+        # reason teaches nobody anything.
         run: pytest -q
-      - name: dashboard builds and stays on the shared brand contract
+
+      - name: import smoke
         run: |
-          python -m nflmodel.cli build-site --games data/slate_example.json --out _smoke/index.html
+          python - <<'EOF'
+          from nflmodel import (authority, divisions, efficiency, export, forecast,
+                                matrix, preseason, ratings, season, site, teams, totals)
+          a = authority.current()
+          assert a.level.value == 'RESEARCH_ONLY', a.level
+          assert a.may_bet is False
+          assert forecast.SPREAD_LAMBDA == 0.0
+          assert forecast.DEFAULT_LAMBDA == 0.0
+          matrix.validate_weight_group(matrix.OFFENSE_WEIGHTS, name='offense')
+          matrix.validate_weight_group(matrix.DEFENSE_WEIGHTS, name='defense')
+          # Every fitted coefficient must carry the sign football says it should.
+          # The specification this replaced fitted def_epa POSITIVE, and nothing
+          # about the output shape revealed it.
+          c = matrix.COEFFICIENTS
+          assert c['epa'] > 0 and c['first_down'] > 0 and c['explosive'] > 0
+          assert c['sack'] < 0 and c['turnover'] < 0 and c['home_field'] > 0
+          assert len(teams.all_abbrs()) == 32
+          assert all(len(teams.members(d)) == 4 for d in teams.DIVISIONS)
+          print('import smoke OK')
+          EOF
+
+      - name: dashboard builds and stays on the shared brand contract
+        # This step DOES hit nflverse, because a broken source is a real deploy
+        # failure and CI should find it before Pages does.
+        run: |
+          python -m nflmodel.cli build-site --out _smoke/index.html --simulations 500
           python - <<'EOF'
           from pathlib import Path
           html = Path('_smoke/index.html').read_text(encoding='utf-8')
-          # The authority gate must precede the numbers; a dashboard that shows prices
-          # first and permissions in a footnote misrepresents a research-only model.
-          assert html.index('id="authority"') < html.index('id="board"'), 'gate not first'
+          # The authority gate must precede the numbers; a dashboard that shows
+          # prices first and permissions in a footnote misrepresents a
+          # research-only model.
+          order = ['id="authority"', 'id="board"', 'id="ratings"', 'id="units"',
+                   'id="divisions"', 'id="methodology"']
+          at = [html.index(marker) for marker in order]
+          assert at == sorted(at), 'sections out of order'
           for key in ('RESEARCH_ONLY', 'bd-card', '1-800-GAMBLER',
-                      '#08090F', '#9A6BFF', 'DM Sans', 'Roboto Condensed'):
+                      '#08090F', '#9A6BFF', 'DM Sans', 'Roboto Condensed',
+                      'not betting advice'):
               assert key in html, key
           assert html.count('fonts.googleapis.com') == 1, 'duplicate font import'
+          assert 'bd-status is-pos">BET<' not in html, 'BET under a research-only authority'
           print(f"OK: {len(html)//1024} KB, gate first, brand contract intact")
+          EOF
+
+      - name: CLI surfaces answer
+        run: |
+          python -m nflmodel.cli status
+          python -m nflmodel.cli board
+          python -m nflmodel.cli units
+          python -m nflmodel.cli divisions --simulations 500
+          python -m nflmodel.cli export --simulations 0 --out _smoke/board.json
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path('_smoke/board.json').read_text(encoding='utf-8'))
+          assert payload['authority'] == 'RESEARCH_ONLY'
+          assert payload['may_bet'] is False
+          assert payload['spread_lambda'] == 0.0
+          # An edge must be published as an explicit null, not omitted: a consumer
+          # has to be able to check for it rather than infer it from absence.
+          for game in payload['games']:
+              assert 'edge_points' in game and game['edge_points'] is None, game
+          print(f"OK: contract {payload['schema']}, {len(payload['games'])} games")
           EOF
