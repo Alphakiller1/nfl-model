@@ -155,6 +155,24 @@ The script may use numpy; the package may not. Fitted values are copied into
 `matrix.py`, `totals.py`, `ratings.py` and `preseason.py` as constants, exactly as
 cfb-model does.
 
+## Genesis preseason outlook handoff
+
+Week 1 projections and division leaders are published by `nfl-genesis`, not independently
+calculated here. The checked-in `src/nflmodel/genesis_outlook_2026.json` is a versioned,
+`RESEARCH_ONLY` handoff; the site refuses to render it if the schema, season, authority, game
+coverage, or probability totals are invalid. Refresh it from the Genesis repository:
+
+```powershell
+nfl-genesis publish-outlook --season 2026 `
+  --ratings .\src\nflmodel\power_ratings.json `
+  --week-one-schedule ..\nfl-genesis\artifacts\published\week_one_2026_schedule.json `
+  --destination .\src\nflmodel\genesis_outlook_2026.json
+```
+
+The current division output is explicitly a rating-leader projection, not a schedule-aware
+simulation. Only an artifact produced from a completed Genesis season simulation may make a
+schedule-aware division-title claim.
+
 ## The dashboard
 
 `docs/index.html` and `docs/board.json` are a **committed snapshot** of the last

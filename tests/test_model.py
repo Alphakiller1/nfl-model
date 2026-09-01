@@ -14,6 +14,7 @@ from nflmodel.market import (
     devig_two_way,
     prob_to_american,
 )
+from nflmodel.teams import canonical
 
 # ── market math ───────────────────────────────────────────────────────────────
 
@@ -136,3 +137,15 @@ def test_forecast_game_emits_american_odds_both_ways() -> None:
                       home_american=-175, away_american=150)
     assert f.home_american < 0 < f.away_american
     assert math.isclose(f.home_fair + f.away_fair, 1.0, abs_tol=1e-5)
+
+
+def test_schedule_abbreviation_resolves_to_rating_abbreviation() -> None:
+    """Kept from 067d9b0 and rewritten for the current API.
+
+    That commit asserted it through `ratings.rating_for`, which read a vendored
+    JSON; ratings are now solved live and the aliasing moved to `teams.canonical`.
+    The property being defended is the same one and still matters: nflverse keeps
+    the abbreviation a team carried at the time, so LAR and LA must never be rated
+    as two franchises.
+    """
+    assert canonical("LAR") == canonical("LA") == "LA"
