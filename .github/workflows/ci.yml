@@ -1,5 +1,5 @@
 name: ci
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   test:
@@ -19,7 +19,7 @@ jobs:
         # seasons from nflverse, which makes CI depend on GitHub being up and on
         # the schedule not changing underneath it. A test that fails for either
         # reason teaches nobody anything.
-        run: pytest -q
+        run: python -m pytest -q
 
       - name: import smoke
         run: |
