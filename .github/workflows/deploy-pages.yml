@@ -34,8 +34,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -43,7 +43,7 @@ jobs:
         run: pip install .
 
       - name: Restore source snapshots and shadow ledger
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             data/cache
@@ -56,6 +56,8 @@ jobs:
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           ODDS_BOOKMAKERS: draftkings
+          NFL_MODEL_CACHE: ${{ github.workspace }}/data/cache
+          NFL_LEDGER_PATH: ${{ github.workspace }}/data/runtime-cache/prediction-ledger.json
           NFL_REQUIRE_LIVE_ODDS: "1"
           PYTHONIOENCODING: utf-8
           PYTHONUNBUFFERED: "1"
@@ -72,7 +74,7 @@ jobs:
 
       - name: Save source snapshots and shadow ledger
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             data/cache

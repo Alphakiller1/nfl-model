@@ -28,7 +28,12 @@ from .. import teams
 
 BASE = "https://api.the-odds-api.com/v4"
 SPORT = "americanfootball_nfl"
-CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "cache" / "odds"
+_MODEL_CACHE = os.getenv("NFL_MODEL_CACHE")
+CACHE_DIR = Path(
+    os.getenv("NFL_ODDS_CACHE")
+    or (str(Path(_MODEL_CACHE) / "odds") if _MODEL_CACHE else "")
+    or Path(__file__).resolve().parents[3] / "data" / "cache" / "odds"
+)
 CACHE_TTL_SECONDS = 15 * 60
 TIMEOUT = 45
 DEFAULT_BOOK = "draftkings"
