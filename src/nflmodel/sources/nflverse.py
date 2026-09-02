@@ -32,6 +32,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,8 +52,41 @@ RETRIES = 3
 VOLATILE_TTL = 6 * 3600
 
 
+@dataclass(frozen=True)
+class SourceStatus:
+    cache_name: str
+    url: str
+    state: str
+    fetched_at: str | None
+    age_seconds: int | None
+    rows: int
+    stale: bool = False
+    error: str | None = None
+
+
+_STATUS: dict[str, SourceStatus] = {}
+
+
 class NflverseError(RuntimeError):
     """A source file could not be retrieved."""
+
+
+def clear_run_state() -> None:
+    _STATUS.clear()
+
+
+def status_report() -> list[dict]:
+    return [asdict(status) for status in _STATUS.values()]
+
+
+def _file_state(path: Path) -> tuple[str | None, int | None]:
+    if not path.is_file():
+        return None, None
+    modified = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+    return (
+        modified.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        max(0, int(time.time() - path.stat().st_mtime)),
+    )
 
 
 def _fresh(path: Path, ttl: float | None) -> bool:
@@ -97,16 +131,44 @@ def fetch_csv(url: str, cache_name: str, *, ttl: float | None) -> list[dict]:
     """
     path = CACHE_DIR / cache_name
     if _fresh(path, ttl):
-        return _parse(path.read_bytes())
+        rows = _parse(path.read_bytes())
+        fetched_at, age = _file_state(path)
+        _STATUS[cache_name] = SourceStatus(
+            cache_name, url, "cached", fetched_at, age, len(rows)
+        )
+        return rows
     try:
         raw = _download(url)
-    except NflverseError:
+    except NflverseError as exc:
         if path.is_file() and path.stat().st_size:
-            return _parse(path.read_bytes())
+            rows = _parse(path.read_bytes())
+            fetched_at, age = _file_state(path)
+            _STATUS[cache_name] = SourceStatus(
+                cache_name,
+                url,
+                "bounded_snapshot",
+                fetched_at,
+                age,
+                len(rows),
+                stale=True,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return rows
+        _STATUS[cache_name] = SourceStatus(
+            cache_name, url, "error", None, None, 0, stale=True,
+            error=f"{type(exc).__name__}: {exc}",
+        )
         raise
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(raw)
-    return _parse(raw)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(raw)
+    temporary.replace(path)
+    rows = _parse(raw)
+    fetched_at, age = _file_state(path)
+    _STATUS[cache_name] = SourceStatus(
+        cache_name, url, "fresh", fetched_at, age, len(rows)
+    )
+    return rows
 
 
 def number(value) -> float | None:

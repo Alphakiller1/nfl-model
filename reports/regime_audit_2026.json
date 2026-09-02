@@ -1,0 +1,1886 @@
+{
+  "protocol": {
+    "training": "strictly earlier seasons only",
+    "specification": "frozen 2026 feature specification and hyperparameters; coefficients and candidate transforms are time-forward",
+    "hyperparameter_caveat": "legacy leave-one-season-out selection is not nested inside each fold",
+    "prospective_status": "retrospective audit; not a locked prospective trial",
+    "first_test_season": 2020,
+    "last_test_season": 2025,
+    "games": 1615
+  },
+  "margin": {
+    "rating_only": {
+      "n": 1615,
+      "mae": 10.33744953848196,
+      "ats": [
+        766,
+        816,
+        33
+      ],
+      "ats_rate": 0.48419721871049304,
+      "underdog_side_share": 0.5640866873065016,
+      "residual_sd": 13.264244261946569,
+      "calibration_intercept": 0.7969848452306796,
+      "calibration_slope": 0.792624747091298,
+      "folds": []
+    },
+    "efficiency_only": {
+      "n": 1615,
+      "mae": 10.325572126918466,
+      "ats": [
+        804,
+        778,
+        33
+      ],
+      "ats_rate": 0.5082174462705437,
+      "underdog_side_share": 0.8247678018575851,
+      "residual_sd": 13.34440763302773,
+      "calibration_intercept": -0.21014215894960472,
+      "calibration_slope": 1.2983599275372744,
+      "folds": []
+    },
+    "baseline_50_50": {
+      "n": 1615,
+      "mae": 10.227382689223928,
+      "ats": [
+        784,
+        798,
+        33
+      ],
+      "ats_rate": 0.49557522123893805,
+      "underdog_side_share": 0.7232198142414861,
+      "residual_sd": 13.181345522311,
+      "calibration_intercept": 0.3488193435250816,
+      "calibration_slope": 1.0335072854636125,
+      "folds": []
+    },
+    "global_affine": {
+      "n": 1615,
+      "mae": 10.239932942760555,
+      "ats": [
+        780,
+        802,
+        33
+      ],
+      "ats_rate": 0.49304677623261695,
+      "underdog_side_share": 0.7046439628482972,
+      "residual_sd": 13.20480966549701,
+      "calibration_intercept": 0.632929434785269,
+      "calibration_slope": 0.9913910759944993,
+      "folds": [
+        {
+          "test_season": 2021,
+          "regime": "all",
+          "n_train": 256,
+          "intercept": -1.5422637145303235,
+          "coefficients": {
+            "margin": 1.0664118199088597
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "all",
+          "n_train": 528,
+          "intercept": -0.5562055179526042,
+          "coefficients": {
+            "margin": 1.0632453940618007
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "all",
+          "n_train": 799,
+          "intercept": 0.0012952776558819105,
+          "coefficients": {
+            "margin": 0.9644029844142137
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "all",
+          "n_train": 1071,
+          "intercept": 0.3272926338237948,
+          "coefficients": {
+            "margin": 0.9874191262184501
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "all",
+          "n_train": 1343,
+          "intercept": 0.2684369035198712,
+          "coefficients": {
+            "margin": 1.0350810513230448
+          }
+        }
+      ]
+    },
+    "bucket_affine": {
+      "n": 1615,
+      "mae": 10.289009653274862,
+      "ats": [
+        779,
+        803,
+        33
+      ],
+      "ats_rate": 0.49241466498103664,
+      "underdog_side_share": 0.6829721362229102,
+      "residual_sd": 13.254054646155533,
+      "calibration_intercept": 0.7064623801546326,
+      "calibration_slope": 0.9302133660438088,
+      "folds": [
+        {
+          "test_season": 2021,
+          "regime": "weeks_1_4",
+          "n_train": 63,
+          "intercept": -0.7691683352915833,
+          "coefficients": {
+            "margin": 0.963888541199303
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_5_9",
+          "n_train": 70,
+          "intercept": -1.5519269314735809,
+          "coefficients": {
+            "margin": 0.5800568584444407
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_10_18",
+          "n_train": 123,
+          "intercept": -2.050109940816742,
+          "coefficients": {
+            "margin": 1.4582447430255767
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_1_4",
+          "n_train": 127,
+          "intercept": -0.7480722981568448,
+          "coefficients": {
+            "margin": 0.9102199510149067
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_5_9",
+          "n_train": 142,
+          "intercept": -1.618822058607032,
+          "coefficients": {
+            "margin": 0.9244550456400494
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_10_18",
+          "n_train": 259,
+          "intercept": 0.1539728839575285,
+          "coefficients": {
+            "margin": 1.237209250450098
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_1_4",
+          "n_train": 191,
+          "intercept": -0.13058706211204452,
+          "coefficients": {
+            "margin": 0.7117696852547859
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_5_9",
+          "n_train": 214,
+          "intercept": -0.505932373484366,
+          "coefficients": {
+            "margin": 0.8448283066316941
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_10_18",
+          "n_train": 394,
+          "intercept": 0.3237619335763659,
+          "coefficients": {
+            "margin": 1.1708116486533309
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_1_4",
+          "n_train": 255,
+          "intercept": -0.19412568963000468,
+          "coefficients": {
+            "margin": 0.9034050060139266
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_5_9",
+          "n_train": 286,
+          "intercept": 0.35742510316579146,
+          "coefficients": {
+            "margin": 0.7773608579130615
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_10_18",
+          "n_train": 530,
+          "intercept": 0.5415741584231637,
+          "coefficients": {
+            "margin": 1.1591754212201653
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_1_4",
+          "n_train": 319,
+          "intercept": -0.18443241796987359,
+          "coefficients": {
+            "margin": 0.8664641764170006
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_5_9",
+          "n_train": 360,
+          "intercept": 0.14766452778371467,
+          "coefficients": {
+            "margin": 0.8945769757817704
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_10_18",
+          "n_train": 664,
+          "intercept": 0.5541466303731474,
+          "coefficients": {
+            "margin": 1.2002648127851794
+          }
+        }
+      ]
+    },
+    "week_affine": {
+      "n": 1615,
+      "mae": 10.381910305685205,
+      "ats": [
+        755,
+        827,
+        33
+      ],
+      "ats_rate": 0.47724399494311,
+      "underdog_side_share": 0.7089783281733746,
+      "residual_sd": 13.314016754704316,
+      "calibration_intercept": 0.42299567611032723,
+      "calibration_slope": 0.9160326391180131,
+      "folds": [
+        {
+          "test_season": 2022,
+          "regime": "1",
+          "n_train": 32,
+          "intercept": -0.9525975716911153,
+          "coefficients": {
+            "margin": 0.8899723462681103
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "2",
+          "n_train": 32,
+          "intercept": 0.19821289452913818,
+          "coefficients": {
+            "margin": 1.1492788793373243
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "3",
+          "n_train": 32,
+          "intercept": -1.2406969958133258,
+          "coefficients": {
+            "margin": 0.8921793692208669
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "15",
+          "n_train": 32,
+          "intercept": 0.7806667770674979,
+          "coefficients": {
+            "margin": 0.7486431469482393
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "16",
+          "n_train": 32,
+          "intercept": -0.44186077800060286,
+          "coefficients": {
+            "margin": 1.8764151018003847
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "17",
+          "n_train": 32,
+          "intercept": 2.472668637906971,
+          "coefficients": {
+            "margin": 1.6097926985479276
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "1",
+          "n_train": 48,
+          "intercept": -0.8222944903446419,
+          "coefficients": {
+            "margin": 0.7033250502060918
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "2",
+          "n_train": 48,
+          "intercept": 1.9453103587720317,
+          "coefficients": {
+            "margin": 0.9437159495622557
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "3",
+          "n_train": 48,
+          "intercept": -1.5542413530610761,
+          "coefficients": {
+            "margin": 0.652251557843771
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "4",
+          "n_train": 47,
+          "intercept": -0.15548534564428595,
+          "coefficients": {
+            "margin": 0.5984485455006526
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "5",
+          "n_train": 46,
+          "intercept": -1.730592487699092,
+          "coefficients": {
+            "margin": 1.1847456248248116
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "6",
+          "n_train": 42,
+          "intercept": -1.0792439113830707,
+          "coefficients": {
+            "margin": 0.5164067864586445
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "7",
+          "n_train": 41,
+          "intercept": 0.9554098891878262,
+          "coefficients": {
+            "margin": 0.8298624440906428
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "8",
+          "n_train": 44,
+          "intercept": 0.4472325368273773,
+          "coefficients": {
+            "margin": 1.0535415498739573
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "9",
+          "n_train": 41,
+          "intercept": -2.0377867266174894,
+          "coefficients": {
+            "margin": 0.4367581710386844
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "10",
+          "n_train": 42,
+          "intercept": 2.758920685577162,
+          "coefficients": {
+            "margin": 0.5219758279692722
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "11",
+          "n_train": 43,
+          "intercept": -4.08328727959521,
+          "coefficients": {
+            "margin": 1.0720538027161384
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "12",
+          "n_train": 47,
+          "intercept": 1.5294886616031174,
+          "coefficients": {
+            "margin": 0.8370490058120738
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "13",
+          "n_train": 44,
+          "intercept": -2.5747505626914475,
+          "coefficients": {
+            "margin": 1.636935063325051
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "14",
+          "n_train": 43,
+          "intercept": 0.24401021139817808,
+          "coefficients": {
+            "margin": 1.7656631334555695
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "15",
+          "n_train": 48,
+          "intercept": 0.885289229090366,
+          "coefficients": {
+            "margin": 0.6192621334301097
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "16",
+          "n_train": 48,
+          "intercept": -0.8856051446940415,
+          "coefficients": {
+            "margin": 1.7506413855812528
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "17",
+          "n_train": 47,
+          "intercept": 2.2324756061660342,
+          "coefficients": {
+            "margin": 1.5774200311958813
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "18",
+          "n_train": 32,
+          "intercept": 2.7949673681993406,
+          "coefficients": {
+            "margin": 0.5831881145794806
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "1",
+          "n_train": 64,
+          "intercept": -1.7099453487641403,
+          "coefficients": {
+            "margin": 0.8856594371305817
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "2",
+          "n_train": 64,
+          "intercept": 1.2523384470180772,
+          "coefficients": {
+            "margin": 1.1014785585678137
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "3",
+          "n_train": 64,
+          "intercept": -0.8879985252435774,
+          "coefficients": {
+            "margin": 0.934369144255941
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "4",
+          "n_train": 63,
+          "intercept": 0.4909509731536135,
+          "coefficients": {
+            "margin": 0.705461943240644
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "5",
+          "n_train": 60,
+          "intercept": -1.5055390633249959,
+          "coefficients": {
+            "margin": 0.9745678197667212
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "6",
+          "n_train": 57,
+          "intercept": -0.1601617096971728,
+          "coefficients": {
+            "margin": 0.6595389689909255
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "7",
+          "n_train": 54,
+          "intercept": 2.7172434527333778,
+          "coefficients": {
+            "margin": 0.6571427221098775
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "8",
+          "n_train": 60,
+          "intercept": 0.8711506866781454,
+          "coefficients": {
+            "margin": 0.8881908581903597
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "9",
+          "n_train": 55,
+          "intercept": -0.2540211020426717,
+          "coefficients": {
+            "margin": 0.6699411938270103
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "10",
+          "n_train": 56,
+          "intercept": 1.727719790019057,
+          "coefficients": {
+            "margin": 0.7210890867283232
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "11",
+          "n_train": 57,
+          "intercept": -3.2776273108989313,
+          "coefficients": {
+            "margin": 1.281041830812449
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "12",
+          "n_train": 63,
+          "intercept": 0.6087772148753444,
+          "coefficients": {
+            "margin": 1.1551867167708918
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "13",
+          "n_train": 57,
+          "intercept": -3.0037401627363054,
+          "coefficients": {
+            "margin": 1.5583798796710688
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "14",
+          "n_train": 58,
+          "intercept": 1.1441155899480375,
+          "coefficients": {
+            "margin": 1.449630206299359
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "15",
+          "n_train": 64,
+          "intercept": 2.1976650231119215,
+          "coefficients": {
+            "margin": 0.7837833594397834
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "16",
+          "n_train": 64,
+          "intercept": 0.026526928118184964,
+          "coefficients": {
+            "margin": 1.3669967260203344
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "17",
+          "n_train": 63,
+          "intercept": 2.3412074210533764,
+          "coefficients": {
+            "margin": 1.500324710563291
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "18",
+          "n_train": 48,
+          "intercept": 2.4069548710126583,
+          "coefficients": {
+            "margin": 0.6379260100671805
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "1",
+          "n_train": 80,
+          "intercept": -1.3870771125491936,
+          "coefficients": {
+            "margin": 1.0808126395925344
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "2",
+          "n_train": 80,
+          "intercept": 0.3581520854268059,
+          "coefficients": {
+            "margin": 0.9321600742262794
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "3",
+          "n_train": 80,
+          "intercept": -0.5563855963548382,
+          "coefficients": {
+            "margin": 0.9141349787723408
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "4",
+          "n_train": 79,
+          "intercept": 0.6754813167288464,
+          "coefficients": {
+            "margin": 0.5469549210306578
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "5",
+          "n_train": 74,
+          "intercept": -0.48111446069434477,
+          "coefficients": {
+            "margin": 0.8934817184929136
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "6",
+          "n_train": 71,
+          "intercept": -1.6873811899955848,
+          "coefficients": {
+            "margin": 0.8486336383302961
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "7",
+          "n_train": 69,
+          "intercept": 1.46581319842942,
+          "coefficients": {
+            "margin": 0.912213342135772
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "8",
+          "n_train": 76,
+          "intercept": 1.0535262416913727,
+          "coefficients": {
+            "margin": 0.945643630971622
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "9",
+          "n_train": 70,
+          "intercept": 0.4393403592250891,
+          "coefficients": {
+            "margin": 0.7885290898650842
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "10",
+          "n_train": 70,
+          "intercept": 0.8814881733647592,
+          "coefficients": {
+            "margin": 0.6852274895300707
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "11",
+          "n_train": 71,
+          "intercept": -2.0836061965636117,
+          "coefficients": {
+            "margin": 1.4856605699596974
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "12",
+          "n_train": 76,
+          "intercept": 0.45402905381500164,
+          "coefficients": {
+            "margin": 1.1503958228137747
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "13",
+          "n_train": 73,
+          "intercept": -2.1993832478707165,
+          "coefficients": {
+            "margin": 1.4082695257691784
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "14",
+          "n_train": 71,
+          "intercept": 1.0051982816358418,
+          "coefficients": {
+            "margin": 1.4142954415767024
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "15",
+          "n_train": 80,
+          "intercept": 0.7670925901911397,
+          "coefficients": {
+            "margin": 1.011702108375033
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "16",
+          "n_train": 80,
+          "intercept": 1.1914853864141792,
+          "coefficients": {
+            "margin": 1.3389206400113098
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "17",
+          "n_train": 79,
+          "intercept": 1.1948858619581024,
+          "coefficients": {
+            "margin": 1.7777420682909937
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "18",
+          "n_train": 64,
+          "intercept": 3.112150751718293,
+          "coefficients": {
+            "margin": 0.5496250415902133
+          }
+        }
+      ]
+    },
+    "bucket_component_fit": {
+      "n": 1615,
+      "mae": 10.31151550093951,
+      "ats": [
+        765,
+        817,
+        33
+      ],
+      "ats_rate": 0.4835651074589128,
+      "underdog_side_share": 0.6829721362229102,
+      "residual_sd": 13.301618203991186,
+      "calibration_intercept": 0.7430844216028386,
+      "calibration_slope": 0.8963127984344338,
+      "folds": [
+        {
+          "test_season": 2021,
+          "regime": "weeks_1_4",
+          "n_train": 63,
+          "intercept": 0.8814296746261473,
+          "coefficients": {
+            "rating_margin": 1.097736640867185,
+            "efficiency_margin": -0.7229805698837994
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_5_9",
+          "n_train": 70,
+          "intercept": -1.00566461201512,
+          "coefficients": {
+            "rating_margin": 0.5940337309376488,
+            "efficiency_margin": -0.2931600305162737
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_10_18",
+          "n_train": 123,
+          "intercept": -2.820675785580755,
+          "coefficients": {
+            "rating_margin": 0.3447856105569711,
+            "efficiency_margin": 1.4496061754784797
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_1_4",
+          "n_train": 127,
+          "intercept": -0.7181035549511096,
+          "coefficients": {
+            "rating_margin": 0.4699364177003663,
+            "efficiency_margin": 0.42573679759305055
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_5_9",
+          "n_train": 142,
+          "intercept": -1.240091184354396,
+          "coefficients": {
+            "rating_margin": 0.7656090637078466,
+            "efficiency_margin": -0.06410111125311832
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_10_18",
+          "n_train": 259,
+          "intercept": 0.17694685315935468,
+          "coefficients": {
+            "rating_margin": 0.6365857578086702,
+            "efficiency_margin": 0.5866026362164162
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_1_4",
+          "n_train": 191,
+          "intercept": -0.07322690464331248,
+          "coefficients": {
+            "rating_margin": 0.3924043260024076,
+            "efficiency_margin": 0.287092542340568
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_5_9",
+          "n_train": 214,
+          "intercept": -0.06083166509834592,
+          "coefficients": {
+            "rating_margin": 0.7622105490491122,
+            "efficiency_margin": -0.1524791466496582
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_10_18",
+          "n_train": 394,
+          "intercept": 0.2828229910508118,
+          "coefficients": {
+            "rating_margin": 0.5483808350555434,
+            "efficiency_margin": 0.6489802003401597
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_1_4",
+          "n_train": 255,
+          "intercept": -0.438181898116325,
+          "coefficients": {
+            "rating_margin": 0.2996350982194801,
+            "efficiency_margin": 0.7414453834495528
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_5_9",
+          "n_train": 286,
+          "intercept": 0.8738024459895379,
+          "coefficients": {
+            "rating_margin": 0.7774500985219882,
+            "efficiency_margin": -0.2726397314725528
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_10_18",
+          "n_train": 530,
+          "intercept": 0.43739407324841384,
+          "coefficients": {
+            "rating_margin": 0.48776456334059304,
+            "efficiency_margin": 0.7348679259530526
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_1_4",
+          "n_train": 319,
+          "intercept": -0.29820815528216,
+          "coefficients": {
+            "rating_margin": 0.36674016888995964,
+            "efficiency_margin": 0.5594168355847553
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_5_9",
+          "n_train": 360,
+          "intercept": 0.681671710932245,
+          "coefficients": {
+            "rating_margin": 0.8198287846781015,
+            "efficiency_margin": -0.19538720576242782
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_10_18",
+          "n_train": 664,
+          "intercept": 0.49756169198839434,
+          "coefficients": {
+            "rating_margin": 0.5562881866569249,
+            "efficiency_margin": 0.675627725478127
+          }
+        }
+      ]
+    }
+  },
+  "total": {
+    "training_league_mean": {
+      "n": 1615,
+      "mae": 10.970211768294313,
+      "ou": [
+        786,
+        813,
+        16
+      ],
+      "ou_rate": 0.4915572232645403,
+      "residual_sd": 13.7981399851924,
+      "calibration_intercept": 187.1624216152747,
+      "calibration_slope": -3.0887739285635476,
+      "folds": []
+    },
+    "baseline_shrunk": {
+      "n": 1615,
+      "mae": 10.659841053387332,
+      "ou": [
+        794,
+        805,
+        16
+      ],
+      "ou_rate": 0.4965603502188868,
+      "residual_sd": 13.47786239340957,
+      "calibration_intercept": 1.6333792106965401,
+      "calibration_slope": 0.9628812042881226,
+      "folds": []
+    },
+    "global_affine": {
+      "n": 1615,
+      "mae": 10.798825309888134,
+      "ou": [
+        792,
+        807,
+        16
+      ],
+      "ou_rate": 0.49530956848030017,
+      "residual_sd": 13.662941147112178,
+      "calibration_intercept": 18.46563639488376,
+      "calibration_slope": 0.5921421921306309,
+      "folds": [
+        {
+          "test_season": 2021,
+          "regime": "all",
+          "n_train": 256,
+          "intercept": -19.086228775710744,
+          "coefficients": {
+            "total": 1.458782730836161
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "all",
+          "n_train": 528,
+          "intercept": 5.298687073459843,
+          "coefficients": {
+            "total": 0.8899150950540375
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "all",
+          "n_train": 799,
+          "intercept": -4.3256025604369945,
+          "coefficients": {
+            "total": 1.0750060636453442
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "all",
+          "n_train": 1071,
+          "intercept": 2.4103015410843613,
+          "coefficients": {
+            "total": 0.9330370405458542
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "all",
+          "n_train": 1343,
+          "intercept": 5.326992636024182,
+          "coefficients": {
+            "total": 0.8792862787157197
+          }
+        }
+      ]
+    },
+    "bucket_affine": {
+      "n": 1615,
+      "mae": 10.860965018593436,
+      "ou": [
+        764,
+        835,
+        16
+      ],
+      "ou_rate": 0.47779862414008756,
+      "residual_sd": 13.723261698231672,
+      "calibration_intercept": 21.46224509404292,
+      "calibration_slope": 0.5271858161615548,
+      "folds": [
+        {
+          "test_season": 2021,
+          "regime": "weeks_1_4",
+          "n_train": 63,
+          "intercept": -25.790313414813156,
+          "coefficients": {
+            "total": 1.6622153639678088
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_5_9",
+          "n_train": 70,
+          "intercept": -23.13745373202852,
+          "coefficients": {
+            "total": 1.5489425514798685
+          }
+        },
+        {
+          "test_season": 2021,
+          "regime": "weeks_10_18",
+          "n_train": 123,
+          "intercept": -23.52195308586982,
+          "coefficients": {
+            "total": 1.5204333195893798
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_1_4",
+          "n_train": 127,
+          "intercept": -4.786200720137005,
+          "coefficients": {
+            "total": 1.1362591809323679
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_5_9",
+          "n_train": 142,
+          "intercept": 43.70568054999549,
+          "coefficients": {
+            "total": 0.09545264237672335
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "weeks_10_18",
+          "n_train": 259,
+          "intercept": -15.37785922627749,
+          "coefficients": {
+            "total": 1.3049567552884782
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_1_4",
+          "n_train": 191,
+          "intercept": -23.59512981021206,
+          "coefficients": {
+            "total": 1.5061685444174753
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_5_9",
+          "n_train": 214,
+          "intercept": 25.783231409460285,
+          "coefficients": {
+            "total": 0.43998546736201993
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "weeks_10_18",
+          "n_train": 394,
+          "intercept": -15.979312379677419,
+          "coefficients": {
+            "total": 1.3119309857803074
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_1_4",
+          "n_train": 255,
+          "intercept": -8.842202682541666,
+          "coefficients": {
+            "total": 1.1942504229516988
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_5_9",
+          "n_train": 286,
+          "intercept": 20.576149820664867,
+          "coefficients": {
+            "total": 0.5357692120057458
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "weeks_10_18",
+          "n_train": 530,
+          "intercept": -3.64817964567256,
+          "coefficients": {
+            "total": 1.058849896872741
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_1_4",
+          "n_train": 319,
+          "intercept": -9.125182725966344,
+          "coefficients": {
+            "total": 1.2012084662206415
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_5_9",
+          "n_train": 360,
+          "intercept": 21.84555284632783,
+          "coefficients": {
+            "total": 0.5223515155964934
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "weeks_10_18",
+          "n_train": 664,
+          "intercept": 1.9379453700832485,
+          "coefficients": {
+            "total": 0.9488253282739534
+          }
+        }
+      ]
+    },
+    "week_affine": {
+      "n": 1615,
+      "mae": 10.758193343181567,
+      "ou": [
+        795,
+        804,
+        16
+      ],
+      "ou_rate": 0.4971857410881801,
+      "residual_sd": 13.648320094054426,
+      "calibration_intercept": 18.638825198188737,
+      "calibration_slope": 0.5955407961464471,
+      "folds": [
+        {
+          "test_season": 2022,
+          "regime": "1",
+          "n_train": 32,
+          "intercept": -36.880778179521236,
+          "coefficients": {
+            "total": 1.797620519739583
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "2",
+          "n_train": 32,
+          "intercept": -30.420515775504263,
+          "coefficients": {
+            "total": 1.7085774880046474
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "3",
+          "n_train": 32,
+          "intercept": 9.226713419284227,
+          "coefficients": {
+            "total": 0.8310355354166816
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "15",
+          "n_train": 32,
+          "intercept": -13.224103337172751,
+          "coefficients": {
+            "total": 1.2390648411838565
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "16",
+          "n_train": 32,
+          "intercept": 27.343590546974394,
+          "coefficients": {
+            "total": 0.4161763011960316
+          }
+        },
+        {
+          "test_season": 2022,
+          "regime": "17",
+          "n_train": 32,
+          "intercept": -152.99810876722006,
+          "coefficients": {
+            "total": 4.25692599451486
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "1",
+          "n_train": 48,
+          "intercept": -29.34143786512289,
+          "coefficients": {
+            "total": 1.600581707903713
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "2",
+          "n_train": 48,
+          "intercept": -44.15517472041308,
+          "coefficients": {
+            "total": 1.9600907816163595
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "3",
+          "n_train": 48,
+          "intercept": -9.985821520170017,
+          "coefficients": {
+            "total": 1.1892704674248047
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "4",
+          "n_train": 47,
+          "intercept": -11.58227376196681,
+          "coefficients": {
+            "total": 1.290434979383235
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "5",
+          "n_train": 46,
+          "intercept": 1.6666168557682657,
+          "coefficients": {
+            "total": 0.9801347253886916
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "6",
+          "n_train": 42,
+          "intercept": -1.5958211493895471,
+          "coefficients": {
+            "total": 1.0009430552700525
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "7",
+          "n_train": 41,
+          "intercept": -9.024489691860333,
+          "coefficients": {
+            "total": 1.1570566107224185
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "8",
+          "n_train": 44,
+          "intercept": 94.98914170042835,
+          "coefficients": {
+            "total": -1.022225309773051
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "9",
+          "n_train": 41,
+          "intercept": 57.106458175186056,
+          "coefficients": {
+            "total": -0.22124346318472554
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "10",
+          "n_train": 42,
+          "intercept": 39.684199623853054,
+          "coefficients": {
+            "total": 0.10683152344584304
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "11",
+          "n_train": 43,
+          "intercept": 3.7242797689510057,
+          "coefficients": {
+            "total": 0.8486044598082689
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "12",
+          "n_train": 47,
+          "intercept": -55.54232149189943,
+          "coefficients": {
+            "total": 2.1448663392741607
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "13",
+          "n_train": 44,
+          "intercept": -9.839125070023005,
+          "coefficients": {
+            "total": 1.174945156503135
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "14",
+          "n_train": 43,
+          "intercept": 2.8899356506805702,
+          "coefficients": {
+            "total": 0.9619038102568388
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "15",
+          "n_train": 48,
+          "intercept": -16.829432499589537,
+          "coefficients": {
+            "total": 1.324887021848878
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "16",
+          "n_train": 48,
+          "intercept": 62.30604075103789,
+          "coefficients": {
+            "total": -0.3652417065922406
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "17",
+          "n_train": 47,
+          "intercept": -139.26274851399427,
+          "coefficients": {
+            "total": 3.9781706255865195
+          }
+        },
+        {
+          "test_season": 2023,
+          "regime": "18",
+          "n_train": 32,
+          "intercept": -27.11995407485544,
+          "coefficients": {
+            "total": 1.5749583514720409
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "1",
+          "n_train": 64,
+          "intercept": -24.22612303213613,
+          "coefficients": {
+            "total": 1.4791975951050378
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "2",
+          "n_train": 64,
+          "intercept": -0.6431155925883598,
+          "coefficients": {
+            "total": 1.0618667302871014
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "3",
+          "n_train": 64,
+          "intercept": -6.115686412855857,
+          "coefficients": {
+            "total": 1.1119312206664913
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "4",
+          "n_train": 63,
+          "intercept": -7.314640948243055,
+          "coefficients": {
+            "total": 1.1869881257491086
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "5",
+          "n_train": 60,
+          "intercept": 5.3983087794167846,
+          "coefficients": {
+            "total": 0.9003992012522632
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "6",
+          "n_train": 57,
+          "intercept": -15.311284164829287,
+          "coefficients": {
+            "total": 1.2615377963939796
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "7",
+          "n_train": 54,
+          "intercept": 11.206946098908412,
+          "coefficients": {
+            "total": 0.7308772103493497
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "8",
+          "n_train": 60,
+          "intercept": 79.77244758843035,
+          "coefficients": {
+            "total": -0.7245178527190196
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "9",
+          "n_train": 55,
+          "intercept": 23.193392901904076,
+          "coefficients": {
+            "total": 0.47321327294889165
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "10",
+          "n_train": 56,
+          "intercept": 28.65067421273227,
+          "coefficients": {
+            "total": 0.3516099673439166
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "11",
+          "n_train": 57,
+          "intercept": 6.160573471785179,
+          "coefficients": {
+            "total": 0.7980173318247828
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "12",
+          "n_train": 63,
+          "intercept": -41.840449806719455,
+          "coefficients": {
+            "total": 1.8681923934958793
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "13",
+          "n_train": 57,
+          "intercept": -0.4823509449659199,
+          "coefficients": {
+            "total": 1.003618791056613
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "14",
+          "n_train": 58,
+          "intercept": -0.5834001476502717,
+          "coefficients": {
+            "total": 1.0243363816372228
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "15",
+          "n_train": 64,
+          "intercept": -24.20670704416561,
+          "coefficients": {
+            "total": 1.50479238176637
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "16",
+          "n_train": 64,
+          "intercept": 76.70691423494382,
+          "coefficients": {
+            "total": -0.6682408225148225
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "17",
+          "n_train": 63,
+          "intercept": -43.298997637730665,
+          "coefficients": {
+            "total": 1.954743962164622
+          }
+        },
+        {
+          "test_season": 2024,
+          "regime": "18",
+          "n_train": 48,
+          "intercept": -38.46501283317922,
+          "coefficients": {
+            "total": 1.7933329809124368
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "1",
+          "n_train": 80,
+          "intercept": -4.245413740436067,
+          "coefficients": {
+            "total": 1.0685703186510163
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "2",
+          "n_train": 80,
+          "intercept": -14.264096734578159,
+          "coefficients": {
+            "total": 1.3343441410491619
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "3",
+          "n_train": 80,
+          "intercept": -3.370325303641068,
+          "coefficients": {
+            "total": 1.050232928614755
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "4",
+          "n_train": 79,
+          "intercept": -15.609128619708546,
+          "coefficients": {
+            "total": 1.3739325422322894
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "5",
+          "n_train": 74,
+          "intercept": 4.722250322865205,
+          "coefficients": {
+            "total": 0.9335647825274482
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "6",
+          "n_train": 71,
+          "intercept": 7.433622511937993,
+          "coefficients": {
+            "total": 0.8071675592778326
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "7",
+          "n_train": 69,
+          "intercept": 12.962086558120799,
+          "coefficients": {
+            "total": 0.6970426441249926
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "8",
+          "n_train": 76,
+          "intercept": 67.3723713825352,
+          "coefficients": {
+            "total": -0.4513510948565629
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "9",
+          "n_train": 70,
+          "intercept": 19.536337769967215,
+          "coefficients": {
+            "total": 0.5589479077312499
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "10",
+          "n_train": 70,
+          "intercept": 5.102837713648472,
+          "coefficients": {
+            "total": 0.8468736572418994
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "11",
+          "n_train": 71,
+          "intercept": 18.837253954614916,
+          "coefficients": {
+            "total": 0.5455524695435827
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "12",
+          "n_train": 76,
+          "intercept": -8.609930010803556,
+          "coefficients": {
+            "total": 1.170422925015715
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "13",
+          "n_train": 73,
+          "intercept": 31.39071257947241,
+          "coefficients": {
+            "total": 0.3293651137408612
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "14",
+          "n_train": 71,
+          "intercept": -12.133688718022894,
+          "coefficients": {
+            "total": 1.2841131192860429
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "15",
+          "n_train": 80,
+          "intercept": -29.17729281260737,
+          "coefficients": {
+            "total": 1.6193399955708074
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "16",
+          "n_train": 80,
+          "intercept": 86.2789607800059,
+          "coefficients": {
+            "total": -0.8718109667084889
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "17",
+          "n_train": 79,
+          "intercept": -44.40833136173234,
+          "coefficients": {
+            "total": 1.981270993513768
+          }
+        },
+        {
+          "test_season": 2025,
+          "regime": "18",
+          "n_train": 64,
+          "intercept": -33.81213999759529,
+          "coefficients": {
+            "total": 1.7229075132256573
+          }
+        }
+      ]
+    }
+  },
+  "market": {
+    "margin_mae": 9.764396284829722,
+    "total_mae": 10.28328173374613
+  },
+  "by_regime": {
+    "weeks_1_4": {
+      "baseline_margin": {
+        "n": 383,
+        "mae": 9.973997262349354,
+        "ats": [
+          177,
+          197,
+          9
+        ],
+        "ats_rate": 0.4732620320855615,
+        "underdog_side_share": 0.6449086161879896,
+        "residual_sd": 13.009749444320645,
+        "calibration_intercept": 0.4751653791224287,
+        "calibration_slope": 0.8676669998086046
+      },
+      "baseline_total": {
+        "n": 383,
+        "mae": 10.388440498777406,
+        "ou": [
+          190,
+          191,
+          2
+        ],
+        "ou_rate": 0.49868766404199477,
+        "residual_sd": 12.967776274895181,
+        "calibration_intercept": -8.612985285470483,
+        "calibration_slope": 1.1950786826805602
+      },
+      "market_margin_mae": 9.51958224543081,
+      "market_total_mae": 10.148825065274151
+    },
+    "weeks_5_9": {
+      "baseline_margin": {
+        "n": 431,
+        "mae": 10.439772020132544,
+        "ats": [
+          218,
+          206,
+          7
+        ],
+        "ats_rate": 0.5141509433962265,
+        "underdog_side_share": 0.7122969837587007,
+        "residual_sd": 13.462814033496691,
+        "calibration_intercept": 0.12495540776527733,
+        "calibration_slope": 0.9055213551099965
+      },
+      "baseline_total": {
+        "n": 431,
+        "mae": 10.361787672661709,
+        "ou": [
+          214,
+          211,
+          6
+        ],
+        "ou_rate": 0.5035294117647059,
+        "residual_sd": 13.191404312020916,
+        "calibration_intercept": 20.74807442267227,
+        "calibration_slope": 0.5510953773247481
+      },
+      "market_margin_mae": 10.106728538283063,
+      "market_total_mae": 10.106728538283063
+    },
+    "weeks_10_18": {
+      "baseline_margin": {
+        "n": 801,
+        "mae": 10.234257616653824,
+        "ats": [
+          389,
+          395,
+          17
+        ],
+        "ats_rate": 0.4961734693877551,
+        "underdog_side_share": 0.766541822721598,
+        "residual_sd": 13.120121611779902,
+        "calibration_intercept": 0.40904677394075656,
+        "calibration_slope": 1.1877280243585102
+      },
+      "baseline_total": {
+        "n": 801,
+        "mae": 10.94998764453383,
+        "ou": [
+          390,
+          403,
+          8
+        ],
+        "ou_rate": 0.4918032786885246,
+        "residual_sd": 13.873792494789132,
+        "calibration_intercept": -6.0553214707171925,
+        "calibration_slope": 1.1245124071141326
+      },
+      "market_margin_mae": 9.69725343320849,
+      "market_total_mae": 10.442571785268415
+    }
+  }
+}

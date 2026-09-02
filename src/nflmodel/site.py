@@ -21,6 +21,8 @@ implies over a whole schedule (`divisions`). All three read the same
 from __future__ import annotations
 
 import html
+import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -42,23 +44,25 @@ _FONT_IMPORT = (
 
 e = html.escape
 
-# Measured on 2,383 out-of-sample games. Kept in one place so the hero tiles, the
-# methodology table and the module docstrings cannot drift apart.
+# Strict expanding-season audit: every scored season uses coefficients fit only
+# on earlier seasons.  The older 2,383-game leave-one-season-out fit remains the
+# coefficient-selection record, not the headline historical simulation.
 EVIDENCE = {
-    "games": 2383,
-    "seasons": "2017-2025",
-    "margin_model": 10.3134,
-    "margin_market": 9.8708,
-    "margin_ratings_only": 10.4298,
-    "ats": (1158, 1165, 60),
-    "ats_rate": 0.4985,
-    "ats_ci": (0.4782, 0.5188),
-    "total_model": 10.8076,
-    "total_market": 10.4700,
-    "total_league_mean": 11.0423,
-    "ou_rate": 0.4909,
-    "margin_slope": 1.035,
-    "total_slope": 0.907,
+    "games": 1615,
+    "seasons": "2020-2025",
+    "margin_model": 10.2274,
+    "margin_market": 9.7644,
+    "margin_ratings_only": 10.3374,
+    "ats": (784, 798, 33),
+    "ats_rate": 0.4956,
+    "ats_ci": (0.4709, 0.5202),
+    "underdog_share": 0.7232,
+    "total_model": 10.6598,
+    "total_market": 10.2833,
+    "total_league_mean": 10.9702,
+    "ou_rate": 0.4966,
+    "margin_slope": 1.034,
+    "total_slope": 0.963,
 }
 
 
@@ -175,19 +179,71 @@ def _hero(slate, built_at: str) -> str:
 </header>"""
 
 
+def _age_label(seconds) -> str:
+    if seconds is None:
+        return "unknown age"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s old"
+    if seconds < 3600:
+        return f"{seconds // 60}m old"
+    return f"{seconds / 3600:.1f}h old"
+
+
+def _health_block(health: dict | None, record: dict | None) -> str:
+    if not health:
+        return ""
+    odds = health.get("odds") or {}
+    sources = health.get("nflverse") or []
+    issues = health.get("issues") or []
+    state = health.get("state", "unknown")
+    tone = "ops-ok" if state == "fresh" else "ops-warn"
+    state_label = "All publication checks passed" if state == "fresh" else "Data degraded"
+    matched = int(odds.get("slate_complete") or 0)
+    slate_games = int(odds.get("slate_games") or 0)
+    ages = [row.get("age_seconds") for row in sources if row.get("age_seconds") is not None]
+    oldest = max(ages) if ages else None
+    remaining = odds.get("remaining")
+    age = _age_label(odds.get("age_seconds"))
+    quota = f"{remaining} credits remain · snapshot {age}"
+    if remaining is None:
+        quota = f"quota unavailable · snapshot {age}"
+    graded = int((record or {}).get("games_graded") or 0)
+    pending = int((record or {}).get("pending_snapshots") or 0)
+    issue_html = "".join(f"<li>{e(str(issue))}</li>" for issue in issues)
+    issue_block = f'<ul class="ops-issues">{issue_html}</ul>' if issue_html else ""
+    return f"""
+<section class="ops {tone}" aria-label="Production data health">
+  <div class="ops-title"><strong>{e(state_label)}</strong>
+    <span>verified {e(str(health.get('generated_at', '')))}</span></div>
+  <div class="ops-grid">
+    <div><span class="ops-k">nflverse inputs</span><strong>{len(sources)} sources</strong>
+      <small>oldest snapshot {_age_label(oldest)}</small></div>
+    <div><span class="ops-k">DraftKings lines</span>
+      <strong>{matched}/{slate_games} complete</strong>
+      <small>{e(quota)}</small></div>
+    <div><span class="ops-k">Model protocol</span><strong>time-forward audited</strong>
+      <small>independent projection remains research-only</small></div>
+    <div><span class="ops-k">2026 shadow record</span><strong>{graded} graded</strong>
+      <small>{pending} pre-kickoff snapshot(s) pending</small></div>
+  </div>
+  {issue_block}
+</section>"""
+
+
 def _tiles() -> str:
     wins, losses, pushes = EVIDENCE["ats"]
     low, high = EVIDENCE["ats_ci"]
     data = [
         (f"{EVIDENCE['margin_model']:.4f}", "Model margin MAE",
-         f"points per game, {EVIDENCE['seasons']} out of sample"),
+         f"points per game, {EVIDENCE['seasons']} time-forward"),
         (f"{EVIDENCE['margin_market']:.4f}", "Market margin MAE",
-         "closing spread on the same games"),
+         "closing benchmark on the same games"),
         (f"{EVIDENCE['ats_rate']:.2%}", "ATS on disagreements",
          f"{wins}-{losses}-{pushes} &middot; 95% CI [{low:.1%}, {high:.1%}] "
          f"&middot; breakeven 52.38%"),
         (f"{EVIDENCE['games']:,}", "Games evaluated",
-         "leave-one-season-out, point-in-time"),
+         "expanding seasons, point-in-time"),
     ]
     return '<div class="tiles">' + "".join(
         f'<div class="tile"><span class="tile-v">{value}</span>'
@@ -212,7 +268,7 @@ def _authority_section(authority) -> str:
     <h2>What these numbers may be used for</h2>
     <p class="blurb">A probability and a permission are different things, and conflating
     them is how an unpromoted model becomes a bet. Measured out of sample this model is
-    <b>0.44 points worse</b> than the closing spread and covers <b>49.85%</b> of its own
+    <b>0.46 points worse</b> than the closing spread and covers <b>49.56%</b> of its own
     disagreements &mdash; an interval that contains 50% and sits entirely below the 52.38%
     breakeven. It is therefore <b>{e(authority.level.value)}</b> and may never emit a bet.</p>
   </div>
@@ -248,8 +304,9 @@ def _board_section(slate) -> str:
     and total &mdash; not from the published margin, which at &lambda;&nbsp;=&nbsp;0 is just the
     market wearing the model&rsquo;s label. Each card shows the market number beside it so the
     disagreement is visible; that disagreement is reported as a <b>gap</b>, never an edge.
-    The <b>Picks</b> counter counts priced markets ({priced} of {len(slate.games)} games have
-    one) &mdash; it is not a count of recommendations, and this authority permits none.</p>
+    The <b>Picks</b> counter counts {board.picks} verified sportsbook market prices across
+    {priced} of {len(slate.games)} games &mdash; it is not a count of recommendations, and
+    this authority permits none.</p>
   </div>
   {board_html(board)}
 </section>"""
@@ -435,7 +492,7 @@ def _disagreements_section(slate) -> str:
     scanning sixteen cards cannot see which games the model actually has an
     opinion about; a ranked table answers that in one look.
 
-    It ranks *disagreement*, not confidence. The model is 0.44 points worse than
+    It ranks *disagreement*, not confidence. The model is 0.46 points worse than
     this line out of sample, so a wide gap is at least as likely to be the model
     missing something as the market being wrong -- which is why the column is
     headed Gap and the blurb says so rather than leaving it implied.
@@ -448,7 +505,7 @@ def _disagreements_section(slate) -> str:
     for rank, p in enumerate(priced, start=1):
         side = p.home if p.market_gap > 0 else p.away
         day = p.kickoff.split(" · ")[0] if p.kickoff else ""
-        market_total = (f"{p.market_total:.1f}" if p.market_total is not None
+        market_total = (f"{p.comparison_total:.1f}" if p.comparison_total is not None
                         else "&ndash;")
         rows.append(
             f'<tr><td class="rank">{rank}</td>'
@@ -456,7 +513,7 @@ def _disagreements_section(slate) -> str:
             f'<span class="dim">at</span>{_logo(p.home, 20)}<b>{e(p.home)}</b></span></td>'
             f'<td class="dim">{e(day)}</td>'
             f'<td class="num">{_handicap(p.model_margin, p.home, p.away)}</td>'
-            f'<td class="num dim">{_handicap(p.market_margin, p.home, p.away)}</td>'
+            f'<td class="num dim">{_handicap(p.comparison_margin, p.home, p.away)}</td>'
             f'<td class="num score">{e(side)} {abs(p.market_gap):.1f}</td>'
             f'<td class="num">{p.projected_total:.1f}</td>'
             f'<td class="num dim">{market_total}</td>'
@@ -471,14 +528,15 @@ def _disagreements_section(slate) -> str:
     <p class="blurb">All {len(priced)} priced games, widest disagreement first. The biggest is
     <b>{e(widest.away)} at {e(widest.home)}</b>, where the model is
     <b>{abs(widest.market_gap):.1f} points</b> on {e(lean)}. Read this as a map of where the
-    model has an opinion, <b>not</b> as a card: measured out of sample it is 0.44 points worse
-    than this line and covers 49.85% of exactly these disagreements, so a wide gap is at least
+    model has an opinion, <b>not</b> as a card: measured time-forward it is 0.46 points worse
+    than this line and covers 49.56% of exactly these disagreements, so a wide gap is at least
     as likely to be the model missing an injury as the market being wrong.</p>
   </div>
   <div class="tablewrap"><table class="pr">
     <thead><tr><th>#</th><th>Matchup</th><th>Day</th><th class="num">Model</th>
-    <th class="num">Market</th><th class="num">Gap</th><th class="num">Total</th>
-    <th class="num">Mkt</th><th class="num">Diff</th></tr></thead>
+    <th class="num">DraftKings / benchmark</th><th class="num">Gap</th>
+    <th class="num">Total</th><th class="num">DK / benchmark</th>
+    <th class="num">Diff</th></tr></thead>
     <tbody>{"".join(rows)}</tbody></table></div>
 </section>"""
 
@@ -548,9 +606,11 @@ def _method_section() -> str:
   <div class="sec-head">
     <span class="kicker">Method &middot; 08</span>
     <h2>How the numbers are built</h2>
-    <p class="blurb">Every constant below was measured on {EVIDENCE['games']:,}
-    out-of-sample games rather than assumed, and the sweeps that came back flat are labelled
-    as flat. Reproduce with <code>python scripts/fit_matrix.py</code>.</p>
+    <p class="blurb">Performance below was remeasured on {EVIDENCE['games']:,} games.
+    Coefficients are expanding-season; the frozen specification and hyperparameters were selected
+    in the legacy LOSO study, so this is retrospective rather than a locked prospective trial.
+    Reproduce with <code>python scripts/fit_matrix.py</code> and
+    <code>python scripts/audit_regimes.py</code>.</p>
   </div>
   <div class="mth">
     <div class="mth-card"><div class="mth-h">The matchup model</div>
@@ -608,7 +668,7 @@ def _method_section() -> str:
       slope near 0.63 &mdash; so it is shrunk {1 - totals.TOTAL_SHRINK:.0%} toward the league
       mean, which lifts the slope to {EVIDENCE['total_slope']:.2f}.</p>
       <table class="mth-tbl">
-      <tr><td>League mean total</td><td class="num">{EVIDENCE['total_league_mean']:.4f}</td></tr>
+      <tr><td>Past-only mean MAE</td><td class="num">{EVIDENCE['total_league_mean']:.4f}</td></tr>
       <tr><td>Model total</td><td class="num">{EVIDENCE['total_model']:.4f}</td></tr>
       <tr><td>Market total</td><td class="num">{EVIDENCE['total_market']:.4f}</td></tr>
       <tr><td>O/U on disagreements</td><td class="num">{EVIDENCE['ou_rate']:.2%}</td></tr>
@@ -621,12 +681,14 @@ def _method_section() -> str:
       <p>A game in week <em>W</em> is forecast only from completed games before <em>W</em>,
       blended with earlier seasons on a shrinkage of
       {int(__import__("nflmodel.preseason", fromlist=["x"]).BLEND_K)} games. Coefficients are
-      fitted leave-one-season-out, so no game is ever scored by a model that saw it &mdash;
-      the only fit whose MAE is comparable with the market&rsquo;s, because the market never
-      saw the answer either.</p></div>
+      selected leave-one-season-out, so no scored season enters its own coefficient fit.
+      The headline audit refits coefficients on earlier seasons and predicts the next,
+      expanding from 2020 through 2025. It freezes the LOSO-selected 2026 hyperparameters;
+      prospective proof comes from the shadow ledger. Both protocols are preserved.</p></div>
 
     <div class="mth-card"><div class="mth-h">Where this is weakest</div>
-      <p>The model is 0.44 points behind the closing line overall, and the gap is
+      <p>The model is 0.46 points behind the closing line in the strict time-forward audit,
+      and the gap is
       <em>widest</em> late (weeks 10&ndash;18: +0.55) rather than early (weeks 1&ndash;4:
       +0.39). That is the opposite of the college case, and the reason is availability: by
       November the market is pricing injuries and roster news this repo does not model at all,
@@ -660,9 +722,12 @@ def _footer(built_at: str) -> str:
 
 
 # ── page ─────────────────────────────────────────────────────────────────────
-def render(slate, outlooks) -> str:
-    built_at = datetime.now(UTC).strftime("%b %d %Y · %H:%M UTC")
-    body = (f"{_nav(slate)}{_hero(slate, built_at)}"
+def render(slate, outlooks, *, health: dict | None = None,
+           record: dict | None = None, generated_at: datetime | None = None) -> str:
+    moment = generated_at or datetime.now(UTC)
+    built_at = moment.strftime("%b %d %Y · %H:%M UTC")
+    body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
+            f"{_hero(slate, built_at)}"
             f'<main class="wrap">'
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
@@ -687,7 +752,10 @@ def render(slate, outlooks) -> str:
 
 def build_site(out: Path, season: int | None = None, week: int | None = None,
                simulations: int = divisions_mod.SIMULATIONS) -> Path:
-    """Assemble, simulate and write the dashboard."""
+    """Build one atomic, evidenced publication bundle."""
+    from . import export, ledger
+
+    generated_at = datetime.now(UTC).replace(microsecond=0)
     slate = season_mod.assemble(season, week)
     games = divisions_mod.build_games(
         [row for row in slate.schedule if row["season"] == slate.season],
@@ -695,8 +763,65 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         margin_of=season_mod.margin_for(slate.table, slate.forms),
     )
     outlooks = divisions_mod.simulate(games, slate.table, simulations=simulations)
+
+    issues = list(slate.issues)
+    for projection in slate.projections:
+        kickoff = projection.kickoff_utc
+        commence = projection.book_commence_time
+        if not kickoff or not commence:
+            continue
+        try:
+            left = datetime.fromisoformat(kickoff.replace("Z", "+00:00"))
+            right = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+        except ValueError:
+            issues.append(
+                f"Unparseable kickoff timestamp for {projection.away} at {projection.home}"
+            )
+            continue
+        if abs((left - right).total_seconds()) > 6 * 60 * 60:
+            issues.append(f"Kickoff mismatch for {projection.away} at {projection.home}")
+
+    try:
+        ledger_payload = ledger.update(
+            season=slate.season,
+            projections=slate.projections,
+            schedule=slate.schedule,
+            recorded_at=generated_at,
+        )
+        record = ledger_payload.get("summary", {})
+    except Exception as exc:
+        record = {}
+        issues.append(f"Shadow ledger unavailable: {type(exc).__name__}: {exc}")
+
+    odds = dict(slate.odds_status)
+    source_rows = slate.source_status
+    health = {
+        "state": "fresh" if not issues else "degraded",
+        "generated_at": generated_at.strftime("%Y-%m-%d %H:%M UTC"),
+        "season": slate.season,
+        "week": slate.week,
+        "nflverse": source_rows,
+        "odds": odds,
+        "issues": list(dict.fromkeys(issues)),
+    }
+    if os.getenv("NFL_REQUIRE_LIVE_ODDS", "").lower() in {"1", "true", "yes"}:
+        if odds.get("state") not in {"fresh", "cached"} or (
+            slate.games and int(odds.get("slate_complete") or 0) == 0
+        ):
+            raise RuntimeError("production build requires verified live DraftKings lines")
+
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(slate, outlooks), encoding="utf-8")
+    out.write_text(
+        render(slate, outlooks, health=health, record=record, generated_at=generated_at),
+        encoding="utf-8",
+    )
+    export.write(slate, out.parent / "board.json", outlooks)
+    (out.parent / "build.json").write_text(
+        json.dumps(health, indent=2) + "\n", encoding="utf-8"
+    )
+    (out.parent / "record.json").write_text(
+        json.dumps(record, indent=2) + "\n", encoding="utf-8"
+    )
     return out
 
 
@@ -725,6 +850,22 @@ background-clip:text;color:transparent}
 .product-tag{font-family:var(--font-display);font-weight:700;font-size:11px;
 letter-spacing:.14em;color:var(--v-light);border:1px solid var(--ca-brand-border);
 border-radius:999px;padding:5px 11px;white-space:nowrap}
+.ops{margin-top:18px;padding:14px 16px;background:var(--ca-panel-glass);
+border:1px solid var(--border-soft);border-radius:var(--ca-card-radius)}
+.ops.ops-ok{border-color:var(--ca-green)}
+.ops.ops-warn{border-color:var(--gold)}
+.ops-title{display:flex;align-items:center;justify-content:space-between;gap:12px;
+font-family:var(--font-display);font-size:var(--mm-text-xs);text-transform:uppercase;
+letter-spacing:.08em}
+.ops-title strong{color:var(--text)}.ops-title span{color:var(--text-3)}
+.ops-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;
+margin-top:12px}
+.ops-grid>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ops-grid strong{font-family:var(--font-display);font-size:var(--mm-text-md);color:var(--text)}
+.ops-grid small{color:var(--text-3)}
+.ops-k{font-family:var(--font-display);font-size:var(--mm-text-2xs);font-weight:700;
+text-transform:uppercase;letter-spacing:.09em;color:var(--text-3)}
+.ops-issues{margin:12px 0 0 18px;color:var(--gold);font-size:var(--mm-text-xs)}
 .hero{padding:60px 0 38px;border-bottom:1px solid var(--border-soft)}
 /* Display type is the shared identity across the lab: the same clamp, weight,
    uppercase and 125% stretch that mlb-model, wnba-edge-model and cfb-model use.

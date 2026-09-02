@@ -8,3 +8,4 @@ artifacts/
 .env
 _site/
 _smoke/
+_live/

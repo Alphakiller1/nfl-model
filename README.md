@@ -1,7 +1,8 @@
 # nfl-model
 
 **Live dashboard:** https://alphakiller1.github.io/nfl-model/ — rebuilt by
-`.github/workflows/deploy-pages.yml` on every push to `main` and on a Tuesday cron.
+`.github/workflows/deploy-pages.yml` on every push to `main`, Tuesday line-open,
+and NFL game-day refreshes during the regular season.
 
 Sibling boards on the same shared kernel: [MLB](https://alphakiller1.github.io/mlb-model/)
 · [WNBA](https://alphakiller1.github.io/wnba-edge-model/)
@@ -16,28 +17,43 @@ explicit **authority gate** on what any of it may be used for.
 ## The honest answer
 
 The model does **not** beat the closing market, and this repo says so in its output
-rather than hiding it. Measured leave-one-season-out on **2,383** regular-season
-games, 2017–2025, strictly point-in-time:
+rather than hiding it. Measured on **1,615** regular-season games from 2020–2025
+with expanding-season coefficients—every season's coefficients are fit on earlier
+seasons only:
 
 | | Model | Market | Gap |
 | --- | ---: | ---: | ---: |
-| Margin MAE | 10.3134 | 9.8708 | +0.4427 |
-| Total MAE | 10.8076 | 10.4700 | +0.3376 |
+| Margin MAE | 10.2274 | 9.7644 | +0.4630 |
+| Total MAE | 10.6598 | 10.2833 | +0.3766 |
 
-ATS on games where the model disagrees with the line: **1158–1165–60 = 49.85%**,
-95% CI [47.82%, 51.88%], against a 52.38% breakeven. The interval contains 50% and
+ATS on games where the model disagrees with the line: **784–798–33 = 49.56%**,
+95% CI [47.09%, 52.02%], against a 52.38% breakeven. The interval contains 50% and
 sits entirely below breakeven — unproven and slightly negative, not a signal.
+
+The audit also found that 72.32% of model/market disagreements point toward the
+market underdog. This is a measured symptom of an under-dispersed information
+set, especially when the market knows injuries and quarterback news the model
+does not. Global, week-specific, and regime-specific recalibrations all reduced
+that imbalance but worsened time-forward MAE and ATS, so none was adopted merely
+to make the slate look balanced.
 
 So `SPREAD_LAMBDA = 0`: the **published** margin is the market. The model's own
 number is shown beside it, and their difference is published as a **gap**, never
-an edge. Full evidence and every parameter sweep: [`reports/BASELINE_2016_2025.md`](reports/BASELINE_2016_2025.md).
+an edge. The coefficient-selection evidence is in
+[`reports/BASELINE_2016_2025.md`](reports/BASELINE_2016_2025.md); the stricter
+historical simulation and rejected alternatives are in
+[`reports/regime_audit_2026.json`](reports/regime_audit_2026.json).
+That audit freezes the 2026 specification and hyperparameters selected by the legacy
+leave-one-season-out study; it is a stricter retrospective sensitivity test, not a fully nested
+or locked prospective trial. The forward ledger is the prospective evidence.
 
 ## What it publishes
 
 | Section | What it answers |
 | --- | --- |
+| Operations | nflverse freshness, exact DraftKings coverage/quota, active model protocol, and forward-record state |
 | Authority | what the numbers may be used for, and which of the twelve gates are unmet |
-| Board | projected score, total, spread and moneyline per game, plus a factor-by-factor breakdown of *why* |
+| Board | verified DraftKings spread/total/paired moneylines first, then independent projections and a factor-by-factor breakdown |
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
 | Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
 | Offense & defense | both units ranked, with opponent-adjusted component rates graded by league percentile |
@@ -45,8 +61,8 @@ an edge. Full evidence and every parameter sweep: [`reports/BASELINE_2016_2025.m
 | Playoffs | the projected seven-team field per conference, with the cut line drawn |
 | Method | every fitted constant, and which sweeps came back flat |
 
-Each game card carries twelve tiles: three market projections, three shelves
-explaining which unit drives the number, and the **exact** decomposition of the
+Each game card keeps executable prices and model output on different shelves.
+It then shows which unit drives the number and the **exact** decomposition of the
 margin into its five efficiency families plus home field. Those addends sum to
 the efficiency margin to within 1e-14 — a breakdown whose parts do not add up to
 the number above it is worse than no breakdown, so `tests/test_matrix.py` pins
@@ -135,10 +151,12 @@ nfl-model build-site --out docs/index.html
 Every command defaults to the current season and the first week with an unplayed
 game, so a scheduled build needs no arguments.
 
-Data comes from [nflverse](https://github.com/nflverse) — `games.csv` for the
-schedule and market, `stats_team_week_<season>.csv` for box scores. **No API key**,
-and the package has **no third-party dependencies**: stdlib `urllib` plus `csv`,
-with completed seasons cached forever and volatile files on a 6-hour TTL.
+Performance data comes from [nflverse](https://github.com/nflverse) — `games.csv`
+for schedule/results/benchmark lines and `stats_team_week_<season>.csv` for box
+scores. Live executable prices come from The Odds API, locked to exactly
+DraftKings. The package has no runtime third-party dependencies: stdlib `urllib`
+plus `csv`, with completed seasons cached forever, volatile nflverse files on a
+6-hour TTL, and live odds cached for 15 minutes.
 
 The moneyline probability contract (`forecast_slate`) is unchanged and still
 market-anchored per `nfl-genesis`; `profit-priority` consumes it through
@@ -149,37 +167,28 @@ market-anchored per `nfl-genesis`; `profit-priority` consumes it through
 ```bash
 python scripts/fit_matrix.py            # full fit + parameter sweeps
 python scripts/fit_matrix.py --no-sweeps
+python scripts/audit_regimes.py         # expanding-season coefficient audit
 ```
 
 The script may use numpy; the package may not. Fitted values are copied into
 `matrix.py`, `totals.py`, `ratings.py` and `preseason.py` as constants, exactly as
 cfb-model does.
 
-## Genesis preseason outlook handoff
+## Genesis research boundary
 
-Week 1 projections and division leaders are published by `nfl-genesis`, not independently
-calculated here. The checked-in `src/nflmodel/genesis_outlook_2026.json` is a versioned,
-`RESEARCH_ONLY` handoff; the site refuses to render it if the schema, season, authority, game
-coverage, or probability totals are invalid. Refresh it from the Genesis repository:
-
-```powershell
-nfl-genesis publish-outlook --season 2026 `
-  --ratings .\src\nflmodel\power_ratings.json `
-  --week-one-schedule ..\nfl-genesis\artifacts\published\week_one_2026_schedule.json `
-  --destination .\src\nflmodel\genesis_outlook_2026.json
-```
-
-The current division output is explicitly a rating-leader projection, not a schedule-aware
-simulation. Only an artifact produced from a completed Genesis season simulation may make a
-schedule-aware division-title claim.
+[`nfl-genesis`](https://github.com/Alphakiller1/nfl-genesis) owns advanced
+challengers: play-by-play, quarterback/availability, weather, scheme, calibrated
+distributions, market comparison, and promotion gates. None of its unpromoted
+research priors is copied into this live matrix as a decorative weight. A
+challenger must first improve expanding-season results and clear its own gate.
 
 ## The dashboard
 
-`docs/index.html` and `docs/board.json` are a **committed snapshot** of the last
-local build, for review and as a fallback. GitHub Pages does **not** serve from
-`docs/` — `deploy-pages.yml` builds fresh from nflverse into `_site/` and uploads
-that as the Pages artifact, so a code change ships without anyone remembering to
-regenerate the snapshot.
+GitHub Pages is built fresh into `_site/`; committed HTML is never substituted
+for a failed live refresh. The release bundle contains `index.html`, `board.json`,
+`build.json`, and `record.json`. Deployment fails before upload if the slate is empty, the
+requested sportsbook is not exactly DraftKings, any game lacks a spread, total, or paired
+moneyline, the quote snapshot exceeds 20 minutes, a source is stale, or any artifact is invalid.
 
 `nfl-model build-site` renders a self-contained static page. It leads with the
 **authority gate** and only then shows the board, because a dashboard that put
@@ -201,7 +210,7 @@ What differs per sport is only the *adapter* (`board_nfl.py`):
 | Slot | MLB | WNBA | NFL |
 | --- | --- | --- | --- |
 | `principals` | starting pitchers | usage leaders | starting QBs, or head coaches until nflverse publishes them |
-| `groups` | Full Game, First 5 | Full Game | Full Game + an unpriced matchup shelf |
+| `groups` | Full Game, First 5 | Full Game | DraftKings live + independent model + explanatory shelves |
 | side `score` | expected runs | projected points | projected points |
 
 ## Design notes
@@ -224,3 +233,6 @@ What differs per sport is only the *adapter* (`board_nfl.py`):
 - **Flat sweeps are reported as flat.** The blowout cap, home field and the recency
   half-life all moved MAE by less than 0.01 points. They are published at their
   argmin and described as unidentified rather than dressed up as tuning.
+- **Live grading is immutable.** Every unique pre-kickoff DraftKings quote vintage
+  is recorded and graded later from the final score. The public record uses the
+  latest pre-kickoff snapshot per game and remains explicitly shadow-only.

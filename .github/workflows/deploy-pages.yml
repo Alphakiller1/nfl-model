@@ -5,9 +5,11 @@ on:
     branches:
       - main
   schedule:
-    # Tuesday 15:10 UTC — after the weekend's results have settled and the new
-    # week's lines have opened, before the slate matters. Matches cfb-model.
-    - cron: "10 15 * * 2"
+    # Regular-season refreshes are quota-aware: one exact DraftKings request
+    # carries h2h, spread and total.  Extra noon-ET snapshots cover the three
+    # NFL game days without spending credits year-round.
+    - cron: "10 14 * 1,9-12 2"
+    - cron: "10 16 * 1,9-12 0,1,4"
   workflow_dispatch:
     inputs:
       season:
@@ -40,50 +42,42 @@ jobs:
       - name: Install model
         run: pip install .
 
+      - name: Restore source snapshots and shadow ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/cache
+            data/runtime-cache
+          key: nfl-runtime-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            nfl-runtime-${{ runner.os }}-
+
       - name: Build static dashboard
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_BOOKMAKERS: draftkings
+          NFL_REQUIRE_LIVE_ODDS: "1"
+          PYTHONIOENCODING: utf-8
+          PYTHONUNBUFFERED: "1"
         run: |
           python -m nflmodel.cli build-site \
             --out _site/index.html \
             ${{ github.event.inputs.season && format('--season {0}', github.event.inputs.season) || '' }} \
             ${{ github.event.inputs.week && format('--week {0}', github.event.inputs.week) || '' }}
 
-      - name: Emit the JSON contract alongside the page
-        # Published next to the dashboard so a consumer reads the same numbers the
-        # page shows rather than scraping them back out of the HTML.
-        run: |
-          python -m nflmodel.cli export --out _site/board.json \
-            ${{ github.event.inputs.season && format('--season {0}', github.event.inputs.season) || '' }} \
-            ${{ github.event.inputs.week && format('--week {0}', github.event.inputs.week) || '' }}
-
       - name: Post-build smoke
         run: |
-          python - <<'EOF'
-          import json
-          from pathlib import Path
+          python scripts/smoke_site.py _site/index.html
+          python scripts/verify_build.py _site/build.json
 
-          html = Path('_site/index.html').read_text(encoding='utf-8')
-          order = ['id="authority"', 'id="board"', 'id="ratings"', 'id="units"',
-                   'id="divisions"', 'id="methodology"']
-          at = [html.index(marker) for marker in order]
-          assert at == sorted(at), 'sections out of order — gate must lead'
-          for key in ('RESEARCH_ONLY', 'bd-card', '1-800-GAMBLER', 'not betting advice'):
-              assert key in html, key
-          # A research-only build must never publish a CARD whose action reads BET.
-          # Matched on the rendered status element, not a bare ">BET<" — the
-          # methodology copy legitimately contains the word while explaining it
-          # can never happen.
-          assert 'bd-status is-pos">BET<' not in html, \
-              'BET action rendered under a research-only authority'
-          # A page that renders but carries no games is a source failure wearing a
-          # success. Fail here rather than publishing an empty board.
-          assert html.count('class="bd-card"') > 0, 'dashboard published with no games'
-
-          payload = json.loads(Path('_site/board.json').read_text(encoding='utf-8'))
-          assert payload['may_bet'] is False
-          assert payload['games'], 'export published with no games'
-          print(f"OK: {len(html)//1024} KB page, {len(payload['games'])} games, "
-                f"week {payload['week']} of {payload['season']}")
-          EOF
+      - name: Save source snapshots and shadow ledger
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/cache
+            data/runtime-cache
+          key: nfl-runtime-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

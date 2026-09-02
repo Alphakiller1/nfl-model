@@ -70,9 +70,9 @@ def _cmd_status(_: argparse.Namespace) -> int:
     print(f"  unmet production gates ({len(a.unmet_gates)}/{len(auth.REQUIRED_GATES)}):")
     for gate in a.unmet_gates:
         print(f"    - {gate}")
-    print("\n  Measured leave-one-season-out on 2,383 games (2017-2025):")
-    print("    margin  model 10.3134   market 9.8708   ATS 49.85% [47.8, 51.9]")
-    print("    total   model 10.8076   market 10.4700  O/U 49.09%")
+    print("\n  Measured expanding-season on 1,615 games (2020-2025):")
+    print("    margin  model 10.2274   market 9.7644   ATS 49.56% [47.1, 52.0]")
+    print("    total   model 10.6598   market 10.2833  O/U 49.66%")
     print("  The model does not beat the closing line. At lam = 0 the published")
     print("  price is the market, which is a calibrated price and not an edge.\n")
     return 0
@@ -102,14 +102,15 @@ def _cmd_board(args: argparse.Namespace) -> int:
         score = ("--" if p.projected_home_score is None
                  else f"{p.projected_away_score:.0f}-{p.projected_home_score:.0f}"
                       + ("" if p.total_modelled else "*"))
+        comparison_total = p.comparison_total
         if p.projected_total is None:
             total = "--"
         else:
             total = f"{p.projected_total:.1f}"
-            if p.market_total is not None:
-                total += f"/{p.market_total:.1f}"
+            if comparison_total is not None:
+                total += f"/{comparison_total:.1f}"
         model = season_mod.signed(p.model_margin)
-        market = season_mod.signed(p.market_margin)
+        market = season_mod.signed(p.comparison_margin)
         # Bracketed so it never reads as a tradable edge.
         gap = ("  --" if p.market_gap is None
                else f"({season_mod.signed(p.market_gap)})")
@@ -117,6 +118,7 @@ def _cmd_board(args: argparse.Namespace) -> int:
               f"{model:>7} {market:>7} {gap:>7}  {p.action}")
     print(f"\n  {len(slate.projections)} games - score is the MODEL projection "
           f"(away-home), total column is model/market")
+    print("  market is exact DraftKings when posted, otherwise the nflverse benchmark")
     print("  (parenthesised) = information gap, not an edge - "
           "published margin equals the market at lam=0")
     print("  * = league-mean total, no form available\n")

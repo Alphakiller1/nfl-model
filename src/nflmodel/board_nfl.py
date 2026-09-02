@@ -12,15 +12,15 @@ decisions.
   and the head coaches when it has not, with the label saying which. A card with
   an empty principal row looks like a failed image load; inventing a name would
   be worse than either.
-* **groups** are Full Game -- spread, total and moneyline -- plus an unpriced
-  matchup shelf that shows *why* the projection landed where it did.
+* **groups** put exact DraftKings spread/total/paired moneyline first, then keep
+  the independent model and explanatory matchup shelves separate.
 * **every tile carries the action its authority permits.** At `SPREAD_LAMBDA = 0`
   the published margin is the market, so a card showing a number without its
   permission would be a calibrated price dressed as an edge. `MONITOR` is the
   ceiling today; `BET` is unreachable while the authority is RESEARCH_ONLY.
 
-**On the "Picks" counter.** The kernel counts priced markets and labels the
-result Picks. These markets *are* priced -- that count is accurate -- but a
+**On the "Picks" counter.** The kernel counts verified market prices and labels
+the result Picks. These markets *are* priced -- that count is accurate -- but a
 priced market is not a recommendation, and the board's own copy says so rather
 than leaving the word to imply otherwise. Gems are always zero: a gem asserts an
 actionable edge and this authority permits none.
@@ -86,17 +86,19 @@ def _spread_tile(p: GameProjection) -> Tile:
     if p.model_margin is None:
         return Tile(label="Spread", value="—", state="no rating", tone="mut")
     state = "model only — no market price"
-    if p.market_margin is not None:
-        state = (f"market {_handicap(p.market_margin, p.home, p.away)} · "
+    if p.comparison_margin is not None:
+        source = p.book_name or "nflverse consensus"
+        state = (f"{source} {_handicap(p.comparison_margin, p.home, p.away)} · "
                  f"gap {p.market_gap:+.1f}")
     return Tile(
         label="Spread",
         value=_handicap(p.model_margin, p.home, p.away),
         state=state,
         tone=_ACTION_TONE.get(p.action, "mut"),
-        note=("Model margin against the closing line. The published margin equals the "
-              "market at lambda 0, so the difference is an information gap, not an edge."),
-        priced=p.market_margin is not None,
+        note=("Independent model margin against the exact DraftKings line when available, "
+              "otherwise the nflverse benchmark. At lambda 0 the difference is an "
+              "information gap, not an edge."),
+        priced=False,
     )
 
 
@@ -104,8 +106,9 @@ def _total_tile(p: GameProjection) -> Tile:
     if p.projected_total is None:
         return Tile(label="Total", value="—", state="no form", tone="mut")
     star = "" if p.total_modelled else "*"
-    if p.market_total is not None:
-        state = f"market {p.market_total:.1f} · gap {p.total_gap:+.1f}"
+    if p.comparison_total is not None:
+        source = p.book_name or "nflverse consensus"
+        state = f"{source} {p.comparison_total:.1f} · gap {p.total_gap:+.1f}"
     elif not p.total_modelled:
         state = "league mean — no form"
     else:
@@ -117,7 +120,7 @@ def _total_tile(p: GameProjection) -> Tile:
         tone=_ACTION_TONE.get(p.action, "mut"),
         note=("Model total, shrunk 30% toward the league mean because the raw estimate is "
               "over-dispersed. Residual SD is 13.7 points — read it as a centre of mass."),
-        priced=p.market_total is not None,
+        priced=False,
     )
 
 
@@ -149,10 +152,47 @@ def _moneyline_tile(p: GameProjection) -> Tile:
         value=f"{favourite} {probability * 100:.0f}%",
         state=state,
         tone=_ACTION_TONE.get(p.action, "mut"),
-        note=("Model win probability at its 13.32-point residual SD, against the "
+        note=("Model win probability at its 13.18-point time-forward residual SD, against the "
               "paired no-vig market on the same side. De-vigging is paired only; "
               "a one-sided fair price is guesswork."),
-        priced=p.market_fair_home is not None,
+        priced=False,
+    )
+
+
+def _book_group(p: GameProjection) -> Group:
+    """The executable quote, kept separate from every model-derived number."""
+    updated = f"updated {p.book_last_update}" if p.book_last_update else "update unavailable"
+    if not p.book_name:
+        missing = (
+            Tile("Spread", "—", "not posted or unmatched", tone="mut"),
+            Tile("Total", "—", "not posted or unmatched", tone="mut"),
+            Tile("Moneyline", "—", "paired price unavailable", tone="mut"),
+        )
+        return Group(
+            label="DraftKings live lines", tiles=missing, tag="livebook",
+            state="unavailable", market=True,
+        )
+    moneyline = (
+        f"{p.away} {_american(p.away_moneyline)} / "
+        f"{p.home} {_american(p.home_moneyline)}"
+    )
+    return Group(
+        label=f"{p.book_name} live lines",
+        tiles=(
+            Tile(
+                "Spread", _handicap(p.book_margin, p.home, p.away), updated,
+                tone="side", priced=p.book_margin is not None,
+            ),
+            Tile(
+                "Total", f"{p.book_total:.1f}" if p.book_total is not None else "—",
+                updated, tone="side", priced=p.book_total is not None,
+            ),
+            Tile(
+                "Moneyline", moneyline, updated, tone="side",
+                priced=p.home_moneyline is not None and p.away_moneyline is not None,
+            ),
+        ),
+        tag="livebook", state="verified single book", market=True,
     )
 
 
@@ -285,10 +325,10 @@ def _efficiency_stat(form) -> str:
 def _headline(p: GameProjection) -> str:
     if p.model_margin is None:
         return "No rating for this matchup"
-    if p.market_margin is None:
+    if p.comparison_margin is None:
         return f"Model: {_handicap(p.model_margin, p.home, p.away)}, total {p.projected_total:.1f}"
     if abs(p.market_gap) < 0.5:
-        return "Model agrees with the closing line"
+        return f"Model agrees with {p.book_name or 'the consensus line'}"
     side = p.home if p.market_gap > 0 else p.away
     return f"Model is {abs(p.market_gap):.1f} points on {side} — a gap, not an edge"
 
@@ -337,9 +377,9 @@ def build_card(p: GameProjection, *, key: str = "",
         for (name, team), form in zip(names, (p.away_form, p.home_form))
     )
 
-    groups = [Group(label="Full game",
+    groups = [_book_group(p), Group(label="Independent model",
                     tiles=(_spread_tile(p), _total_tile(p), _moneyline_tile(p)),
-                    tag="fullgame", state=p.action)]
+                    tag="fullgame", state=p.action, market=False)]
     for build in (_matchup_group, _breakdown_group):
         shelf = build(p)
         if shelf is not None:
@@ -399,10 +439,10 @@ def build_board(slate, *, rows_by_key: dict | None = None) -> Board:
         ))
 
     authority = slate.authority
-    priced = sum(1 for p in slate.projections if p.market_margin is not None)
+    priced = sum(1 for p in slate.projections if p.book_name is not None)
     meta = [
         f"{len(cards)} games",
-        f"{priced} with a market price",
+        f"{priced} with a verified DraftKings price",
         f"authority {authority.level.value}",
         f"{len(authority.unmet_gates)} of {len(auth.REQUIRED_GATES)} production gates unmet",
         "lambda 0.000",
@@ -414,7 +454,7 @@ def build_board(slate, *, rows_by_key: dict | None = None) -> Board:
         meta=meta,
         # Labels carry no count: the kernel appends its own match count to every
         # filter, so "All 16" rendered as "ALL 16 16".
-        filters=[("all", "All"), ("fullgame", "Priced"), ("breakdown", "With form")],
+        filters=[("all", "All"), ("livebook", "DraftKings"), ("breakdown", "With form")],
         sorts=[("start", "Kickoff"), ("picks", "Priced markets")],
         empty_text=(
             "No regular-season games found for this week. The schedule comes from "

@@ -25,7 +25,7 @@ from . import authority as auth
 from . import divisions as divisions_mod
 from . import forecast, matrix, ratings, teams
 
-SCHEMA = "nfl-model/board/2"
+SCHEMA = "nfl-model/board/3"
 
 
 def _round(value, places: int = 3):
@@ -48,11 +48,13 @@ def _projection(p: forecast.GameProjection) -> dict:
         "away": p.away,
         "home": p.home,
         "kickoff": p.kickoff,
+        "kickoff_utc": p.kickoff_utc,
         "neutral": p.neutral,
         "rating_margin": _round(p.rating_margin, 2),
         "efficiency_margin": _round(p.efficiency_margin, 2),
         "model_margin": _round(p.model_margin, 2),
         "market_margin": _round(p.market_margin, 2),
+        "anchor_margin": _round(p.anchor_margin, 2),
         "published_margin": _round(p.margin, 2),
         "market_gap": _round(p.market_gap, 2),
         # Always null while the model does not beat the closing line. Present as a
@@ -66,6 +68,17 @@ def _projection(p: forecast.GameProjection) -> dict:
         "model_win_probability": _round(p.model_win_probability, 4),
         "projected_total": _round(p.projected_total, 2),
         "market_total": _round(p.market_total, 2),
+        "book": {
+            "key": p.book_key,
+            "name": p.book_name,
+            "margin": _round(p.book_margin, 2),
+            "spread": _round(-p.book_margin, 2) if p.book_margin is not None else None,
+            "total": _round(p.book_total, 2),
+            "home_moneyline": _round(p.home_moneyline, 0),
+            "away_moneyline": _round(p.away_moneyline, 0),
+            "last_update": p.book_last_update,
+            "commence_time": p.book_commence_time,
+        } if p.book_name else None,
         "projected_home_score": _round(p.projected_home_score, 1),
         "projected_away_score": _round(p.projected_away_score, 1),
         "total_modelled": p.total_modelled,
@@ -120,9 +133,9 @@ def payload(slate, outlooks: list | None = None) -> dict:
         "spread_lambda": forecast.SPREAD_LAMBDA,
         "moneyline_lambda": forecast.DEFAULT_LAMBDA,
         "note": (
-            "The published margin equals the market at spread_lambda = 0. "
-            "model_margin is the model's own number and market_gap is their "
-            "difference; that difference is not an edge and edge_points is null."
+            "At spread_lambda = 0 the published margin equals the exact live "
+            "sportsbook anchor when present, otherwise the nflverse benchmark. "
+            "model_margin is independent; market_gap is not an edge."
         ),
         "constants": {
             "home_field_rating_path": ratings.HOME_FIELD_POINTS,
@@ -131,11 +144,18 @@ def payload(slate, outlooks: list | None = None) -> dict:
             "blowout_cap": ratings.BLOWOUT_CAP,
             "matrix_lineage": matrix.LINEAGE_VERSION,
             "matrix_status": matrix.STATUS,
+            "validation_protocol": matrix.VALIDATION_PROTOCOL,
+            "time_forward_performance": matrix.PERFORMANCE,
         },
         "teams": team_rows,
         "games": [_projection(p) for p in slate.projections],
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
+        "sources": {
+            "nflverse": slate.source_status,
+            "odds": slate.odds_status,
+            "issues": slate.issues,
+        },
     }
 
 

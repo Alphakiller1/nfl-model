@@ -16,6 +16,7 @@ from nflmodel import authority as auth
 from nflmodel import divisions, export, matrix, site, teams
 from nflmodel.board import board_html
 from nflmodel.board_nfl import build_board, build_card
+from nflmodel.sources.oddsapi import BookLine
 
 
 # ── board ────────────────────────────────────────────────────────────────────
@@ -104,10 +105,36 @@ def test_the_matchup_shelf_is_explanatory_not_a_market(slate):
     assert all(not tile.is_priced for tile in matchup.tiles)
 
 
-def test_a_priced_full_game_shelf_counts_as_priced(slate):
+def test_consensus_reference_is_not_counted_as_an_executable_price(slate):
     card = build_card(slate.projections[0])
     full_game = next(g for g in card.groups if g.tag == "fullgame")
-    assert full_game.priced > 0
+    live_book = next(g for g in card.groups if g.tag == "livebook")
+    assert full_game.priced == 0
+    assert live_book.priced == 0
+
+
+def test_verified_book_lines_get_their_own_first_class_shelf(slate):
+    book = BookLine(
+        "draftkings", "DraftKings", -4.5, 48.5, -190, 160,
+        "2026-09-02T12:00:00Z", "2026-09-11T00:15:00Z",
+    )
+    projection = slate.projections[0]
+    priced = replace(
+        projection,
+        book_name=book.book_title,
+        book_key=book.book,
+        book_margin=book.home_margin,
+        book_total=book.total,
+        book_last_update=book.last_update,
+        home_moneyline=book.home_moneyline,
+        away_moneyline=book.away_moneyline,
+    )
+    card = build_card(priced)
+    assert card.groups[0].label == "DraftKings live lines"
+    assert card.groups[0].priced == 3
+    assert {tile.label for tile in card.groups[0].tiles} == {
+        "Spread", "Total", "Moneyline",
+    }
 
 
 def test_an_empty_slate_renders_an_honest_empty_state(slate):
@@ -163,8 +190,8 @@ def test_page_css_introduces_no_colour_literal_of_its_own():
 
 def test_site_states_the_measured_gap_to_the_market(slate):
     html = _render(slate)
-    assert "10.3134" in html and "9.8708" in html
-    assert "49.85%" in html
+    assert "10.2274" in html and "9.7644" in html
+    assert "49.56%" in html
     assert "52.38%" in html            # the breakeven it is being compared against
 
 
@@ -260,8 +287,8 @@ def test_export_names_the_matrix_lineage_and_its_promotion_status(slate):
     assert constants["matrix_status"] == "CHALLENGER/UNPROMOTED"
 
 
-def test_the_pages_evidence_matches_the_fit_it_claims_to_report():
-    """`site.EVIDENCE` is hand-copied from `scripts/fit_matrix.py` output, so it
+def test_the_pages_evidence_matches_the_time_forward_audit():
+    """`site.EVIDENCE` is hand-copied from `scripts/audit_regimes.py` output, so it
     is exactly the kind of thing that silently goes stale after a refit. Pinning
     it against the committed summary makes a drifted headline number a failing
     test rather than a wrong dashboard.
@@ -274,22 +301,25 @@ def test_the_pages_evidence_matches_the_fit_it_claims_to_report():
     from pathlib import Path
 
     fit = json.loads((Path(__file__).resolve().parents[1] / "reports"
-                      / "fit_summary.json").read_text(encoding="utf-8"))
-    margin, total = fit["margin"], fit["total"]
+                      / "regime_audit_2026.json").read_text(encoding="utf-8"))
+    margin = fit["margin"]["baseline_50_50"]
+    total = fit["total"]["baseline_shrunk"]
     wins, losses, pushes = margin["ats"]
     played = wins + losses
     rate = wins / played
     se = math.sqrt(rate * (1 - rate) / played)
 
-    assert site.EVIDENCE["games"] == fit["games"]
-    assert site.EVIDENCE["margin_model"] == pytest.approx(margin["model_mae"], abs=5e-5)
-    assert site.EVIDENCE["margin_market"] == pytest.approx(margin["market_mae"], abs=5e-5)
+    assert site.EVIDENCE["games"] == fit["protocol"]["games"]
+    assert site.EVIDENCE["margin_model"] == pytest.approx(margin["mae"], abs=5e-5)
+    assert site.EVIDENCE["margin_market"] == pytest.approx(
+        fit["market"]["margin_mae"], abs=5e-5)
     assert site.EVIDENCE["margin_ratings_only"] == pytest.approx(
-        margin["ratings_only_mae"], abs=5e-5)
-    assert site.EVIDENCE["total_model"] == pytest.approx(total["model_mae"], abs=5e-5)
-    assert site.EVIDENCE["total_market"] == pytest.approx(total["market_mae"], abs=5e-5)
+        fit["margin"]["rating_only"]["mae"], abs=5e-5)
+    assert site.EVIDENCE["total_model"] == pytest.approx(total["mae"], abs=5e-5)
+    assert site.EVIDENCE["total_market"] == pytest.approx(
+        fit["market"]["total_mae"], abs=5e-5)
     assert site.EVIDENCE["total_league_mean"] == pytest.approx(
-        total["league_mean_mae"], abs=5e-5)
+        fit["total"]["training_league_mean"]["mae"], abs=5e-5)
     assert site.EVIDENCE["ats"] == (wins, losses, pushes)
     assert site.EVIDENCE["ats_rate"] == pytest.approx(rate, abs=5e-5)
     low, high = site.EVIDENCE["ats_ci"]
@@ -308,12 +338,14 @@ def test_the_published_constants_match_the_measured_residuals():
     from nflmodel import totals as totals_mod
 
     fit = json.loads((Path(__file__).resolve().parents[1] / "reports"
-                      / "fit_summary.json").read_text(encoding="utf-8"))
-    assert ratings_mod.MARGIN_SD == pytest.approx(fit["margin"]["residual_sd"], abs=0.005)
+                      / "regime_audit_2026.json").read_text(encoding="utf-8"))
+    assert ratings_mod.MARGIN_SD == pytest.approx(
+        fit["margin"]["baseline_50_50"]["residual_sd"], abs=0.005)
     assert ratings_mod.MARGIN_SD == matrix.MARGIN_SD
-    assert totals_mod.TOTAL_SD == pytest.approx(fit["total"]["residual_sd"], abs=0.005)
+    assert totals_mod.TOTAL_SD == pytest.approx(
+        fit["total"]["baseline_shrunk"]["residual_sd"], abs=0.005)
     # ...and NOT the raw margin spread, which is a full point higher.
-    assert ratings_mod.MARGIN_SD < fit["context"]["margin_sd"] - 0.5
+    assert ratings_mod.MARGIN_SD < 14.32 - 0.5
 
 
 # ── the sections added for information density ───────────────────────────────
@@ -354,7 +386,7 @@ def test_the_disagreement_section_ranks_every_priced_game(slate):
     # It must say what it is not, in the same breath as what it is.
     normalised = " ".join(html.split())
     assert "not</b> as a card" in normalised
-    assert "49.85% of exactly these disagreements" in normalised
+    assert "49.56% of exactly these disagreements" in normalised
 
 
 def test_the_disagreement_table_is_ordered_by_the_size_of_the_gap(slate):

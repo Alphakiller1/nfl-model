@@ -10,10 +10,11 @@ Home field is removed from each margin before rating, so a team is not credited
 for a soft home schedule, and ratings are re-centred on the league mean after
 every pass.
 
-Every constant below was selected by walk-forward test on the 2,383 completed
-regular-season games of 2017-2025 -- the model is refitted without the season it
-is scored on, and the parameter is chosen on out-of-sample MAE of the published
-(blended) margin. `reports/BASELINE_2016_2025.md` carries the sweeps.
+Every constant below was selected leave-one-season-out on the 2,383 completed
+regular-season games of 2017-2025, then the complete specification was rechecked
+with a strictly expanding-season simulation on 1,615 games from 2020-2025.
+`reports/BASELINE_2016_2025.md` carries the sweeps and
+`reports/regime_audit_2026.json` carries the time-forward audit.
 
 Two of those sweeps came back flat, and saying so is more useful than presenting
 a tuned number as if it were earned.
@@ -61,12 +62,12 @@ SHRINK = 1.0
 ITERATIONS = 15
 
 # Scale for turning a projected margin into a win probability. This is the
-# RESIDUAL standard deviation of the blended forecast (13.32), not the raw spread
+# RESIDUAL standard deviation of the time-forward blended forecast (13.18), not the raw spread
 # of NFL margins (14.32). P(home wins) is P(actual > 0 | forecast), so the
 # relevant dispersion is the model's error, not the league's variance -- using
 # the raw 14.32 would push every probability toward 50% by claiming more
 # uncertainty than the forecast actually has.
-MARGIN_SD = 13.32
+MARGIN_SD = 13.18
 
 GAMES_PER_SEASON = 17
 

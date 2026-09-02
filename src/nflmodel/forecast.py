@@ -16,11 +16,11 @@ this repo now also produces an opponent-adjusted margin, total and scoreline fro
 `matrix.py`, `ratings.py` and `totals.py`. Those are model output, not market
 output, and they are published as such.
 
-What the points model is worth, measured leave-one-season-out on 2,383 games
-(2017-2025), is stated on every board rather than buried:
+What the points model is worth, measured in a strict expanding-season audit on
+1,615 games (2020-2025), is stated on every board rather than buried:
 
-    margin: model 10.3134   market 9.8708   ATS on disagreements 49.8%
-    total:  model 10.8076   market 10.4700  O/U on disagreements 49.1%
+    margin: model 10.2274   market 9.7644   ATS on disagreements 49.6%
+    total:  model 10.6598   market 10.2833  O/U on disagreements 49.7%
 
 So the margin is published **anchored to the market** at `SPREAD_LAMBDA = 0`, for
 the same reason the probability is: it does not beat the closing line. The model's
@@ -187,15 +187,15 @@ def write_slate(games: list[dict], destination: str,
 # ── points: margin, total and the scoreline ──────────────────────────────────
 # Fraction of the model's disagreement with the closing spread that is kept in
 # the published margin. Zero, and that is a measurement rather than caution: the
-# model's MAE is 10.3134 against the market's 9.8708 and its ATS record on
-# disagreements is 1158-1165-60 (49.85%, 95% CI [47.82%, 51.88%]) against a
+# model's MAE is 10.2274 against the market's 9.7644 and its ATS record on
+# disagreements is 784-798-33 (49.56%, 95% CI [47.09%, 52.02%]) against a
 # 52.38% breakeven. Raising it is a claim about evidence and belongs with a gate
 # record, not a config tweak.
 SPREAD_LAMBDA = 0.0
 
 POINTS_EVIDENCE = (
-    "reports/BASELINE_2016_2025.md — leave-one-season-out on 2,383 games "
-    "(2017-2025): margin MAE 10.3134 vs market 9.8708, ATS 49.85%"
+    "reports/regime_audit_2026.json — expanding-season on 1,615 games "
+    "(2020-2025): margin MAE 10.2274 vs market 9.7644, ATS 49.56%"
 )
 
 
@@ -209,12 +209,16 @@ class GameProjection:
     season: int = 0
     week: int = 0
     kickoff: str = ""
+    kickoff_utc: str = ""
     # The two components of the model margin, kept separate so a breakdown can
     # show which one is doing the work.
     rating_margin: float | None = None
     efficiency_margin: float | None = None
     model_margin: float | None = None
+    # nflverse consensus/history remains a benchmark input.  The published
+    # anchor below prefers an exact-identity live sportsbook quote when present.
     market_margin: float | None = None
+    anchor_margin: float | None = None
     # What the board publishes. Equals the market at SPREAD_LAMBDA = 0.
     margin: float | None = None
     # Win probability implied by the PUBLISHED margin -- at lambda 0 that is the
@@ -233,6 +237,12 @@ class GameProjection:
     edge_withheld_reason: str | None = None
     projected_total: float | None = None
     market_total: float | None = None
+    book_name: str | None = None
+    book_key: str | None = None
+    book_margin: float | None = None
+    book_total: float | None = None
+    book_last_update: str | None = None
+    book_commence_time: str | None = None
     projected_home_score: float | None = None
     projected_away_score: float | None = None
     total_modelled: bool = False
@@ -247,14 +257,23 @@ class GameProjection:
 
     @property
     def has_price(self) -> bool:
-        return self.market_margin is not None
+        return self.anchor_margin is not None
 
     @property
     def total_gap(self) -> float | None:
-        """Model total minus market total, or None without both."""
-        if self.projected_total is None or self.market_total is None:
+        """Model total minus the verified book (or consensus fallback)."""
+        comparison = self.book_total if self.book_total is not None else self.market_total
+        if self.projected_total is None or comparison is None:
             return None
-        return self.projected_total - self.market_total
+        return self.projected_total - comparison
+
+    @property
+    def comparison_margin(self) -> float | None:
+        return self.book_margin if self.book_margin is not None else self.market_margin
+
+    @property
+    def comparison_total(self) -> float | None:
+        return self.book_total if self.book_total is not None else self.market_total
 
 
 def _points_edge(market_gap: float | None, *, used_efficiency: bool
@@ -262,9 +281,9 @@ def _points_edge(market_gap: float | None, *, used_efficiency: bool
     """Decide whether the model-minus-market difference may be called an edge.
 
     It may not, and the reason is a measurement rather than a policy. Across
-    2,383 out-of-sample games the model's margin MAE is 0.44 points worse than
-    the closing line and its ATS record on disagreements is 49.85% with a 95%
-    interval of [47.82%, 51.88%] — an interval that contains 50% and sits
+    1,615 expanding-season games the model's margin MAE is 0.46 points worse than
+    the closing line and its ATS record on disagreements is 49.56% with a 95%
+    interval of [47.09%, 52.02%] — an interval that contains 50% and sits
     entirely below the 52.38% breakeven. Both estimators are calibrated (slope
     1.035); the market simply conditions on more, chiefly injuries and
     availability this repo does not model.
@@ -278,7 +297,7 @@ def _points_edge(market_gap: float | None, *, used_efficiency: bool
         return None, None
     if not used_efficiency:
         return None, "no opponent-adjusted form — rating prior only"
-    return None, "model does not beat the closing line (ATS 49.85%) — gap, not edge"
+    return None, "model does not beat the closing line (ATS 49.56%) — gap, not edge"
 
 
 def project_game(
@@ -293,9 +312,11 @@ def project_game(
     market_total: float | None = None,
     home_moneyline: float | None = None,
     away_moneyline: float | None = None,
+    book=None,
     season: int = 0,
     week: int = 0,
     kickoff: str = "",
+    kickoff_utc: str = "",
     lam: float = SPREAD_LAMBDA,
     authority: auth.Authority | None = None,
 ) -> GameProjection:
@@ -310,31 +331,39 @@ def project_game(
     model_margin = projection.margin
     used_efficiency = projection.modelled
 
-    if market_margin is None:
+    book_margin = getattr(book, "home_margin", None) if book is not None else None
+    anchor_margin = book_margin if book_margin is not None else market_margin
+    if anchor_margin is None:
         published, market_gap = model_margin, None
     else:
-        market_gap = None if model_margin is None else model_margin - market_margin
-        published = market_margin if market_gap is None else market_margin + lam * market_gap
+        market_gap = None if model_margin is None else model_margin - anchor_margin
+        published = anchor_margin if market_gap is None else anchor_margin + lam * market_gap
 
     edge, withheld = _points_edge(market_gap, used_efficiency=used_efficiency)
     win_p = None if published is None else ratings_mod.win_probability(published)
     model_win_p = (None if model_margin is None
                    else ratings_mod.win_probability(model_margin))
 
+    priced_home = (getattr(book, "home_moneyline", None) if book is not None else None)
+    priced_away = (getattr(book, "away_moneyline", None) if book is not None else None)
+    if priced_home is None or priced_away is None:
+        priced_home, priced_away = home_moneyline, away_moneyline
     market_fair = None
-    if home_moneyline is not None and away_moneyline is not None:
+    if priced_home is not None and priced_away is not None:
         try:
-            market_fair = PairedQuote(home_american=home_moneyline,
-                                      away_american=away_moneyline).home_fair
+            market_fair = PairedQuote(home_american=priced_home,
+                                      away_american=priced_away).home_fair
         except (TypeError, ValueError):
             market_fair = None
 
     return GameProjection(
         home=home, away=away, neutral=neutral, season=season, week=week, kickoff=kickoff,
+        kickoff_utc=kickoff_utc,
         rating_margin=rating_margin,
         efficiency_margin=projection.efficiency_margin,
         model_margin=model_margin,
         market_margin=market_margin,
+        anchor_margin=anchor_margin,
         margin=published,
         win_probability=win_p,
         model_win_probability=model_win_p,
@@ -343,16 +372,22 @@ def project_game(
         edge_withheld_reason=withheld,
         projected_total=projection.total,
         market_total=market_total,
+        book_name=getattr(book, "book_title", None),
+        book_key=getattr(book, "book", None),
+        book_margin=book_margin,
+        book_total=getattr(book, "total", None),
+        book_last_update=getattr(book, "last_update", None),
+        book_commence_time=getattr(book, "commence_time", None),
         projected_home_score=projection.home_score,
         projected_away_score=projection.away_score,
         total_modelled=projection.modelled,
-        home_moneyline=home_moneyline,
-        away_moneyline=away_moneyline,
+        home_moneyline=priced_home,
+        away_moneyline=priced_away,
         market_fair_home=market_fair,
         home_form=home_form,
         away_form=away_form,
         used_efficiency=used_efficiency,
-        action=a.action_for(edge, market_margin is not None,
+        action=a.action_for(edge, anchor_margin is not None,
                             modelled=model_margin is not None,
                             implausible=auth.IMPLAUSIBLE_EDGE_POINTS).value,
         authority=a.level.value,

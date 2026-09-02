@@ -30,9 +30,16 @@ Two things live here, and they are not the same thing:
   allowed, so the two groups weight differently, and that difference is itself
   the finding -- it is why offence separates teams more than defence does.
 
-Fitted leave-one-season-out on 2,383 completed regular-season games, 2017-2025,
-every feature opponent-adjusted and point-in-time. Reproduced by
-`scripts/fit_matrix.py`; the evidence is in `reports/BASELINE_2016_2025.md`.
+The coefficient specification was selected leave-one-season-out on 2,383
+completed regular-season games, 2017-2025.  Its headline performance was then
+re-audited with an expanding-season coefficient protocol on 1,615 games, 2020-2025:
+every scored season uses coefficients fit only on earlier seasons. The feature
+specification and hyperparameters were frozen at their legacy LOSO-selected 2026
+values, so this is not a fully nested or prospective trial. No tested
+regime or dispersion correction improved that time-forward baseline, so the
+matrix keeps its measured 50/50 form instead of forcing a cosmetically balanced
+favorite/underdog mix.  Reproduce with `scripts/fit_matrix.py` and
+`scripts/audit_regimes.py`.
 
 What replaced the research prior
 --------------------------------
@@ -50,8 +57,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-LINEAGE_VERSION = "2026.08-fitted-symmetric-matchup"
+LINEAGE_VERSION = "2026.09-time-forward-audited-symmetric-matchup"
 STATUS = "CHALLENGER/UNPROMOTED"
+VALIDATION_PROTOCOL = (
+    "expanding-season coefficients; frozen LOSO-selected specification; 2020-2025"
+)
+PERFORMANCE = {
+    "games": 1615,
+    "margin_mae": 10.2274,
+    "market_margin_mae": 9.7644,
+    "ats_rate": 0.4956,
+    "underdog_side_share": 0.7232,
+}
 SOURCE_LINEAGE = (
     "Alphakiller1/nfl-genesis/src/genesis/logic_matrix.py (research prior, superseded)",
     "Alphakiller1/cfb-model/src/cfbmodel/matrix.py (structure)",
@@ -110,7 +127,7 @@ DEFENSE_WEIGHTS = {
 HOME_FIELD_POINTS = 1.20
 BLOWOUT_CAP = 42.0
 RECENCY_HALFLIFE_WEEKS = 8.0
-MARGIN_SD = 13.32
+MARGIN_SD = 13.18
 
 STATS = ("epa", "first_down", "explosive", "sack", "turnover")
 

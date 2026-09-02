@@ -16,10 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from . import authority as auth_mod
 from . import efficiency, forecast, matrix, preseason, ratings, teams
-from .sources import nflverse
+from .sources import nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
 # `preseason.FORM_SEASON_WEIGHTS` asks for; loading fewer silently degrades the
@@ -101,6 +102,9 @@ class Slate:
     # can check against something they remember.
     records: dict[str, "Record"] = field(default_factory=dict)
     prior_records: dict[str, "Record"] = field(default_factory=dict)
+    source_status: list[dict] = field(default_factory=list)
+    odds_status: dict = field(default_factory=dict)
+    issues: list[str] = field(default_factory=list)
 
     def record_for(self, team: str) -> "Record | None":
         """This season's record once it exists, otherwise last season's."""
@@ -158,6 +162,7 @@ def margin_for(table: dict[str, float], forms: dict[str, matrix.TeamForm]):
 
 def assemble(season: int | None = None, week: int | None = None) -> Slate:
     """Load, rate and forecast one week."""
+    nflverse.clear_run_state()
     season = season or nflverse.current_season()
     schedule = nflverse.games()
     week = week or current_week(schedule, season)
@@ -174,9 +179,12 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     # Current season, strictly before the week being forecast.
     completed = [g for g in ratings.from_rows([r for r in schedule if r["season"] == season])
                  if g.week < week]
-    live_lines = [line for line in
-                  efficiency.game_lines(nflverse.team_week(season, completed_season=False))
-                  if line.week < week]
+    live_lines = (
+        [line for line in
+         efficiency.game_lines(nflverse.team_week(season, completed_season=False))
+         if line.week < week]
+        if completed else []
+    )
 
     played: dict[str, float] = {}
     for game in completed:
@@ -200,6 +208,13 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
              and row["game_type"] == "REG"]
     games.sort(key=_kickoff_key)
 
+    odds_error = None
+    try:
+        book_lines = oddsapi.fetch_lines()
+    except Exception as exc:
+        book_lines = {}
+        odds_error = f"{type(exc).__name__}: {exc}"
+
     authority = auth_mod.current()
     projections = [
         forecast.project_game(
@@ -213,17 +228,58 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             market_total=row.get("total_line"),
             home_moneyline=row.get("home_moneyline"),
             away_moneyline=row.get("away_moneyline"),
+            book=book_lines.get((teams.canonical(row["home_team"]),
+                                 teams.canonical(row["away_team"]))),
             season=season, week=week,
             kickoff=kickoff_label(row),
+            kickoff_utc=kickoff_utc(row),
             authority=authority,
         )
         for row in games
     ]
+    odds_status = oddsapi.status_report()
+    odds_status.update({
+        "slate_games": len(games),
+        "slate_matched": sum(p.book_name is not None for p in projections),
+        "slate_spreads": sum(p.book_margin is not None for p in projections),
+        "slate_totals": sum(p.book_total is not None for p in projections),
+        "slate_moneylines": sum(
+            p.book_name is not None
+            and p.home_moneyline is not None
+            and p.away_moneyline is not None
+            for p in projections
+        ),
+        "slate_complete": sum(
+            p.book_margin is not None
+            and p.book_total is not None
+            and p.home_moneyline is not None
+            and p.away_moneyline is not None
+            for p in projections
+        ),
+    })
+    issues: list[str] = []
+    stale = [status for status in nflverse.status_report() if status.get("stale")]
+    failed = [status for status in nflverse.status_report() if status.get("state") == "error"]
+    if stale:
+        issues.append(f"{len(stale)} nflverse source(s) used a bounded stale snapshot")
+    if failed:
+        issues.append(f"{len(failed)} nflverse source(s) failed")
+    if odds_error:
+        issues.append(f"Live sportsbook feed failed: {odds_error}")
+    elif games and not odds_status["slate_matched"]:
+        issues.append("DraftKings returned no matched lines for this slate")
+    elif odds_status["slate_complete"] < len(games):
+        issues.append(
+            f"DraftKings has an incomplete spread/total/paired-moneyline set for "
+            f"{len(games) - odds_status['slate_complete']} game(s)"
+        )
     prior = [g for g in history if g.season == season - 1]
     return Slate(season=season, week=week, table=table, forms=forms, games=games,
                  schedule=schedule, games_played=played, authority=authority,
                  projections=projections, records=build_records(completed),
-                 prior_records=build_records(prior))
+                 prior_records=build_records(prior),
+                 source_status=nflverse.status_report(), odds_status=odds_status,
+                 issues=issues)
 
 
 # ── kickoff formatting ───────────────────────────────────────────────────────
@@ -279,3 +335,20 @@ def kickoff_label(row: dict) -> str:
     suffix = "AM" if hour < 12 else "PM"
     display = hour % 12 or 12
     return f"{label} · {display}:{minute:02d} {suffix} ET"
+
+
+def kickoff_utc(row: dict) -> str:
+    """Provider-comparable ISO kickoff from nflverse's Eastern wall clock."""
+    day = str(row.get("gameday") or "").strip()
+    clock = str(row.get("gametime") or "").strip()
+    if not day or not clock:
+        return ""
+    try:
+        local = datetime.strptime(f"{day} {clock}", "%Y-%m-%d %H:%M").replace(
+            tzinfo=ZoneInfo("America/New_York")
+        )
+    except ValueError:
+        return ""
+    return local.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )

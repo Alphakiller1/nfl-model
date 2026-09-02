@@ -7,29 +7,29 @@ are shrinkages, because both raw estimates are too confident.
 
 **The margin blend.** Two estimates of the same quantity exist: the rating gap
 (`ratings.projected_margin`) and the efficiency margin. Neither dominates.
-Measured leave-one-season-out on 2,383 games:
+Selected leave-one-season-out on 2,383 games; rechecked with a stricter
+expanding-season simulation on 1,615 games:
 
-    ratings only            MAE 10.4298
-    efficiency only         MAE 10.4193
-    50/50 blend             MAE 10.3134   <- selected
-    market                  MAE  9.8708
+    ratings only            MAE 10.3374
+    efficiency only         MAE 10.3256
+    50/50 blend             MAE 10.2274   <- retained
+    market                  MAE  9.7644
 
 The blend is worth about 0.11 points over either component, and the curve is flat
 between w = 0.45 and w = 0.55, so 0.50 is the robust middle rather than a peak
-found by searching. It remains 0.44 points worse than the closing line.
+found by searching. It remains 0.46 points worse than the closing line.
 
 **The total shrink.** The raw model total is over-dispersed: regressing actual
 totals on it gives a slope near 0.63, meaning it spreads its predictions wider
 than reality justifies. Shrinking toward the league mean fixes that:
 
-    league mean (45.59)     MAE 11.0423
-    unshrunk model          MAE 10.8530
-    shrunk, lam = 0.70      MAE 10.8076   <- selected
-    market                  MAE 10.4700
+    prior-only league mean  MAE 10.9702
+    shrunk, lam = 0.70      MAE 10.6598   <- retained
+    market                  MAE 10.2833
 
-Read those numbers honestly. The shrunk model beats a constant by 0.23 points and
-loses to the market by 0.34. A projected total is a centre of mass with a
-13.69-point residual SD against an actual-total SD of 13.84 -- it explains very
+Read those numbers honestly. The shrunk model beats a past-only constant by 0.31 points and
+loses to the market by 0.38. A projected total is a centre of mass with a
+13.48-point time-forward residual SD against an actual-total SD of 13.84 -- it explains very
 little of the variance, and a scoreline printed to the point looks far more
 precise than it is. That is why the dashboard shows the market total beside it.
 
@@ -57,7 +57,7 @@ TOTAL_SHRINK = 0.70
 
 # Measured 2017-2025.
 LEAGUE_MEAN_TOTAL = 45.59
-TOTAL_SD = 13.69
+TOTAL_SD = 13.48
 ACTUAL_TOTAL_SD = 13.84
 
 
