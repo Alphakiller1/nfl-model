@@ -177,6 +177,49 @@ def _cmd_units(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_players(args: argparse.Namespace) -> int:
+    slate = _slate(args)
+    _header(slate)
+    players = slate.player_projections
+    if args.position:
+        players = [row for row in players if row.position == args.position]
+    if args.team:
+        selected_team = teams.canonical(args.team)
+        players = [row for row in players if row.team == selected_team]
+    if not players:
+        print("  no active player projections match those filters\n")
+        return 0
+    print(f"  {'player':<24} {'pos':<4} {'game':<10} {'role':<14} "
+          f"{'volume':>9} {'yards':>8} {'td':>7} {'conf':>7}")
+    print(f"  {'-' * 24} {'-' * 4} {'-' * 10} {'-' * 14} "
+          f"{'-' * 9} {'-' * 8} {'-' * 7} {'-' * 7}")
+    for player in players:
+        metrics = player.metrics
+        if player.position == "QB":
+            volume = f"{metrics.get('pass_attempts', 0):.1f} att"
+            yards = f"{metrics.get('passing_yards', 0):.1f}p"
+            td = f"{metrics.get('passing_tds', 0):.2f}p"
+        elif player.position == "RB":
+            volume = f"{metrics.get('carries', 0):.1f} car"
+            yards = f"{metrics.get('rushing_yards', 0):.1f}r"
+            td = f"{metrics.get('anytime_td_probability', 0):.0%}"
+        elif player.position in {"WR", "TE"}:
+            volume = f"{metrics.get('targets', 0):.1f} tgt"
+            yards = f"{metrics.get('receiving_yards', 0):.1f}c"
+            td = f"{metrics.get('anytime_td_probability', 0):.0%}"
+        else:
+            volume = f"{metrics.get('fg_attempts', 0):.1f} FGA"
+            yards = "--"
+            td = f"{metrics.get('kicking_points', 0):.1f}pt"
+        game = f"{player.team}-{player.opponent}"
+        print(f"  {player.player_name[:24]:<24} {player.position:<4} {game:<10} "
+              f"{player.role_continuity[:14]:<14} {volume:>9} {yards:>8} "
+              f"{td:>7} {player.confidence:>7}")
+    print("\n  current active roster + pre-kickoff depth chart determine role")
+    print("  DraftKings team game lines condition volume; no player lines or edges\n")
+    return 0
+
+
 def _cmd_divisions(args: argparse.Namespace) -> int:
     slate = _slate(args)
     _header(slate)
@@ -238,6 +281,10 @@ def main(argv: list[str] | None = None) -> int:
     _add_slate_args(sub.add_parser("board", help="the week's slate"))
     _add_slate_args(sub.add_parser("ratings", help="power ratings"), simulations=0)
     _add_slate_args(sub.add_parser("units", help="offensive and defensive rankings"))
+    p = _add_slate_args(sub.add_parser(
+        "players", help="QB/RB/WR/TE/K next-game projections"))
+    p.add_argument("--position", choices=("QB", "RB", "WR", "TE", "K"))
+    p.add_argument("--team", help="team abbreviation")
     _add_slate_args(sub.add_parser("divisions", help="simulated division races"),
                     simulations=divisions_mod.SIMULATIONS)
 
@@ -263,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         "board": _cmd_board,
         "ratings": _cmd_ratings,
         "units": _cmd_units,
+        "players": _cmd_players,
         "divisions": _cmd_divisions,
         "forecast": _cmd_forecast,
         "export": _cmd_export,

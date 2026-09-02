@@ -14,11 +14,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import teams
+
 if TYPE_CHECKING:
     from .forecast import GameProjection
+    from .player_props import PlayerProjection
 
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 DEFAULT_PATH = Path(
     os.getenv(
         "NFL_LEDGER_PATH",
@@ -49,14 +52,15 @@ def _parse(value: str | None) -> datetime | None:
 
 def _load(path: Path) -> dict:
     if not path.is_file():
-        return {"schema_version": SCHEMA_VERSION, "snapshots": []}
+        return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": []}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload.get("snapshots"), list):
+            payload.setdefault("player_snapshots", [])
             return payload
     except (json.JSONDecodeError, AttributeError):
         pass
-    return {"schema_version": SCHEMA_VERSION, "snapshots": []}
+    return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": []}
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -130,6 +134,115 @@ def _mean(rows: list[dict], key: str) -> float | None:
     return round(statistics.fmean(values), 4) if values else None
 
 
+def _player_result_index(rows: list[dict]) -> dict[tuple[int, int, str, str], dict]:
+    out = {}
+    for row in rows:
+        player_id = str(row.get("player_id") or "")
+        team = teams.canonical(row.get("team") or "")
+        if not player_id or not team:
+            continue
+        key = (
+            int(row.get("season") or 0),
+            int(row.get("week") or 0),
+            team,
+            player_id,
+        )
+        out[key] = row
+    return out
+
+
+def _num(row: dict, key: str) -> float:
+    try:
+        return float(row.get(key) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _actual_player_metrics(row: dict | None, fields: set[str]) -> dict[str, float]:
+    source = row or {}
+    mapping = {
+        "pass_attempts": "attempts",
+        "completions": "completions",
+        "passing_yards": "passing_yards",
+        "passing_tds": "passing_tds",
+        "interceptions": "passing_interceptions",
+        "rush_attempts": "carries",
+        "carries": "carries",
+        "rushing_yards": "rushing_yards",
+        "targets": "targets",
+        "receptions": "receptions",
+        "receiving_yards": "receiving_yards",
+        "fg_attempts": "fg_att",
+        "fg_made": "fg_made",
+        "pat_made": "pat_made",
+    }
+    actual = {field: _num(source, source_field) for field, source_field in mapping.items()
+              if field in fields}
+    if "anytime_td_probability" in fields:
+        actual["anytime_td_probability"] = float(
+            _num(source, "rushing_tds") + _num(source, "receiving_tds") > 0
+        )
+    if "kicking_points" in fields:
+        actual["kicking_points"] = 3.0 * _num(source, "fg_made") + _num(
+            source, "pat_made"
+        )
+    return actual
+
+
+def _grade_player(snapshot: dict, result: dict | None) -> None:
+    projected = snapshot.get("metrics") or {}
+    actual = _actual_player_metrics(result, set(projected))
+    errors = {
+        key: abs(float(value) - actual[key])
+        for key, value in projected.items()
+        if key in actual
+    }
+    snapshot.update({
+        "status": "graded",
+        "graded_at": _stamp(),
+        "actual_metrics": actual,
+        "absolute_errors": errors,
+    })
+    if "anytime_td_probability" in projected:
+        snapshot["anytime_td_brier"] = (
+            float(projected["anytime_td_probability"])
+            - actual["anytime_td_probability"]
+        ) ** 2
+
+
+def _player_summary(payload: dict, season: int) -> dict:
+    graded = [
+        row for row in payload.get("player_snapshots", [])
+        if row.get("status") == "graded" and int(row.get("season", 0)) == season
+    ]
+    latest: dict[tuple, dict] = {}
+    for row in graded:
+        key = (row["season"], row["week"], row["game_id"], row["player_id"])
+        if key not in latest or row.get("recorded_at", "") > latest[key].get(
+            "recorded_at", ""
+        ):
+            latest[key] = row
+    rows = list(latest.values())
+    errors: dict[str, list[float]] = {}
+    for row in rows:
+        for metric, value in (row.get("absolute_errors") or {}).items():
+            errors.setdefault(metric, []).append(float(value))
+    return {
+        "scope": "latest pre-kickoff role-aware projection per player-game",
+        "authority": "shadow_only",
+        "players_graded": len(rows),
+        "pending_player_snapshots": sum(
+            row.get("status") == "pending"
+            for row in payload.get("player_snapshots", [])
+        ),
+        "mae": {
+            metric: round(statistics.fmean(values), 4)
+            for metric, values in sorted(errors.items()) if values
+        },
+        "anytime_td_brier": _mean(rows, "anytime_td_brier"),
+    }
+
+
 def summary(payload: dict, *, season: int) -> dict:
     graded = [
         row for row in payload.get("snapshots", [])
@@ -157,6 +270,7 @@ def summary(payload: dict, *, season: int) -> dict:
         "model_total_mae": _mean(rows, "model_total_abs_error"),
         "book_total_mae": _mean(rows, "book_total_abs_error"),
         "totals": {name: totals.count(name) for name in ("win", "loss", "push")},
+        "players": _player_summary(payload, season),
     }
 
 
@@ -164,6 +278,8 @@ def update(
     *,
     season: int,
     projections: list["GameProjection"],
+    player_projections: list["PlayerProjection"] | None = None,
+    player_results: list[dict] | None = None,
     schedule: list[dict],
     path: Path = DEFAULT_PATH,
     recorded_at: datetime | None = None,
@@ -179,6 +295,22 @@ def update(
         )
         if result is not None:
             _grade(snapshot, result)
+
+    player_index = _player_result_index(player_results or [])
+    for snapshot in payload["player_snapshots"]:
+        if snapshot.get("status") != "pending":
+            continue
+        game_result = results.get(
+            (snapshot["season"], snapshot["week"], snapshot["home"], snapshot["away"])
+        )
+        if game_result is None:
+            continue
+        result = player_index.get((
+            snapshot["season"], snapshot["week"], snapshot["team"], snapshot["player_id"]
+        ))
+        # Once the team game is final, an absent stat row is a zero-stat DNP,
+        # not an indefinitely pending observation.
+        _grade_player(snapshot, result)
 
     now = recorded_at or _now()
     known = {row.get("snapshot_id") for row in payload["snapshots"]}
@@ -217,11 +349,56 @@ def update(
         })
         known.add(snapshot_id)
 
+    known_players = {row.get("snapshot_id") for row in payload["player_snapshots"]}
+    for projection in player_projections or []:
+        kickoff = _parse(projection.kickoff_utc)
+        if kickoff is None or kickoff <= now:
+            continue
+        snapshot_id = "|".join((
+            str(projection.season), str(projection.week), projection.game_id,
+            projection.player_id, projection.model_version, _stamp(now),
+        ))
+        if snapshot_id in known_players:
+            continue
+        # Home/away identity makes completion grading independent of whether the
+        # player produced an official stat row.
+        home = projection.team if projection.home else projection.opponent
+        away = projection.opponent if projection.home else projection.team
+        payload["player_snapshots"].append({
+            "snapshot_id": snapshot_id,
+            "recorded_at": _stamp(now),
+            "season": projection.season,
+            "week": projection.week,
+            "game_id": projection.game_id,
+            "home": home,
+            "away": away,
+            "kickoff": projection.kickoff_utc,
+            "team": projection.team,
+            "opponent": projection.opponent,
+            "player_id": projection.player_id,
+            "player_name": projection.player_name,
+            "position": projection.position,
+            "depth_rank": projection.depth_rank,
+            "injury_status": projection.injury_status,
+            "role_continuity": projection.role_continuity,
+            "persistence_weight": projection.persistence_weight,
+            "confidence": projection.confidence,
+            "model_version": projection.model_version,
+            "metrics": projection.metrics,
+            "status": "pending",
+            "authority": "shadow_only",
+        })
+        known_players.add(snapshot_id)
+
     payload["schema_version"] = SCHEMA_VERSION
     payload["updated_at"] = _stamp(now)
     payload["snapshots"] = [
         row for row in payload["snapshots"] if int(row.get("season", season)) >= season - 2
     ][-5000:]
+    payload["player_snapshots"] = [
+        row for row in payload["player_snapshots"]
+        if int(row.get("season", season)) >= season - 2
+    ][-100000:]
     payload["summary"] = summary(payload, season=season)
     _write(path, payload)
     return payload

@@ -9,8 +9,9 @@ Sibling boards on the same shared kernel: [MLB](https://alphakiller1.github.io/m
 · [CFB](https://alphakiller1.github.io/cfb-model/).
 
 Opponent-adjusted NFL power ratings, projected scores and totals, offensive and
-defensive unit rankings, and a simulated race for all eight divisions — behind an
-explicit **authority gate** on what any of it may be used for.
+defensive unit rankings, QB/RB/WR/TE/kicker projections, and a simulated race for
+all eight divisions — behind an explicit **authority gate** on what any of it may
+be used for.
 
 > Analysis infrastructure, not betting advice.
 
@@ -54,6 +55,7 @@ or locked prospective trial. The forward ledger is the prospective evidence.
 | Operations | nflverse freshness, exact DraftKings coverage/quota, active model protocol, and forward-record state |
 | Authority | what the numbers may be used for, and which of the twelve gates are unmet |
 | Board | verified DraftKings spread/total/paired moneylines first, then independent projections and a factor-by-factor breakdown |
+| Players | role-aware QB, RB, WR, TE and kicker projections from the current active roster and dated depth chart |
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
 | Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
 | Offense & defense | both units ranked, with opponent-adjusted component rates graded by league percentile |
@@ -67,6 +69,15 @@ margin into its five efficiency families plus home field. Those addends sum to
 the efficiency margin to within 1e-14 — a breakdown whose parts do not add up to
 the number above it is worse than no breakdown, so `tests/test_matrix.py` pins
 the reconciliation.
+
+Player projections are a separate, line-free layer. Current active-roster and
+pre-kickoff depth evidence decides the next-game role first. Historical usage is
+then blended at 72% for an established same-team player, 18% after a team change,
+and 0% for a player with no NFL history. Targets reconcile to one team target
+pool, RB carries reserve the starting quarterback and gadget share first, and
+individual efficiency is shrunk and opponent-adjusted. DraftKings game lines may
+condition team volume and implied scoring, but no player-prop line or player edge
+is invented.
 
 ## The model
 
@@ -143,6 +154,7 @@ nfl-model status                        # authority and unmet gates
 nfl-model board                         # this week's slate, scores and totals
 nfl-model ratings                       # power ratings, offence/defence split
 nfl-model units                         # offensive and defensive rankings
+nfl-model players --position WR         # QB/RB/WR/TE/K projections
 nfl-model divisions                     # simulated division and playoff odds
 nfl-model export --out board.json       # the JSON contract
 nfl-model build-site --out docs/index.html
@@ -152,8 +164,9 @@ Every command defaults to the current season and the first week with an unplayed
 game, so a scheduled build needs no arguments.
 
 Performance data comes from [nflverse](https://github.com/nflverse) — `games.csv`
-for schedule/results/benchmark lines and `stats_team_week_<season>.csv` for box
-scores. Live executable prices come from The Odds API, locked to exactly
+for schedule/results/benchmark lines, weekly team and player stats, weekly active
+rosters, dated depth charts, and injury designations once the season report is
+published. Live executable game prices come from The Odds API, locked to exactly
 DraftKings. The package has no runtime third-party dependencies: stdlib `urllib`
 plus `csv`, with completed seasons cached forever, volatile nflverse files on a
 6-hour TTL, and live odds cached for 15 minutes.
@@ -188,7 +201,9 @@ GitHub Pages is built fresh into `_site/`; committed HTML is never substituted
 for a failed live refresh. The release bundle contains `index.html`, `board.json`,
 `build.json`, and `record.json`. Deployment fails before upload if the slate is empty, the
 requested sportsbook is not exactly DraftKings, any game lacks a spread, total, or paired
-moneyline, the quote snapshot exceeds 20 minutes, a source is stale, or any artifact is invalid.
+moneyline, the quote snapshot exceeds 20 minutes, player projections fail to cover
+all 32 teams, their roster/depth evidence is missing, a source is stale, or any
+artifact is invalid.
 
 `nfl-model build-site` renders a self-contained static page. It leads with the
 **authority gate** and only then shows the board, because a dashboard that put
@@ -236,3 +251,8 @@ What differs per sport is only the *adapter* (`board_nfl.py`):
 - **Live grading is immutable.** Every unique pre-kickoff DraftKings quote vintage
   is recorded and graded later from the final score. The public record uses the
   latest pre-kickoff snapshot per game and remains explicitly shadow-only.
+- **Player grading is immutable too.** Every role-aware pre-kickoff player
+  projection is retained. Once the team game is final, its exact stat vector is
+  graded from nflverse; a projected player with no stat row is graded as a zero,
+  not left pending. The public summary reports metric MAE and anytime-TD Brier
+  score without converting either into a betting claim.

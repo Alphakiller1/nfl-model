@@ -28,7 +28,7 @@ from pathlib import Path
 
 from . import authority as auth
 from . import divisions as divisions_mod
-from . import forecast, matrix, ratings, teams, totals
+from . import forecast, matrix, player_props, ratings, teams, totals
 from . import season as season_mod
 from .board import BOARD_JS, board_html
 from .board_nfl import build_board
@@ -143,6 +143,7 @@ def _nav(slate) -> str:
     <div class="nav-links">
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
+      <a class="nav-link" href="#players">Players</a>
       <a class="nav-link" href="#disagreements">Gaps</a>
       <a class="nav-link" href="#ratings">Power Ratings</a>
       <a class="nav-link" href="#units">Offense &amp; Defense</a>
@@ -210,6 +211,9 @@ def _health_block(health: dict | None, record: dict | None) -> str:
         quota = f"quota unavailable · snapshot {age}"
     graded = int((record or {}).get("games_graded") or 0)
     pending = int((record or {}).get("pending_snapshots") or 0)
+    player_record = (record or {}).get("players") or {}
+    players_graded = int(player_record.get("players_graded") or 0)
+    players_pending = int(player_record.get("pending_player_snapshots") or 0)
     issue_html = "".join(f"<li>{e(str(issue))}</li>" for issue in issues)
     issue_block = f'<ul class="ops-issues">{issue_html}</ul>' if issue_html else ""
     return f"""
@@ -225,7 +229,10 @@ def _health_block(health: dict | None, record: dict | None) -> str:
     <div><span class="ops-k">Model protocol</span><strong>time-forward audited</strong>
       <small>independent projection remains research-only</small></div>
     <div><span class="ops-k">2026 shadow record</span><strong>{graded} graded</strong>
-      <small>{pending} pre-kickoff snapshot(s) pending</small></div>
+      <small>{pending} team-game snapshot(s) pending</small></div>
+    <div><span class="ops-k">Player shadow record</span>
+      <strong>{players_graded} graded</strong>
+      <small>{players_pending} role-aware snapshot(s) pending</small></div>
   </div>
   {issue_block}
 </section>"""
@@ -309,6 +316,114 @@ def _board_section(slate) -> str:
     this authority permits none.</p>
   </div>
   {board_html(board)}
+</section>"""
+
+
+def _prop_value(player, key: str, *, places: int = 1, percent: bool = False) -> str:
+    value = player.metrics.get(key)
+    if value is None:
+        return '<td class="num dim">&ndash;</td>'
+    shown = f"{value * 100:.0f}%" if percent else f"{value:.{places}f}"
+    return f'<td class="num">{shown}</td>'
+
+
+def _player_identity(player) -> str:
+    detail = f"{player.team} {player.position}{player.depth_rank}"
+    if player.injury_status:
+        detail += f" · {player.injury_status}"
+    return (
+        '<td class="team prop-player"><span class="tname">'
+        f'{_logo(player.team, 20)}<b>{e(player.player_name)}</b>'
+        f'<span class="dim">{e(detail)}</span></span></td>'
+    )
+
+
+def _player_section(slate) -> str:
+    status = slate.player_status or {}
+    if not slate.player_projections:
+        content = '<div class="empty">No active player projections are available.</div>'
+    else:
+        configs = {
+            "QB": (
+                ("Att", "Comp", "Pass yd", "Pass TD", "INT", "Rush yd"),
+                ("pass_attempts", "completions", "passing_yards", "passing_tds",
+                 "interceptions", "rushing_yards"),
+            ),
+            "RB": (
+                ("Car", "Rush yd", "Tgt", "Rec", "Rec yd", "TD"),
+                ("carries", "rushing_yards", "targets", "receptions",
+                 "receiving_yards", "anytime_td_probability"),
+            ),
+            "WR": (
+                ("Tgt", "Rec", "Rec yd", "TD"),
+                ("targets", "receptions", "receiving_yards",
+                 "anytime_td_probability"),
+            ),
+            "TE": (
+                ("Tgt", "Rec", "Rec yd", "TD"),
+                ("targets", "receptions", "receiving_yards",
+                 "anytime_td_probability"),
+            ),
+            "K": (
+                ("FG att", "FG made", "PAT", "Kick pts"),
+                ("fg_attempts", "fg_made", "pat_made", "kicking_points"),
+            ),
+        }
+        blocks = []
+        for position, (labels, fields) in configs.items():
+            players = [p for p in slate.player_projections if p.position == position]
+            rows = []
+            for player in players:
+                role_title = e(player.role_reason, quote=True)
+                role = (
+                    f'<td title="{role_title}"><span class="prop-role">'
+                    f'{e(player.role_continuity)}</span>'
+                    f'<small>{player.history_games} hist g</small></td>'
+                )
+                cells = "".join(
+                    _prop_value(player, field, percent=field == "anytime_td_probability")
+                    for field in fields
+                )
+                rows.append(
+                    f'<tr>{_player_identity(player)}'
+                    f'<td>{e(player.opponent)} {"home" if player.home else "away"}</td>'
+                    f'{role}{cells}<td><span class="conf-{e(player.confidence)}">'
+                    f'{e(player.confidence)}</span></td></tr>'
+                )
+            headers = "".join(f'<th class="num">{e(label)}</th>' for label in labels)
+            open_attr = " open" if position == "QB" else ""
+            blocks.append(
+                f'<details class="prop-group"{open_attr}><summary>{position} projections '
+                f'<span>{len(players)} players</span></summary><div class="tablewrap">'
+                f'<table class="pr prop-table"><thead><tr><th>Player</th><th>Game</th>'
+                f'<th>Role evidence</th>{headers}<th>Confidence</th></tr></thead>'
+                f'<tbody>{"".join(rows)}</tbody></table></div></details>'
+            )
+        content = "".join(blocks)
+    depth_as_of = status.get("depth_chart_as_of") or "unavailable"
+    injury = status.get("injury_report") or "unavailable"
+    return f"""
+<section id="players">
+  <div class="sec-head">
+    <span class="kicker">Players &middot; 03</span>
+    <h2>Offensive player &amp; kicker projections</h2>
+    <p class="blurb">Next-game centres for <b>QB, RB, WR, TE and K</b>. The current active
+    roster and dated depth chart determine the role first; recent production estimates
+    efficiency only after that role is established. A same-team veteran can retain 72% of
+    measured usage, a player who changed teams retains only 18%, and a player with no NFL
+    history retains none. Team target and carry pools are reconciled, opponent efficiency is
+    applied, and the verified DraftKings game spread and total anchor game script and scoring
+    environment when available. These are <b>not sportsbook player lines</b> and no difference
+    is labelled an edge.</p>
+    <div class="prop-meta">
+      <span class="pill">{int(status.get('players_projected') or 0)} players</span>
+      <span class="pill">{int(status.get('teams_covered') or 0)}/32 teams</span>
+      <span class="pill">roster week {int(status.get('active_roster_week') or 0)}</span>
+      <span class="pill dim">depth {e(str(depth_as_of))}</span>
+      <span class="pill dim">injuries: {e(str(injury))}</span>
+    </div>
+  </div>
+  {content}
 </section>"""
 
 
@@ -686,6 +801,18 @@ def _method_section() -> str:
       expanding from 2020 through 2025. It freezes the LOSO-selected 2026 hyperparameters;
       prospective proof comes from the shadow ledger. Both protocols are preserved.</p></div>
 
+    <div class="mth-card"><div class="mth-h">Player projection layer</div>
+      <p>QB, RB, WR, TE and kicker roles come from the active weekly roster and the latest
+      depth chart dated before kickoff. A current depth change is treated as a mechanism;
+      a trailing usage change is not assumed to persist without one. Historical shares retain
+      72% weight for established same-team players, 18% after a transfer, and 0% for players
+      without NFL history. Receiver targets and backfield carries are normalized to one team
+      opportunity pool.</p>
+      <p class="fine">Player efficiency uses a {player_props.HALF_LIFE_WEEKS:.0f}-week
+      half-life, Bayesian rate priors and opponent
+      adjustments. DraftKings game lines condition team volume and scoring environment only;
+      no sportsbook player-prop price is ingested and no player edge is emitted.</p></div>
+
     <div class="mth-card"><div class="mth-h">Where this is weakest</div>
       <p>The model is 0.46 points behind the closing line in the strict time-forward audit,
       and the gap is
@@ -731,6 +858,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f'<main class="wrap">'
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
+            f"{_player_section(slate)}"
             f"{_disagreements_section(slate)}"
             f"{_ratings_section(slate, outlooks)}"
             f"{_units_section(slate)}"
@@ -785,6 +913,8 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         ledger_payload = ledger.update(
             season=slate.season,
             projections=slate.projections,
+            player_projections=slate.player_projections,
+            player_results=slate.player_results,
             schedule=slate.schedule,
             recorded_at=generated_at,
         )
@@ -802,6 +932,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         "week": slate.week,
         "nflverse": source_rows,
         "odds": odds,
+        "players": slate.player_status,
         "issues": list(dict.fromkeys(issues)),
     }
     if os.getenv("NFL_REQUIRE_LIVE_ODDS", "").lower() in {"1", "true", "yes"}:
@@ -951,6 +1082,26 @@ color:var(--text-3);font-size:var(--mm-text-sm)}
 .pr .score{font-family:var(--font-display);font-weight:800;color:var(--v-light)}
 .pr .ratingbar{width:20%;min-width:120px}
 .pr .eff{color:var(--text-2)}
+.prop-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.prop-group{margin-top:12px;border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);background:var(--ca-panel-glass);overflow:hidden}
+.prop-group summary{cursor:pointer;list-style:none;padding:13px 15px;
+font-family:var(--font-display);font-size:var(--mm-text-md);font-weight:700;
+text-transform:uppercase;letter-spacing:.06em;color:var(--text)}
+.prop-group summary::-webkit-details-marker{display:none}
+.prop-group summary::before{content:"+";display:inline-block;width:20px;color:var(--v-light)}
+.prop-group[open] summary::before{content:"−"}
+.prop-group summary span{margin-left:8px;color:var(--text-3);font-size:var(--mm-text-xs);
+font-weight:500;text-transform:none;letter-spacing:0}
+.prop-group .tablewrap{border:0;border-top:1px solid var(--border-soft);border-radius:0}
+.prop-table th,.prop-table td{padding:7px 10px;font-size:var(--mm-text-xs)}
+.prop-player{min-width:205px}.prop-player .tname{gap:7px}
+.prop-role{display:block;color:var(--text-2)}
+.prop-role+small{display:block;color:var(--text-4)}
+.conf-high,.conf-medium,.conf-low{font-family:var(--font-display);font-weight:700;
+text-transform:uppercase;font-size:var(--mm-text-2xs)}
+.conf-high{color:var(--ca-green)}.conf-medium{color:var(--gold)}
+.conf-low{color:var(--text-3)}
 .rb-track{position:relative;height:8px;border-radius:99px;background:var(--bg-4)}
 .rb-zero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--border-2)}
 .rb-track i{position:absolute;top:0;bottom:0;border-radius:99px}

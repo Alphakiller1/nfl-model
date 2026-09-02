@@ -12,6 +12,7 @@ REQUIRED = (
     "Production data health",
     "RESEARCH_ONLY",
     "Power Ratings",
+    "Offensive player &amp; kicker projections",
     "1-800-GAMBLER",
     "not betting advice",
 )

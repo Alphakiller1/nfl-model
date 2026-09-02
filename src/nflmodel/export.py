@@ -90,6 +90,42 @@ def _projection(p: forecast.GameProjection) -> dict:
     }
 
 
+def _player_projection(p) -> dict:
+    """Stable contract for a projection that carries no sportsbook price."""
+    return {
+        "season": p.season,
+        "week": p.week,
+        "game_id": p.game_id,
+        "kickoff": p.kickoff,
+        "kickoff_utc": p.kickoff_utc,
+        "team": p.team,
+        "opponent": p.opponent,
+        "home": p.home,
+        "player_id": p.player_id,
+        "player_name": p.player_name,
+        "position": p.position,
+        "depth_rank": p.depth_rank,
+        "depth_slot": p.depth_slot,
+        "roster_status": p.roster_status,
+        "injury_status": p.injury_status,
+        "headshot_url": p.headshot_url,
+        "history_games": p.history_games,
+        "last_team": p.last_team,
+        "role_continuity": p.role_continuity,
+        "persistence_weight": _round(p.persistence_weight, 3),
+        "role_reason": p.role_reason,
+        "confidence": p.confidence,
+        "team_environment_source": p.team_environment_source,
+        "implied_team_points": _round(p.implied_team_points, 2),
+        "metrics": {key: _round(value, 2) for key, value in p.metrics.items()},
+        "model_version": p.model_version,
+        "sportsbook_line": None,
+        "edge": None,
+        "authority": p.authority,
+        "action": p.action,
+    }
+
+
 def payload(slate, outlooks: list | None = None) -> dict:
     """The whole week: authority, ratings, units, games and season outlook."""
     authority = slate.authority
@@ -149,6 +185,8 @@ def payload(slate, outlooks: list | None = None) -> dict:
         },
         "teams": team_rows,
         "games": [_projection(p) for p in slate.projections],
+        "player_model": slate.player_status,
+        "player_projections": [_player_projection(p) for p in slate.player_projections],
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {

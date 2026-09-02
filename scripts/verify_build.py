@@ -11,7 +11,7 @@ from pathlib import Path
 def verify(path: Path) -> list[str]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     errors: list[str] = []
-    for key in ("generated_at", "season", "week", "nflverse", "odds"):
+    for key in ("generated_at", "season", "week", "nflverse", "odds", "players"):
         if key not in payload:
             errors.append(f"missing manifest field: {key}")
 
@@ -60,6 +60,18 @@ def verify(path: Path) -> list[str]:
             errors.append(f"{len(stale)} nflverse source(s) are stale")
         if failed:
             errors.append(f"{len(failed)} nflverse source(s) failed")
+
+    players = payload.get("players") or {}
+    player_count = int(players.get("players_projected") or 0)
+    team_count = int(players.get("teams_covered") or 0)
+    if player_count <= 0:
+        errors.append("no offensive player or kicker projections were generated")
+    if team_count < 32:
+        errors.append(f"player projections cover {team_count}/32 teams")
+    if int(players.get("active_roster_week") or 0) < int(payload.get("week") or 0):
+        errors.append("active roster snapshot predates the projected week")
+    if not players.get("depth_chart_as_of"):
+        errors.append("depth-chart timestamp is unavailable")
     return errors
 
 

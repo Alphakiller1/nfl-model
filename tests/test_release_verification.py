@@ -12,6 +12,12 @@ def _manifest() -> dict:
         "week": 1,
         "nflverse": [],
         "issues": [],
+        "players": {
+            "players_projected": 350,
+            "teams_covered": 32,
+            "active_roster_week": 1,
+            "depth_chart_as_of": "2026-09-02T12:00:00Z",
+        },
         "odds": {
             "state": "fresh",
             "requested_book": "draftkings",

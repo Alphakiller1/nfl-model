@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from . import authority as auth_mod
-from . import efficiency, forecast, matrix, preseason, ratings, teams
+from . import efficiency, forecast, matrix, player_props, preseason, ratings, teams
 from .sources import nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
@@ -97,6 +97,9 @@ class Slate:
     games_played: dict[str, float]
     authority: auth_mod.Authority
     projections: list[forecast.GameProjection] = field(default_factory=list)
+    player_projections: list[player_props.PlayerProjection] = field(default_factory=list)
+    player_status: dict = field(default_factory=dict)
+    player_results: list[dict] = field(default_factory=list)
     # Context, not model input. A preseason board with no records on it asks the
     # reader to take a rating on faith; "SEA +9.5, 12-5 last year" is a claim they
     # can check against something they remember.
@@ -237,6 +240,28 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         )
         for row in games
     ]
+
+    player_history: list[dict] = []
+    for prior_season in history_seasons:
+        player_history.extend(nflverse.player_week(prior_season))
+    current_player_rows: list[dict] = []
+    if week > 1:
+        current_player_rows = nflverse.player_week(season, completed_season=False)
+        player_history.extend(current_player_rows)
+    roster = nflverse.weekly_roster(season, week=week)
+    first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
+    depth = nflverse.depth_charts(season, before=first_kickoff)
+    injury_rows = nflverse.injuries(season, week=week)
+    player_result = player_props.project(
+        season=season,
+        week=week,
+        games=games,
+        game_projections=projections,
+        roster=roster,
+        depth=depth,
+        injuries=injury_rows,
+        history_rows=player_history,
+    )
     odds_status = oddsapi.status_report()
     odds_status.update({
         "slate_games": len(games),
@@ -264,6 +289,8 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         issues.append(f"{len(stale)} nflverse source(s) used a bounded stale snapshot")
     if failed:
         issues.append(f"{len(failed)} nflverse source(s) failed")
+    if games and not player_result.projections:
+        issues.append("No active offensive player or kicker projections were generated")
     if odds_error:
         issues.append(f"Live sportsbook feed failed: {odds_error}")
     elif games and not odds_status["slate_matched"]:
@@ -277,6 +304,9 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     return Slate(season=season, week=week, table=table, forms=forms, games=games,
                  schedule=schedule, games_played=played, authority=authority,
                  projections=projections, records=build_records(completed),
+                 player_projections=player_result.projections,
+                 player_status=player_result.status,
+                 player_results=current_player_rows,
                  prior_records=build_records(prior),
                  source_status=nflverse.status_report(), odds_status=odds_status,
                  issues=issues)

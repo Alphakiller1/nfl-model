@@ -160,7 +160,7 @@ def test_site_leads_with_the_authority_gate(slate):
 
 def test_site_sections_appear_in_the_documented_order(slate):
     html = _render(slate)
-    order = ['id="authority"', 'id="board"', 'id="ratings"', 'id="units"',
+    order = ['id="authority"', 'id="board"', 'id="players"', 'id="ratings"', 'id="units"',
              'id="divisions"', 'id="methodology"']
     positions = [html.index(marker) for marker in order]
     assert positions == sorted(positions)
@@ -211,6 +211,13 @@ def test_site_publishes_the_unit_rankings_and_the_division_race(slate):
     assert "Projected division winners" in html
     for division in teams.DIVISIONS:
         assert division in html
+
+
+def test_site_has_a_distinct_line_free_player_projection_layer(slate):
+    html = _render(slate)
+    assert "Offensive player &amp; kicker projections" in html
+    assert "not sportsbook player lines" in html
+    assert "a player who changed teams retains only 18%" in html
 
 
 def test_site_documents_what_the_simulation_does_not_model(slate):

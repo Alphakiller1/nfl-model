@@ -41,6 +41,22 @@ TEAM_WEEK_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "stats_team/stats_team_week_{season}.csv"
 )
+PLAYER_WEEK_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "stats_player/stats_player_week_{season}.csv"
+)
+WEEKLY_ROSTER_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "weekly_rosters/roster_weekly_{season}.csv"
+)
+DEPTH_CHART_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "depth_charts/depth_charts_{season}.csv"
+)
+INJURIES_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "injuries/injuries_{season}.csv"
+)
 
 CACHE_DIR = Path(os.getenv("NFL_MODEL_CACHE")
                  or Path(__file__).resolve().parents[3] / "data" / "cache")
@@ -94,6 +110,8 @@ def _fresh(path: Path, ttl: float | None) -> bool:
         return False
     if ttl is None:
         return True
+    if ttl <= 0:
+        return False
     return (time.time() - path.stat().st_mtime) < ttl
 
 
@@ -120,6 +138,23 @@ def _download(url: str) -> bytes:
 def _parse(raw: bytes) -> list[dict]:
     text = raw.decode("utf-8-sig", errors="replace")
     return list(csv.DictReader(io.StringIO(text)))
+
+
+def _parse_latest(raw: bytes, field: str, *, before: str | None = None) -> list[dict]:
+    """Keep only the most recent dated snapshot, without retaining a huge history."""
+    text = raw.decode("utf-8-sig", errors="replace")
+    latest = ""
+    selected: list[dict] = []
+    for row in csv.DictReader(io.StringIO(text)):
+        value = str(row.get(field) or "")
+        if not value or (before is not None and value > before):
+            continue
+        if value > latest:
+            latest = value
+            selected = [row]
+        elif value == latest:
+            selected.append(row)
+    return selected
 
 
 def fetch_csv(url: str, cache_name: str, *, ttl: float | None) -> list[dict]:
@@ -171,6 +206,49 @@ def fetch_csv(url: str, cache_name: str, *, ttl: float | None) -> list[dict]:
     return rows
 
 
+def fetch_latest_csv(
+    url: str,
+    cache_name: str,
+    *,
+    ttl: float | None,
+    field: str,
+    before: str | None = None,
+) -> list[dict]:
+    """Fetch a dated CSV but retain only its last point-in-time snapshot in memory."""
+    path = CACHE_DIR / cache_name
+    state = "cached"
+    error = None
+    stale = False
+    if _fresh(path, ttl):
+        raw = path.read_bytes()
+    else:
+        try:
+            raw = _download(url)
+            state = "fresh"
+        except NflverseError as exc:
+            if not path.is_file() or not path.stat().st_size:
+                _STATUS[cache_name] = SourceStatus(
+                    cache_name, url, "error", None, None, 0, stale=True,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                raise
+            raw = path.read_bytes()
+            state = "bounded_snapshot"
+            stale = True
+            error = f"{type(exc).__name__}: {exc}"
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix(path.suffix + ".tmp")
+            temporary.write_bytes(raw)
+            temporary.replace(path)
+    rows = _parse_latest(raw, field, before=before)
+    fetched_at, age = _file_state(path)
+    _STATUS[cache_name] = SourceStatus(
+        cache_name, url, state, fetched_at, age, len(rows), stale=stale, error=error
+    )
+    return rows
+
+
 def number(value) -> float | None:
     """CSV cell -> float, treating blanks and NA markers as missing.
 
@@ -192,6 +270,72 @@ def current_season() -> int:
     """The season a date belongs to. A new NFL league year starts in March."""
     now = datetime.now(timezone.utc)
     return now.year if now.month >= 3 else now.year - 1
+
+
+def player_week(season: int, *, completed_season: bool | None = None) -> list[dict]:
+    """Weekly player stats, including passing, rushing, receiving and kicking."""
+    if completed_season is None:
+        completed_season = season < current_season()
+    ttl = None if completed_season else VOLATILE_TTL
+    try:
+        return fetch_csv(
+            PLAYER_WEEK_URL.format(season=season),
+            f"player_stats_week_{season}.csv",
+            ttl=ttl,
+        )
+    except NflverseError:
+        return []
+
+
+def weekly_roster(season: int, *, week: int | None = None) -> list[dict]:
+    rows = fetch_csv(
+        WEEKLY_ROSTER_URL.format(season=season),
+        f"roster_weekly_{season}.csv",
+        ttl=VOLATILE_TTL,
+    )
+    available = sorted({int(number(row.get("week")) or 0) for row in rows})
+    if not available:
+        return []
+    eligible = [candidate for candidate in available if week is None or candidate <= week]
+    if not eligible:
+        return []
+    selected = max(eligible)
+    return [row for row in rows if int(number(row.get("week")) or 0) == selected]
+
+
+def depth_charts(season: int, *, before: str | None = None) -> list[dict]:
+    return fetch_latest_csv(
+        DEPTH_CHART_URL.format(season=season),
+        f"depth_charts_{season}.csv",
+        ttl=VOLATILE_TTL,
+        field="dt",
+        before=before,
+    )
+
+
+def injuries(season: int, *, week: int | None = None) -> list[dict]:
+    """Latest injury designation at or before ``week``.
+
+    The release is legitimately absent before a season's first injury report.
+    That state is recorded as ``not_published`` rather than mislabelled as a
+    failed or stale feed.
+    """
+    cache_name = f"injuries_{season}.csv"
+    url = INJURIES_URL.format(season=season)
+    try:
+        rows = fetch_csv(url, cache_name, ttl=VOLATILE_TTL)
+    except NflverseError:
+        _STATUS[cache_name] = SourceStatus(
+            cache_name, url, "not_published", None, None, 0,
+            error="season injury report has not been published",
+        )
+        return []
+    available = sorted({int(number(row.get("week")) or 0) for row in rows})
+    eligible = [candidate for candidate in available if week is None or candidate <= week]
+    if not eligible:
+        return []
+    selected = max(eligible)
+    return [row for row in rows if int(number(row.get("week")) or 0) == selected]
 
 
 def games(*, seasons: tuple[int, ...] | None = None,
