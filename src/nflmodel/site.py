@@ -144,6 +144,7 @@ def _nav(slate) -> str:
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#players">Players</a>
+      <a class="nav-link" href="#scheme">Scheme</a>
       <a class="nav-link" href="#disagreements">Gaps</a>
       <a class="nav-link" href="#ratings">Power Ratings</a>
       <a class="nav-link" href="#units">Offense &amp; Defense</a>
@@ -384,10 +385,26 @@ def _player_section(slate) -> str:
                     _prop_value(player, field, percent=field == "anytime_td_probability")
                     for field in fields
                 )
+                scheme = player.scheme_context or {}
+                if scheme:
+                    man = float(scheme.get("expected_man_rate") or 0.0)
+                    zone = float(scheme.get("expected_zone_rate") or 0.0)
+                    if position in {"RB", "WR", "TE"}:
+                        response = f"target ×{float(scheme.get('target_multiplier') or 1):.2f}"
+                    elif position == "QB":
+                        response = f"att {float(scheme.get('pass_attempt_delta') or 0):+.1f}"
+                    else:
+                        response = "context only"
+                    scheme_cell = (
+                        f'<td><span class="prop-role">{man:.0%} M / {zone:.0%} Z</span>'
+                        f'<small class="dim">{e(response)}</small></td>'
+                    )
+                else:
+                    scheme_cell = '<td class="dim">unavailable</td>'
                 rows.append(
                     f'<tr>{_player_identity(player)}'
                     f'<td>{e(player.opponent)} {"home" if player.home else "away"}</td>'
-                    f'{role}{cells}<td><span class="conf-{e(player.confidence)}">'
+                    f'{role}{scheme_cell}{cells}<td><span class="conf-{e(player.confidence)}">'
                     f'{e(player.confidence)}</span></td></tr>'
                 )
             headers = "".join(f'<th class="num">{e(label)}</th>' for label in labels)
@@ -396,7 +413,7 @@ def _player_section(slate) -> str:
                 f'<details class="prop-group"{open_attr}><summary>{position} projections '
                 f'<span>{len(players)} players</span></summary><div class="tablewrap">'
                 f'<table class="pr prop-table"><thead><tr><th>Player</th><th>Game</th>'
-                f'<th>Role evidence</th>{headers}<th>Confidence</th></tr></thead>'
+                f'<th>Role evidence</th><th>Scheme</th>{headers}<th>Confidence</th></tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table></div></details>'
             )
         content = "".join(blocks)
@@ -424,6 +441,155 @@ def _player_section(slate) -> str:
     </div>
   </div>
   {content}
+</section>"""
+
+
+def _scheme_section(slate) -> str:
+    status = slate.scheme_status or {}
+    profiles = slate.scheme_profiles or {}
+    matchups = slate.scheme_matchups or {}
+    if not profiles:
+        return """
+<section id="scheme"><div class="sec-head"><span class="kicker">Scheme matrix</span>
+<h2>Scheme data unavailable</h2></div></section>"""
+
+    matchup_rows = []
+    for (team, opponent), matchup in sorted(matchups.items()):
+        top_coverage = max(
+            matchup.expected_coverages,
+            key=matchup.expected_coverages.get,
+            default="unavailable",
+        ).replace("_", " ")
+        multipliers = matchup.target_multipliers
+        matchup_rows.append(
+            f'<tr><td class="team"><span class="tname">{_logo(team)}<b>{e(team)}</b>'
+            f'<span class="dim">vs {e(opponent)}</span></span></td>'
+            f'<td class="num">{matchup.neutral_pass_rate:.1%}</td>'
+            f'<td class="num">{matchup.expected_man_rate:.1%}</td>'
+            f'<td class="num">{matchup.expected_zone_rate:.1%}</td>'
+            f'<td>{e(top_coverage)}</td>'
+            f'<td class="num">{matchup.expected_motion_rate:.1%}</td>'
+            f'<td class="num">{matchup.expected_play_action_rate:.1%}</td>'
+            f'<td class="num">{matchup.expected_blitz_rate:.1%}</td>'
+            f'<td class="num">{matchup.expected_pressure_rate:.1%}</td>'
+            f'<td class="num">{multipliers.get("RB", 1.0):.2f}×</td>'
+            f'<td class="num">{multipliers.get("WR", 1.0):.2f}×</td>'
+            f'<td class="num">{multipliers.get("TE", 1.0):.2f}×</td>'
+            f'<td class="num">{matchup.pass_attempt_delta:+.1f}</td>'
+            f'<td class="num">{matchup.pass_efficiency_delta:+.2f}</td>'
+            f'<td><span class="conf-{e(matchup.confidence)}">'
+            f'{e(matchup.confidence)}</span></td></tr>'
+        )
+
+    offense_rows = []
+    defense_rows = []
+    for team, profile in sorted(profiles.items()):
+        offense = profile.offense
+        defense = profile.defense
+        offense_rows.append(
+            f'<tr><td class="team"><span class="tname">{_logo(team)}<b>{e(team)}</b>'
+            f'<span class="dim">{e(profile.staff_continuity)}</span></span></td>'
+            f'<td class="num">{offense.get("neutral_pass_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("personnel_11_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("personnel_12_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("personnel_21_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("formation_shotgun_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("formation_under_center_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("motion_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("play_action_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("rpo_rate", 0):.1%}</td>'
+            f'<td class="num">{offense.get("pass_epa_man", 0):+.2f}</td>'
+            f'<td class="num">{offense.get("pass_epa_zone", 0):+.2f}</td>'
+            f'<td class="num">{offense.get("run_gap_guard_rate", 0):.0%}/'
+            f'{offense.get("run_gap_tackle_rate", 0):.0%}/'
+            f'{offense.get("run_gap_end_rate", 0):.0%}</td></tr>'
+        )
+        coverage_keys = (
+            "cover_0", "cover_1", "cover_2", "cover_3", "cover_4", "cover_6",
+            "cover_2_man",
+        )
+        top = max(
+            coverage_keys,
+            key=lambda key: defense.get(key + "_rate", 0.0),
+        )
+        defense_rows.append(
+            f'<tr><td class="team"><span class="tname">{_logo(team)}<b>{e(team)}</b>'
+            f'<span class="dim">{profile.coverage_samples} coverage plays</span></span></td>'
+            f'<td class="num">{defense.get("man_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("zone_rate", 0):.1%}</td>'
+            f'<td>{e(top.replace("_", " "))} '
+            f'<span class="dim">{defense.get(top + "_rate", 0):.0%}</span></td>'
+            f'<td class="num">{defense.get("blitz_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("pressure_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("avg_box", 0):.2f}</td>'
+            f'<td class="num">{defense.get("personnel_base_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("personnel_nickel_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("personnel_dime_rate", 0):.1%}</td>'
+            f'<td class="num">{defense.get("pass_epa_man", 0):+.2f}</td>'
+            f'<td class="num">{defense.get("pass_epa_zone", 0):+.2f}</td></tr>'
+        )
+
+    pbp_seasons = ", ".join(str(value) for value in status.get("pbp_source_seasons", []))
+    participation_seasons = ", ".join(
+        str(value) for value in status.get("participation_source_seasons", [])
+    )
+    charting_seasons = ", ".join(
+        str(value) for value in status.get("charting_source_seasons", [])
+    )
+    observed = len(status.get("observed") or [])
+    proxies = len(status.get("proxies") or [])
+    return f"""
+<section id="scheme">
+  <div class="sec-head">
+    <span class="kicker">Scheme intelligence &middot; 04</span>
+    <h2>Tendencies, coverage response &amp; personnel</h2>
+    <p class="blurb">A point-in-time matchup layer built from play-level distributions,
+    not fixed team labels. Rates decay with age, shrink toward the league mean, and are
+    discounted after a head-coach change. Offensive EPA versus man and zone is matched to
+    the opponent&rsquo;s coverage mix; position target response then changes <b>allocation
+    inside the same reconciled team target pool</b>. Adjustments are bounded and feed the
+    player projections only&mdash;the audited spread model remains untouched.</p>
+    <div class="prop-meta">
+      <span class="pill">{len(profiles)}/32 profiles</span>
+      <span class="pill">PBP {e(pbp_seasons or 'unavailable')}</span>
+      <span class="pill">coverage/personnel {e(participation_seasons or 'unavailable')}</span>
+      <span class="pill">FTN concepts {e(charting_seasons or 'unavailable')}</span>
+      <span class="pill">{observed} observed families</span>
+      <span class="pill">{proxies} labelled proxies</span>
+      <span class="pill warn">blocking family unavailable</span>
+    </div>
+    <p class="scheme-boundary"><b>Data boundary:</b> formation, personnel, box count,
+    man/zone, coverage family, pressure, motion, play action, RPO and screens are directly
+    charted. Run direction and guard/tackle/end are run-point proxies. The public source has
+    no zone/gap/power/man offensive-line blocking field, so the model does not invent one.
+    Participation coverage/personnel is an offseason release and its source season is shown.</p>
+  </div>
+  <details class="prop-group" open><summary>This week&rsquo;s response matrix
+    <span>{len(matchups)} team matchups</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>Offense</th><th class="num">Neutral pass</th>
+    <th class="num">Man</th><th class="num">Zone</th><th>Top family</th>
+    <th class="num">Motion</th><th class="num">Play act</th>
+    <th class="num">Blitz</th><th class="num">Pressure</th>
+    <th class="num">RB tgt</th><th class="num">WR tgt</th><th class="num">TE tgt</th>
+    <th class="num">Pass att Δ</th><th class="num">Pass eff Δ</th><th>Confidence</th>
+    </tr></thead><tbody>{''.join(matchup_rows)}</tbody></table></div></details>
+  <details class="prop-group"><summary>Offensive tendency profiles
+    <span>{len(offense_rows)} teams</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>Team / continuity</th>
+    <th class="num">Ntrl pass</th><th class="num">11</th><th class="num">12</th>
+    <th class="num">21</th><th class="num">Gun</th><th class="num">Under ctr</th>
+    <th class="num">Motion</th><th class="num">Play act</th><th class="num">RPO</th>
+    <th class="num">EPA man</th><th class="num">EPA zone</th>
+    <th class="num">Run G/T/E</th></tr></thead>
+    <tbody>{''.join(offense_rows)}</tbody></table></div></details>
+  <details class="prop-group"><summary>Defensive tendency &amp; response profiles
+    <span>{len(defense_rows)} teams</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>Team / sample</th>
+    <th class="num">Man</th><th class="num">Zone</th><th>Top coverage</th>
+    <th class="num">Blitz</th><th class="num">Pressure</th><th class="num">Avg box</th>
+    <th class="num">Base</th><th class="num">Nickel</th><th class="num">Dime</th>
+    <th class="num">EPA man</th><th class="num">EPA zone</th></tr></thead>
+    <tbody>{''.join(defense_rows)}</tbody></table></div></details>
 </section>"""
 
 
@@ -859,6 +1025,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
             f"{_player_section(slate)}"
+            f"{_scheme_section(slate)}"
             f"{_disagreements_section(slate)}"
             f"{_ratings_section(slate, outlooks)}"
             f"{_units_section(slate)}"
@@ -933,6 +1100,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         "nflverse": source_rows,
         "odds": odds,
         "players": slate.player_status,
+        "scheme": slate.scheme_status,
         "issues": list(dict.fromkeys(issues)),
     }
     if os.getenv("NFL_REQUIRE_LIVE_ODDS", "").lower() in {"1", "true", "yes"}:
@@ -1098,6 +1266,9 @@ font-weight:500;text-transform:none;letter-spacing:0}
 .prop-player{min-width:205px}.prop-player .tname{gap:7px}
 .prop-role{display:block;color:var(--text-2)}
 .prop-role+small{display:block;color:var(--text-4)}
+.scheme-boundary{margin:16px 0 0;padding:13px 15px;border-left:3px solid var(--warn);
+background:color-mix(in srgb,var(--warn) 7%,transparent);color:var(--text-2);
+font-size:var(--mm-text-sm);line-height:1.65}
 .conf-high,.conf-medium,.conf-low{font-family:var(--font-display);font-weight:700;
 text-transform:uppercase;font-size:var(--mm-text-2xs)}
 .conf-high{color:var(--ca-green)}.conf-medium{color:var(--gold)}

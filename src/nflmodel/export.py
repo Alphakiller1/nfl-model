@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import authority as auth
 from . import divisions as divisions_mod
-from . import forecast, matrix, ratings, teams
+from . import forecast, matrix, ratings, scheme, teams
 
 SCHEMA = "nfl-model/board/3"
 
@@ -117,6 +117,7 @@ def _player_projection(p) -> dict:
         "confidence": p.confidence,
         "team_environment_source": p.team_environment_source,
         "implied_team_points": _round(p.implied_team_points, 2),
+        "scheme_context": p.scheme_context,
         "metrics": {key: _round(value, 2) for key, value in p.metrics.items()},
         "model_version": p.model_version,
         "sportsbook_line": None,
@@ -187,6 +188,15 @@ def payload(slate, outlooks: list | None = None) -> dict:
         "games": [_projection(p) for p in slate.projections],
         "player_model": slate.player_status,
         "player_projections": [_player_projection(p) for p in slate.player_projections],
+        "scheme_model": slate.scheme_status,
+        "scheme_profiles": [
+            scheme.profile_payload(profile)
+            for _, profile in sorted(slate.scheme_profiles.items())
+        ],
+        "scheme_matchups": [
+            scheme.matchup_payload(matchup)
+            for _, matchup in sorted(slate.scheme_matchups.items())
+        ],
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {

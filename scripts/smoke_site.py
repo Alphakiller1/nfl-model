@@ -13,6 +13,7 @@ REQUIRED = (
     "RESEARCH_ONLY",
     "Power Ratings",
     "Offensive player &amp; kicker projections",
+    "Tendencies, coverage response &amp; personnel",
     "1-800-GAMBLER",
     "not betting advice",
 )

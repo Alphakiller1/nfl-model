@@ -84,6 +84,16 @@ def player_build():
         book_total=45.0, book_margin=3.0, model_margin=2.0,
         projected_home_score=24.0, projected_away_score=21.0,
     )
+    scheme_matchup = SimpleNamespace(
+        model_version="test-scheme/1", source_seasons=(2025,), confidence="medium",
+        expected_man_rate=0.4, expected_zone_rate=0.6,
+        expected_motion_rate=0.5, expected_play_action_rate=0.25,
+        expected_blitz_rate=0.3, expected_pressure_rate=0.35,
+        target_multipliers={"RB": 1.08, "WR": 0.96, "TE": 1.03},
+        pass_attempt_delta=0.8, carry_delta=-0.4,
+        pass_efficiency_delta=0.1, rush_efficiency_delta=-0.05,
+        factors=("test point-in-time coverage response",),
+    )
     return player_props.project(
         season=2026,
         week=1,
@@ -93,6 +103,7 @@ def player_build():
         depth=depth,
         injuries=[{"team": "NE", "gsis_id": "out", "report_status": "Out"}],
         history_rows=history,
+        scheme_matchups={("NE", "SEA"): scheme_matchup},
     )
 
 
@@ -123,6 +134,8 @@ def test_player_opportunities_reconcile_to_one_team_pool(player_build):
     assert targets <= quarterback.metrics["pass_attempts"] * 1.04
     assert targets >= quarterback.metrics["pass_attempts"] * 0.80
     assert all(value >= 0 for row in players for value in row.metrics.values())
+    assert all(row.scheme_context["model_version"] == "test-scheme/1" for row in players)
+    assert all("scheme matrix" in row.team_environment_source for row in players)
 
 
 def test_projection_contract_never_invents_a_player_line_or_edge(slate, player_build):
@@ -133,6 +146,7 @@ def test_projection_contract_never_invents_a_player_line_or_edge(slate, player_b
     assert payload["player_model"]["pricing"].startswith("none")
     assert all(row["sportsbook_line"] is None for row in payload["player_projections"])
     assert all(row["edge"] is None for row in payload["player_projections"])
+    assert all(row["scheme_context"] for row in payload["player_projections"])
 
 
 def test_latest_depth_parser_respects_the_point_in_time_cutoff():

@@ -384,6 +384,7 @@ def update(
             "persistence_weight": projection.persistence_weight,
             "confidence": projection.confidence,
             "model_version": projection.model_version,
+            "scheme_context": projection.scheme_context,
             "metrics": projection.metrics,
             "status": "pending",
             "authority": "shadow_only",

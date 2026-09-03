@@ -56,6 +56,7 @@ or locked prospective trial. The forward ledger is the prospective evidence.
 | Authority | what the numbers may be used for, and which of the twelve gates are unmet |
 | Board | verified DraftKings spread/total/paired moneylines first, then independent projections and a factor-by-factor breakdown |
 | Players | role-aware QB, RB, WR, TE and kicker projections from the current active roster and dated depth chart |
+| Scheme | point-in-time personnel, formation, coverage, pressure, play-call and matchup-response distributions |
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
 | Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
 | Offense & defense | both units ranked, with opponent-adjusted component rates graded by league percentile |
@@ -78,6 +79,26 @@ pool, RB carries reserve the starting quarterback and gadget share first, and
 individual efficiency is shrunk and opponent-adjusted. DraftKings game lines may
 condition team volume and implied scoring, but no player-prop line or player edge
 is invented.
+
+The scheme matrix is a separate, versioned challenger. It uses nflverse
+play-by-play, participation and FTN charting to track neutral-situation pass rate,
+shotgun/under-center/pistol, 11/12/21/13 personnel, motion, play action, RPO,
+screens, defensive base/nickel/dime, box count, blitz/pressure, man/zone and Cover
+0/1/2/3/4/6/2-Man. It also measures offensive and defensive response EPA against
+man and zone and position target shares under the expected coverage mix. Rates
+are recency-weighted, league-shrunk, strictly pre-forecast, and discounted after a
+head-coach change. Its bounded changes feed player opportunity and efficiency;
+they do not alter the audited spread model.
+
+Provenance is explicit. `run_location` and nflverse's `run_gap` values
+(`guard`/`tackle`/`end`) describe the run point and are labelled proxies. The
+public files do **not** chart offensive-line zone/gap/power/man blocking family or
+individual assignments, so those fields are marked unavailable rather than
+inferred and relabelled as observed. From 2023 onward, participation data is FTN
+Data via nflverse under CC-BY-SA 4.0; nflverse documents that participation is
+published after the postseason, so every profile carries its source season.
+The complete field, bound and update contract is in
+[`reports/SCHEME_DATA_CONTRACT.md`](reports/SCHEME_DATA_CONTRACT.md).
 
 ## The model
 
@@ -190,10 +211,16 @@ cfb-model does.
 ## Genesis research boundary
 
 [`nfl-genesis`](https://github.com/Alphakiller1/nfl-genesis) owns advanced
-challengers: play-by-play, quarterback/availability, weather, scheme, calibrated
+challengers: quarterback/availability, weather, calibrated
 distributions, market comparison, and promotion gates. None of its unpromoted
 research priors is copied into this live matrix as a decorative weight. A
 challenger must first improve expanding-season results and clear its own gate.
+
+This repository's `scheme.py` is a deliberately bounded exception: its
+descriptive profiles and player-projection adjustments are live as a research
+challenger, with source coverage and unavailable fields carried in the artifact
+contract. It remains outside the published spread fit until prospective grading
+demonstrates value.
 
 ## The dashboard
 
@@ -202,7 +229,9 @@ for a failed live refresh. The release bundle contains `index.html`, `board.json
 `build.json`, and `record.json`. Deployment fails before upload if the slate is empty, the
 requested sportsbook is not exactly DraftKings, any game lacks a spread, total, or paired
 moneyline, the quote snapshot exceeds 20 minutes, player projections fail to cover
-all 32 teams, their roster/depth evidence is missing, a source is stale, or any
+all 32 teams, their roster/depth evidence is missing, the scheme matrix fails to
+cover all 32 teams and both sides of every slate game or obscures its blocking-data
+boundary, a source is stale, or any
 artifact is invalid.
 
 `nfl-model build-site` renders a self-contained static page. It leads with the

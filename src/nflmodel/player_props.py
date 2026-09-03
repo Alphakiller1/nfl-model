@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from . import teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/1.0.0"
+MODEL_VERSION = "nfl-player-projections/1.1.0"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 HALF_LIFE_WEEKS = 12.0
@@ -85,6 +85,7 @@ class PlayerProjection:
     confidence: str
     team_environment_source: str
     implied_team_points: float | None
+    scheme_context: dict[str, object] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
     model_version: str = MODEL_VERSION
     authority: str = "RESEARCH_ONLY"
@@ -442,6 +443,7 @@ def project(
     depth: list[dict],
     injuries: list[dict] | None = None,
     history_rows: list[dict],
+    scheme_matchups: dict[tuple[str, str], object] | None = None,
 ) -> BuildResult:
     """Project QB/RB/WR/TE/K output for one slate."""
     histories, team_games = _history_index(history_rows, season=season, week=week)
@@ -480,6 +482,38 @@ def project(
                 game=game,
                 home=home,
             )
+            scheme_matchup = (scheme_matchups or {}).get((team, opponent))
+            if scheme_matchup is not None:
+                old_attempts = float(environment["attempts"])
+                environment["attempts"] = _clamp(
+                    old_attempts + float(scheme_matchup.pass_attempt_delta), 25.0, 44.0
+                )
+                target_rate = float(environment["targets"]) / max(old_attempts, 1.0)
+                environment["targets"] = float(environment["attempts"]) * target_rate
+                environment["carries"] = _clamp(
+                    float(environment["carries"]) + float(scheme_matchup.carry_delta),
+                    19.0,
+                    35.0,
+                )
+                environment["pass_yards_per_attempt_delta"] = _clamp(
+                    float(environment["pass_yards_per_attempt_delta"])
+                    + float(scheme_matchup.pass_efficiency_delta),
+                    -1.35,
+                    1.35,
+                )
+                environment["receive_yards_per_target_delta"] = _clamp(
+                    float(environment["receive_yards_per_target_delta"])
+                    + float(scheme_matchup.pass_efficiency_delta),
+                    -1.35,
+                    1.35,
+                )
+                environment["rush_yards_per_carry_delta"] = _clamp(
+                    float(environment["rush_yards_per_carry_delta"])
+                    + float(scheme_matchup.rush_efficiency_delta),
+                    -0.90,
+                    0.90,
+                )
+                environment["source"] = str(environment["source"]) + " + scheme matrix"
 
             role_rows: list[dict] = []
             for player in players:
@@ -505,6 +539,10 @@ def project(
                     if observed is None
                     else persistence * observed + (1 - persistence) * prior
                 )
+                if scheme_matchup is not None:
+                    target_scores[player["player_id"]] *= float(
+                        scheme_matchup.target_multipliers.get(player["position"], 1.0)
+                    )
             target_scale = float(environment["targets"]) / max(
                 sum(target_scores.values()), 0.01
             )
@@ -671,6 +709,29 @@ def project(
                     }
 
                 game_id = str(game_row.get("game_id") or f"{season}_{week}_{away_team}_{home_team}")
+                scheme_context: dict[str, object] = {}
+                if scheme_matchup is not None:
+                    scheme_context = {
+                        "model_version": scheme_matchup.model_version,
+                        "source_seasons": list(scheme_matchup.source_seasons),
+                        "confidence": scheme_matchup.confidence,
+                        "expected_man_rate": scheme_matchup.expected_man_rate,
+                        "expected_zone_rate": scheme_matchup.expected_zone_rate,
+                        "expected_motion_rate": scheme_matchup.expected_motion_rate,
+                        "expected_play_action_rate": (
+                            scheme_matchup.expected_play_action_rate
+                        ),
+                        "expected_blitz_rate": scheme_matchup.expected_blitz_rate,
+                        "expected_pressure_rate": scheme_matchup.expected_pressure_rate,
+                        "target_multiplier": scheme_matchup.target_multipliers.get(
+                            position, 1.0
+                        ),
+                        "pass_attempt_delta": scheme_matchup.pass_attempt_delta,
+                        "carry_delta": scheme_matchup.carry_delta,
+                        "pass_efficiency_delta": scheme_matchup.pass_efficiency_delta,
+                        "rush_efficiency_delta": scheme_matchup.rush_efficiency_delta,
+                        "factors": list(scheme_matchup.factors),
+                    }
                 projections.append(PlayerProjection(
                     season=season,
                     week=week,
@@ -702,6 +763,7 @@ def project(
                     team_environment_source=str(environment["source"]),
                     implied_team_points=(None if environment["implied_points"] is None
                                          else round(float(environment["implied_points"]), 2)),
+                    scheme_context=scheme_context,
                     metrics=_round_metrics(metrics),
                 ))
 
@@ -739,5 +801,8 @@ def project(
             "is discounted after team changes and excluded for players with no NFL history"
         ),
         "pricing": "none - projections only; no player-prop lines or edges",
+        "scheme_matchups_applied": len({
+            (row.team, row.opponent) for row in projections if row.scheme_context
+        }),
     }
     return BuildResult(projections=projections, status=status)

@@ -8,7 +8,9 @@ at the top.
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -160,8 +162,10 @@ def test_site_leads_with_the_authority_gate(slate):
 
 def test_site_sections_appear_in_the_documented_order(slate):
     html = _render(slate)
-    order = ['id="authority"', 'id="board"', 'id="players"', 'id="ratings"', 'id="units"',
-             'id="divisions"', 'id="methodology"']
+    order = [
+        'id="authority"', 'id="board"', 'id="players"', 'id="scheme"',
+        'id="ratings"', 'id="units"', 'id="divisions"', 'id="methodology"',
+    ]
     positions = [html.index(marker) for marker in order]
     assert positions == sorted(positions)
 
@@ -218,6 +222,51 @@ def test_site_has_a_distinct_line_free_player_projection_layer(slate):
     assert "Offensive player &amp; kicker projections" in html
     assert "not sportsbook player lines" in html
     assert "a player who changed teams retains only 18%" in html
+
+
+def test_site_renders_scheme_provenance_and_response_matrix(slate):
+    offense = defaultdict(float, {
+        "neutral_pass_rate": .57, "personnel_11_rate": .64,
+        "personnel_12_rate": .22, "personnel_21_rate": .06,
+        "formation_shotgun_rate": .66, "formation_under_center_rate": .30,
+        "motion_rate": .55, "play_action_rate": .24, "rpo_rate": .08,
+        "pass_epa_man": .12, "pass_epa_zone": .08,
+        "run_gap_guard_rate": .34, "run_gap_tackle_rate": .33,
+        "run_gap_end_rate": .33,
+    })
+    defense = defaultdict(float, {
+        "man_rate": .36, "zone_rate": .64, "cover_3_rate": .31,
+        "blitz_rate": .28, "pressure_rate": .34, "avg_box": 6.4,
+        "personnel_base_rate": .25, "personnel_nickel_rate": .60,
+        "personnel_dime_rate": .15, "pass_epa_man": .01,
+        "pass_epa_zone": -.04,
+    })
+    slate.scheme_profiles = {
+        "KC": SimpleNamespace(
+            offense=offense, defense=defense, staff_continuity="returning head coach",
+            coverage_samples=600,
+        )
+    }
+    slate.scheme_matchups = {
+        ("KC", "BUF"): SimpleNamespace(
+            neutral_pass_rate=.58, expected_man_rate=.38, expected_zone_rate=.62,
+            expected_coverages={"cover_3": .31}, expected_motion_rate=.55,
+            expected_play_action_rate=.24, expected_blitz_rate=.28,
+            expected_pressure_rate=.34,
+            target_multipliers={"RB": 1.02, "WR": .98, "TE": 1.04},
+            pass_attempt_delta=.6, pass_efficiency_delta=.08, confidence="medium",
+        )
+    }
+    slate.scheme_status = {
+        "pbp_source_seasons": [2025], "participation_source_seasons": [2025],
+        "charting_source_seasons": [2025], "observed": ["coverage"],
+        "proxies": ["run point"],
+    }
+    html = _render(slate)
+    assert "Tendencies, coverage response &amp; personnel" in html
+    assert "coverage/personnel 2025" in html
+    assert "blocking family unavailable" in html
+    assert "does not invent one" in html
 
 
 def test_site_documents_what_the_simulation_does_not_model(slate):

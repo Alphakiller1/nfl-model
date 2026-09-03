@@ -18,6 +18,14 @@ def _manifest() -> dict:
             "active_roster_week": 1,
             "depth_chart_as_of": "2026-09-02T12:00:00Z",
         },
+        "scheme": {
+            "profile_count": 32,
+            "matchup_count": 32,
+            "source_seasons": [2025],
+            "participation_source_seasons": [2025],
+            "charting_source_seasons": [2025],
+            "blocking_scheme": "unavailable - no public charted field",
+        },
         "odds": {
             "state": "fresh",
             "requested_book": "draftkings",

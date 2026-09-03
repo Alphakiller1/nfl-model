@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from . import authority as auth_mod
-from . import efficiency, forecast, matrix, player_props, preseason, ratings, teams
+from . import efficiency, forecast, matrix, player_props, preseason, ratings, scheme, teams
 from .sources import nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
@@ -100,6 +100,9 @@ class Slate:
     player_projections: list[player_props.PlayerProjection] = field(default_factory=list)
     player_status: dict = field(default_factory=dict)
     player_results: list[dict] = field(default_factory=list)
+    scheme_profiles: dict[str, scheme.TeamSchemeProfile] = field(default_factory=dict)
+    scheme_matchups: dict[tuple[str, str], scheme.SchemeMatchup] = field(default_factory=dict)
+    scheme_status: dict = field(default_factory=dict)
     # Context, not model input. A preseason board with no records on it asks the
     # reader to take a rating on faith; "SEA +9.5, 12-5 last year" is a claim they
     # can check against something they remember.
@@ -252,6 +255,27 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
     depth = nflverse.depth_charts(season, before=first_kickoff)
     injury_rows = nflverse.injuries(season, week=week)
+
+    # The prior season supplies the complete participation/coverage baseline.
+    # During the season, current PBP and FTN charting join it as soon as those
+    # files exist. Participation from 2023 onward is an offseason nflverse
+    # release, so its source season is always shown rather than called "live".
+    scheme_pbp = nflverse.play_by_play(season - 1)
+    scheme_participation = nflverse.participation(season - 1)
+    scheme_charting = nflverse.ftn_charting(season - 1)
+    if week > 1:
+        scheme_pbp.extend(nflverse.play_by_play(season))
+        scheme_charting.extend(nflverse.ftn_charting(season))
+    scheme_result = scheme.build(
+        season=season,
+        week=week,
+        games=games,
+        schedule=schedule,
+        pbp_rows=scheme_pbp,
+        participation_rows=scheme_participation,
+        charting_rows=scheme_charting,
+        player_positions=scheme.position_index(player_history),
+    )
     player_result = player_props.project(
         season=season,
         week=week,
@@ -261,6 +285,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         depth=depth,
         injuries=injury_rows,
         history_rows=player_history,
+        scheme_matchups=scheme_result.matchups,
     )
     odds_status = oddsapi.status_report()
     odds_status.update({
@@ -307,6 +332,9 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  player_projections=player_result.projections,
                  player_status=player_result.status,
                  player_results=current_player_rows,
+                 scheme_profiles=scheme_result.profiles,
+                 scheme_matchups=scheme_result.matchups,
+                 scheme_status=scheme_result.status,
                  prior_records=build_records(prior),
                  source_status=nflverse.status_report(), odds_status=odds_status,
                  issues=issues)

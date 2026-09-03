@@ -11,7 +11,9 @@ from pathlib import Path
 def verify(path: Path) -> list[str]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     errors: list[str] = []
-    for key in ("generated_at", "season", "week", "nflverse", "odds", "players"):
+    for key in (
+        "generated_at", "season", "week", "nflverse", "odds", "players", "scheme"
+    ):
         if key not in payload:
             errors.append(f"missing manifest field: {key}")
 
@@ -72,6 +74,21 @@ def verify(path: Path) -> list[str]:
         errors.append("active roster snapshot predates the projected week")
     if not players.get("depth_chart_as_of"):
         errors.append("depth-chart timestamp is unavailable")
+    scheme = payload.get("scheme") or {}
+    if int(scheme.get("profile_count") or 0) < 32:
+        errors.append(
+            f"scheme matrix covers {int(scheme.get('profile_count') or 0)}/32 teams"
+        )
+    if int(scheme.get("matchup_count") or 0) < 32:
+        errors.append("scheme matchup matrix does not cover both teams in every game")
+    if not scheme.get("source_seasons"):
+        errors.append("scheme source season is unavailable")
+    if not scheme.get("participation_source_seasons"):
+        errors.append("scheme participation/coverage source season is unavailable")
+    if not scheme.get("charting_source_seasons"):
+        errors.append("scheme FTN charting source season is unavailable")
+    if not str(scheme.get("blocking_scheme") or "").startswith("unavailable"):
+        errors.append("blocking-scheme data boundary is not explicit")
     return errors
 
 
