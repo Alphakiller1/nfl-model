@@ -240,11 +240,11 @@ prices first and permissions in a footnote would misrepresent the exact thing th
 gate exists to prevent. `tests/test_site.py` asserts that ordering.
 
 The page is built from the **shared Chase Analytics board kernel**:
-`src/nflmodel/board.py`, `static/board.css` and `static/chase_tokens.css` are
-vendored **byte-identical** from [`mlb-model`](https://github.com/Alphakiller1/mlb-model)
-and [`wnba-edge-model`](https://github.com/Alphakiller1/wnba-edge-model), so an NFL
-card has the same anatomy, palette and typefaces as an MLB or WNBA one.
-`BOARD_CONTRACT.sha256` pins their hashes and `tests/test_board_contract.py` fails
+`src/nflmodel/static/chase_tokens.css` is vendored **byte-identical** from the
+Chase seed used by [`mlb-model`](https://github.com/Alphakiller1/mlb-model)
+and [`wnba-edge-model`](https://github.com/Alphakiller1/wnba-edge-model).
+`board.css` is sport-specific. `BOARD_CONTRACT.sha256` pins local hashes and
+`tests/test_board_contract.py` fails
 the build if any copy drifts — change a shared file in all three repos and
 regenerate the manifest, never edit one in isolation. Everything this repo adds on
 top uses tokens only; a test asserts `_PAGE_CSS` contains no colour literal.

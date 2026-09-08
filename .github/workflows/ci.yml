@@ -20,6 +20,8 @@ jobs:
         # the schedule not changing underneath it. A test that fails for either
         # reason teaches nobody anything.
         run: python -m pytest -q
+      - name: published Chase tokens vs vendor seed
+        run: python scripts/check_published_tokens.py
 
       - name: import smoke
         run: |
@@ -63,6 +65,8 @@ jobs:
                       '#08090F', '#9A6BFF', 'DM Sans', 'Roboto Condensed',
                       'not betting advice'):
               assert key in html, key
+          for forked in ('#B794FF', 'IBM Plex', '#BA008E', 'Barlow'):
+              assert forked not in html, f'off-brand token resurfaced: {forked}'
           assert html.count('fonts.googleapis.com') == 1, 'duplicate font import'
           assert 'bd-status is-pos">BET<' not in html, 'BET under a research-only authority'
           print(f"OK: {len(html)//1024} KB, gate first, brand contract intact")

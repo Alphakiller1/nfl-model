@@ -1,10 +1,10 @@
 """
 Chase Analytics **Board kernel** — the shared slate surface for every sport model.
 
-This file is VENDORED VERBATIM into mlb-model, wnba-edge-model and nfl-model. It has no
-imports outside the standard library and no knowledge of any sport, so the same card
-anatomy renders MLB, WNBA and NFL. `tests/test_board_contract.py` in each repo checks the
-copies have not drifted; keep them byte-identical and change all three together.
+This file is the NFL copy of the board kernel. It has no imports outside the standard
+library and no knowledge of any sport. Shared brand identity is `chase_tokens.css`
+(byte-identical across sports). `board.css` is sport-specific — do not require it to
+match MLB/WNBA/CFB.
 
 The structure is fixed; only the *slots* differ per sport:
 
