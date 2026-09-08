@@ -1,18 +1,11 @@
-"""
-The shared board contract.
+"""Local integrity pins for board.py / board.css, plus the shared token seed.
 
-`board.py`, `board.css` and `chase_tokens.css` are vendored BYTE-IDENTICAL into mlb-model,
-wnba-edge-model and nfl-model. That is the whole mechanism keeping the three products on
-one brand: same card anatomy, same palette, same typefaces.
+`chase_tokens.css` is the only file that is byte-identical across sport-model
+repos (seed sha256 13014f56…). `board.css` is sport-specific. `board.py` copies
+may diverge. `BOARD_CONTRACT.sha256` pins this checkout; it is not a claim that
+board.css is identical across MLB / WNBA / NFL / CFB.
 
-If this test fails you changed a shared file in one repo only. The fix is to copy it into
-all three and regenerate `BOARD_CONTRACT.sha256` in each — not to edit the hash here.
-
-Hashes are taken over newline-normalised bytes: Windows checkouts carry CRLF while CI
-runs on LF, and a contract that fails on the checkout's line endings tests the platform
-rather than the content.
-
-This file is itself vendored; keep the copies identical apart from `_VENDORED`.
+Hashes are over LF-normalised bytes so Windows CRLF checkouts match CI.
 """
 from __future__ import annotations
 
@@ -23,19 +16,19 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
 
-# The only per-repo line: where this product keeps its vendored copies.
 _VENDORED = {
     "board.py": _REPO / "src" / "nflmodel" / "board.py",
     "board.css": _REPO / "src" / "nflmodel" / "static" / "board.css",
     "chase_tokens.css": _REPO / "src" / "nflmodel" / "static" / "chase_tokens.css",
 }
 
+SHARED_TOKENS_SHA256 = "13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911"
+
 _CRLF = b"\r\n"
 _LF = b"\n"
 
 
 def _digest(path: Path) -> str:
-    """sha256 over LF-normalised bytes, so the contract is checkout-independent."""
     return hashlib.sha256(path.read_bytes().replace(_CRLF, _LF)).hexdigest()
 
 
@@ -52,16 +45,20 @@ def _expected() -> dict[str, str]:
 
 
 @pytest.mark.parametrize("name", sorted(_VENDORED))
-def test_vendored_file_matches_the_shared_contract(name):
+def test_vendored_file_matches_the_local_pin(name):
     path = _VENDORED[name]
     assert path.is_file(), f"{name} is missing from this repo"
     actual = _digest(path)
     assert actual == _expected()[name], (
-        f"{name} has drifted from the shared board contract.\n"
-        f"Copy it to mlb-model, wnba-edge-model and nfl-model, then regenerate "
-        f"BOARD_CONTRACT.sha256 in all three."
+        f"{name} has drifted from BOARD_CONTRACT.sha256.\n"
+        f"If this is an intentional local board.css / board.py edit, regenerate the "
+        f"manifest. chase_tokens.css must remain the shared seed {SHARED_TOKENS_SHA256}."
     )
 
 
 def test_manifest_covers_every_vendored_file():
     assert set(_expected()) == set(_VENDORED)
+
+
+def test_chase_tokens_is_the_cross_sport_seed():
+    assert _digest(_VENDORED["chase_tokens.css"]) == SHARED_TOKENS_SHA256

@@ -1,9 +1,10 @@
 /*
- * Board kernel styles — the shared slate surface (see report/board.py).
+ * Board kernel styles — NFL slate surface (see board.py).
  *
- * Vendored verbatim alongside board.py into every sport model. Every value here comes
- * from chase_tokens.css; do not introduce new colours or fonts. Elevation is hairline
- * borders + layered shadow, never a uniform violet outline.
+ * Sport-specific. chase_tokens.css is the shared brand file across model repos;
+ * do not treat this stylesheet as byte-identical to MLB/WNBA/CFB board.css.
+ * Every value here comes from chase_tokens.css; do not introduce new colours or fonts.
+ * Elevation is hairline borders + layered shadow, never a uniform violet outline.
  */
 
 .bd {

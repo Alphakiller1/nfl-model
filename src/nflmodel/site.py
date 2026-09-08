@@ -1,9 +1,9 @@
 """Self-contained static dashboard for GitHub Pages -- Chase Analytics design contract.
 
-Visual identity is vendored byte-identical from mlb-model (`static/chase_tokens.css`
-plus `static/board.css`) and the slate is rendered through the shared board kernel,
-so an NFL card has the same anatomy, palette and typefaces as an MLB or WNBA one.
-`tests/test_board_contract.py` fails the build if a vendored file drifts. Everything
+Visual identity uses the shared `static/chase_tokens.css` (byte-identical across
+sports) plus sport-specific `static/board.css`. The slate is rendered through the
+board kernel. `tests/test_board_contract.py` pins local files and the token seed.
+Everything
 this module adds -- ratings, unit rankings, division outlooks, methodology -- is
 built from tokens only; `_PAGE_CSS` must never introduce a colour literal of its own.
 

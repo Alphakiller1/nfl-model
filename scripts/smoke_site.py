@@ -18,6 +18,8 @@ REQUIRED = (
     "not betting advice",
 )
 
+FORBIDDEN_BRAND = ("#B794FF", "IBM Plex", "#BA008E", "Barlow")
+
 
 def main() -> int:
     if len(sys.argv) != 2:
@@ -31,6 +33,9 @@ def main() -> int:
         failures.append("board rendered zero games")
     if 'bd-status is-pos">BET<' in html:
         failures.append("research-only page rendered BET")
+    for token in FORBIDDEN_BRAND:
+        if token in html:
+            failures.append(f"off-brand token resurfaced: {token!r}")
     for name in ("board.json", "build.json", "record.json"):
         path = html_path.parent / name
         if not path.is_file():
