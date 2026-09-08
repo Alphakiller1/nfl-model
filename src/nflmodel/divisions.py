@@ -145,9 +145,16 @@ def _standings_order(teams: list[str], wins, division_wins, conference_wins,
 
 def simulate(games: list[SimGame], table: dict[str, float], *,
              simulations: int = SIMULATIONS, seed: int = SEED) -> list[TeamOutlook]:
-    """Replay the season and return every team's outlook."""
+    """Replay the season and return every team's outlook.
+
+    `simulations` of 0 skips the simulation, which is what the CLI advertises
+    and what `ratings` and `export` already relied on by guarding at the call
+    site. `build-site` passed the count straight through, so `--simulations 0`
+    reached the averaging loop and divided by zero. Honour the contract here so
+    every caller gets the same answer.
+    """
     names = sorted(table)
-    if not games or not names:
+    if not games or not names or simulations < 1:
         return []
     rng = random.Random(seed)
     outlooks = {

@@ -238,3 +238,15 @@ def test_the_model_win_probability_agrees_with_the_model_margin():
     assert p.model_win_probability > 0.5
     assert p.win_probability < 0.5          # the published price still says away
     assert p.model_win_probability != pytest.approx(p.win_probability)
+
+
+def test_zero_simulations_skips_instead_of_dividing_by_zero():
+    """The CLI advertises "0 skips them", and `ratings` and `export` relied on
+    that by guarding at the call site. `build-site` passed the count straight
+    through, so `--simulations 0` reached the averaging loop and raised
+    ZeroDivisionError. The contract belongs in simulate() so every caller agrees."""
+    table = {t: float(i) for i, t in enumerate(teams.members("AFC East")
+                                               + teams.members("AFC North"))}
+    games = divisions.build_games(_round_robin(), table)
+    assert divisions.simulate(games, table, simulations=0) == []
+    assert divisions.simulate(games, table, simulations=-1) == []
