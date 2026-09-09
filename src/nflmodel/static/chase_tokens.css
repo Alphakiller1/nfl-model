@@ -6,34 +6,38 @@
  * that file. If MLBMA's tokens change, resync this file by hand — it intentionally has no
  * runtime dependency on the mlbma-pipeline repo so this product stays independently deployable.
  */
+/* Consumes @chase-analytics/design-system 1.0.0 (chase-tokens-v1.css). */
+@import url("./chase-tokens-v1.css");
+
+
 :root {
   color-scheme: dark;
 
   /* Page & surfaces (mlbma_design_system.css :root) */
-  --bg: #08090F;
-  --bg-2: #0E1018;
-  --bg-3: #12141D;
-  --bg-4: #181B26;
-  --raised: #20232F;
-  --border: #262A38;
-  --border-2: #363B4D;
+  --bg: var(--ca-ink-950);
+  --bg-2: var(--ca-ink-900);
+  --bg-3: var(--ca-ink-850);
+  --bg-4: var(--ca-ink-800);
+  --raised: var(--ca-ink-750);
+  --border: var(--ca-line-600);
+  --border-2: var(--ca-line-500);
   --border-soft: rgba(255, 255, 255, 0.06);
   --border-violet: rgba(124, 77, 255, 0.32);
-  --card: #12141D;
-  --card-2: #181B26;
+  --card: var(--ca-ink-850);
+  --card-2: var(--ca-ink-800);
 
-  --text: #F5F6FA;
-  --text-2: #A4A8B6;
-  --text-3: #6E7383;
-  --text-4: #4C5161;
+  --text: var(--ca-paper-50);
+  --text-2: var(--ca-paper-400);
+  --text-3: var(--ca-paper-500);
+  --text-4: var(--ca-paper-600);
 
   /* Brand purple family */
-  --ca-purple: #9A6BFF;
+  --ca-purple: var(--ca-violet-500);
   --ca-purple-dark: #5B2BE0;
   --ca-purple-heading: #6D28D9;
   --ca-purple-light: #C4B0FF;
   --ca-purple-glow: rgba(124, 77, 255, 0.32);
-  --ca-brand: #9A6BFF;
+  --ca-brand: var(--ca-violet-500);
   --ca-brand-dim: rgba(124, 77, 255, 0.11);
   --ca-brand-border: rgba(124, 77, 255, 0.32);
   --v-grad: linear-gradient(135deg, #9A6BFF 0%, #5B2BE0 100%);

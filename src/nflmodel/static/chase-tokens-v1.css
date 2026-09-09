@@ -1,0 +1,215 @@
+/*
+ * Chase Analytics — TIER 1 primitives.
+ * DESIGN_LAYER_VERSION: 20260909a
+ * Published at /design/chase-tokens-v1.css (this file, deploy-root copy).
+ *
+ * This is the ONLY file in mlbma-pipeline allowed to contain raw color literals
+ * (hex / rgb / rgba / hsl). Palette is settled — do not relitigate values.
+ *
+ * Seed (vendored four-model chase_tokens.css, LF-normalised sha256):
+ * 13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911
+ * Snapshot: design/tokens/chase_tokens.vendor.css
+ * This file is not byte-identical to the seed: primitives are renamed
+ * (--ca-ink-*, --ca-paper-*) so TIER 2 can own semantic roles. Hex values
+ * match the seed plus the existing MLBMA appendix (same literals as
+ * mlbma_design_system.css / theme.css / index :root on 2026-09-08).
+ */
+:root {
+  color-scheme: dark;
+
+  /* Ink / surfaces */
+  --ca-ink-1000: #050509;
+  --ca-ink-950: #08090F;
+  --ca-ink-900: #0E1018;
+  --ca-ink-850: #12141D;
+  --ca-ink-800: #181B26;
+  --ca-ink-750: #20232F;
+
+  --ca-line-600: #262A38;
+  --ca-line-500: #363B4D;
+
+  --ca-paper-50: #F5F6FA;
+  --ca-paper-100: #F5F5F7;
+  --ca-paper-400: #A4A8B6;
+  --ca-paper-500: #6E7383;
+  --ca-paper-600: #4C5161;
+  --ca-paper-neutral: #A1A1AA;
+
+  /* Brand violet */
+  --ca-violet-500: #9A6BFF;
+  --ca-violet-600: #7C4DFF;
+  --ca-violet-700: #5B2BE0;
+  --ca-violet-800: #6D28D9;
+  --ca-violet-300: #C4B0FF;
+  --ca-violet-200: #B794FF;
+  --ca-violet-100: #D9CCFF;
+  --ca-violet-050: #D5C4FF;
+
+  /* Status / metric ramp — all seven semantic steps clear 4.5:1 on dark surfaces. */
+  --ca-green-500: #3CCB7F;
+  --ca-green-400: #86D76F;
+  --ca-green-300: #4ADE80;
+  --ca-green-200: #22C55E;
+  --ca-green-100: #86efac;
+  --ca-green-700: #16a34a;
+  --ca-amber-500: #E8C24A;
+  --ca-amber-400: #FBBF24;
+  --ca-amber-300: #F0C24A;
+  --ca-red-500: #F2545B;
+  --ca-red-400: #F0935B;
+  --ca-red-300: #f87171;
+  --ca-red-200: #FCA5A5;
+  --ca-red-700: #dc2626;
+  --ca-gold-200: #fcd34d;
+  --ca-gold-700: #b45309;
+  --ca-blue-300: #93c5fd;
+  --ca-blue-500: #3B82F6;
+  --ca-blue-700: #2563eb;
+  --ca-orange-400: #fb923c;
+  --ca-orange-300: #fdba74;
+  --ca-orange-700: #c2410c;
+  --ca-cyan-400: #22d3ee;
+  --ca-teal-400: #14b8a6;
+  --ca-teal-300: #5eead4;
+  --ca-teal-500: #2DD4BF;
+  --ca-pink-500: #EC4899;
+  --ca-paper-350: #9CA3AF;
+
+  /* Light theme primitives (optional surfaces) */
+  --ca-light-bg: #ffffff;
+  --ca-light-s1: #f8fafc;
+  --ca-light-s2: #f1f5f9;
+  --ca-light-s3: #e2e8f0;
+  --ca-light-line: #d1d5db;
+  --ca-light-line-2: #cbd5e1;
+  --ca-light-ink: #111827;
+  --ca-light-ink-2: #374151;
+  --ca-light-ink-3: #6b7280;
+
+  --ca-white: #FFFFFF;
+  --ca-metal-2: #E9EAF0;
+  --ca-metal-3: #9DA0AE;
+  --ca-metal-4: #D7D9E2;
+  --ca-metal-5: #F4F5F8;
+  --ca-metal-6: #B7BBC8;
+  --ca-metal-7: #EEF0F6;
+
+  /* Alpha / glow (still primitives) */
+  --ca-violet-a-11: rgba(124, 77, 255, 0.11);
+  --ca-violet-a-13: rgba(124, 77, 255, 0.13);
+  --ca-violet-a-14: rgba(124, 77, 255, 0.14);
+  --ca-violet-a-16: rgba(124, 77, 255, 0.16);
+  --ca-violet-a-24: rgba(124, 77, 255, 0.24);
+  --ca-violet-a-32: rgba(124, 77, 255, 0.32);
+  --ca-violet-a-38: rgba(124, 77, 255, 0.38);
+  --ca-violet-a-45: rgba(124, 77, 255, 0.45);
+  --ca-brand-a-32: rgba(154, 107, 255, 0.41);
+  --ca-violet-hot-a: rgba(213, 196, 255, 0.60);
+  --ca-violet-edge-a: rgba(196, 176, 255, 0.13);
+  --ca-violet-edge-b: rgba(213, 196, 255, 0.29);
+  --ca-white-a-06: rgba(255, 255, 255, 0.06);
+  --ca-white-a-08: rgba(255, 255, 255, 0.08);
+  --ca-white-a-10: rgba(255, 255, 255, 0.10);
+  --ca-white-a-055: rgba(255, 255, 255, 0.055);
+  --ca-white-a-052: rgba(255, 255, 255, 0.052);
+  --ca-black-a-34: rgba(0, 0, 0, 0.34);
+  --ca-black-a-35: rgba(0, 0, 0, 0.35);
+  --ca-black-a-40: rgba(0, 0, 0, 0.4);
+  --ca-black-a-50: rgba(0, 0, 0, 0.5);
+  --ca-black-a-60: rgba(0, 0, 0, 0.6);
+  --ca-black-a-86: rgba(0, 0, 0, 0.86);
+  --ca-black-a-90: rgba(0, 0, 0, 0.9);
+  --ca-green-a-13: rgba(74, 222, 128, 0.13);
+  --ca-red-a-13: rgba(248, 113, 113, 0.13);
+  --ca-amber-a-13: rgba(251, 191, 36, 0.13);
+  --ca-teal-a-14: rgba(20, 184, 166, 0.14);
+  --ca-blue-a-15: rgba(96, 165, 250, 0.15);
+  --ca-violet-chip-a: rgba(139, 92, 246, 0.14);
+  --ca-violet-bar-a: rgba(139, 92, 246, 0.2);
+  --ca-violet-pill-a: rgba(139, 92, 246, 0.25);
+  --ca-violet-glow-18: rgba(139, 92, 246, 0.18);
+
+  --ca-grad-brand: linear-gradient(135deg, #9A6BFF 0%, #5B2BE0 100%);
+  --ca-grad-brand-soft: linear-gradient(135deg, rgba(124, 77, 255, 0.13), rgba(91, 43, 224, 0.07));
+  --ca-grad-edge: linear-gradient(90deg, #3B82F6 0%, #7C4DFF 50%, #EC4899 100%);
+  --ca-grad-hero: linear-gradient(135deg, var(--ca-ink-950) 0%, var(--ca-ink-850) 45%, var(--ca-ink-950) 100%);
+  --ca-grad-panel: linear-gradient(180deg, var(--ca-ink-800) 0%, var(--ca-ink-900) 54%, var(--ca-ink-1000) 100%);
+  --ca-grad-metal: linear-gradient(180deg, #FFFFFF 0%, #F4F5F8 34%, #B7BBC8 54%, #EEF0F6 78%, #FFFFFF 100%);
+  --ca-grad-metal-silver: linear-gradient(180deg, #FFFFFF 0%, #E9EAF0 38%, #9DA0AE 56%, #D7D9E2 72%, #FFFFFF 100%);
+  --ca-grad-violet-text: linear-gradient(180deg, #D9CCFF 0%, #A274FF 38%, #6F31F2 72%, #C7B4FF 100%);
+  --ca-grad-metal-violet: linear-gradient(180deg, #C4B0FF 0%, #7C4DFF 55%, #5B2BE0 100%);
+  --ca-glow-violet: 0 0 0 1px rgba(196, 176, 255, 0.13), 0 0 30px rgba(124, 77, 255, 0.24), 0 28px 78px rgba(0, 0, 0, 0.86), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --ca-glow-violet-strong: 0 0 0 1px rgba(213, 196, 255, 0.29), 0 0 42px rgba(124, 77, 255, 0.38), 0 34px 96px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+
+  --ca-font-ui: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --ca-font-display: 'Roboto Condensed', 'DM Sans', system-ui, sans-serif;
+  --ca-grad-bg-scrim: linear-gradient(
+    180deg,
+    rgba(5, 6, 14, 0.78) 0%,
+    rgba(8, 9, 15, 0.52) 42%,
+    rgba(8, 9, 15, 0.62) 72%,
+    rgba(5, 5, 12, 0.82) 100%
+  );
+  --ca-grad-bg-scrim-opening: linear-gradient(
+    180deg,
+    rgba(5, 6, 14, 0.58) 0%,
+    rgba(8, 9, 15, 0.34) 38%,
+    rgba(8, 9, 15, 0.44) 68%,
+    rgba(5, 5, 12, 0.68) 100%
+  );
+  --ca-grad-violet-top: radial-gradient(ellipse 80% 52% at 76% 0%, rgba(124, 77, 255, 0.12), transparent 62%);
+  --ca-grad-violet-bottom: radial-gradient(ellipse 85% 55% at 8% 106%, rgba(91, 43, 224, 0.08), transparent 60%);
+
+  /* Vendor-compatible names (seed chase_tokens.css) so a single published
+     file still defines --bg/--text/--metric-* for model boards that only
+     link /design/chase-tokens-v1.css. Values are var() to the primitives. */
+  --bg: var(--ca-ink-950);
+  --bg-2: var(--ca-ink-900);
+  --bg-3: var(--ca-ink-850);
+  --bg-4: var(--ca-ink-800);
+  --raised: var(--ca-ink-750);
+  --border: var(--ca-line-600);
+  --border-2: var(--ca-line-500);
+  --border-soft: var(--ca-white-a-06);
+  --border-violet: var(--ca-violet-a-32);
+  --card: var(--ca-ink-850);
+  --card-2: var(--ca-ink-800);
+  --text: var(--ca-paper-50);
+  --text-2: var(--ca-paper-400);
+  --text-3: var(--ca-paper-500);
+  --text-4: var(--ca-paper-600);
+  --ca-purple: var(--ca-violet-500);
+  --ca-purple-dark: var(--ca-violet-700);
+  --ca-purple-heading: var(--ca-violet-800);
+  --ca-purple-light: var(--ca-violet-300);
+  --ca-purple-glow: var(--ca-violet-a-32);
+  --ca-brand: var(--ca-violet-500);
+  --ca-brand-dim: var(--ca-violet-a-11);
+  --ca-brand-border: var(--ca-violet-a-32);
+  --v-grad: var(--ca-grad-brand);
+  --v-light: var(--ca-violet-300);
+  --v-mid: var(--ca-violet-600);
+  --v-deep: var(--ca-violet-700);
+  --ca-green: var(--ca-green-500);
+  --ca-teal: var(--ca-green-400);
+  --ca-amber: var(--ca-amber-500);
+  --ca-red: var(--ca-red-500);
+  --gold: var(--ca-amber-500);
+  --teal: var(--ca-teal-500);
+  --green: var(--ca-green-500);
+  --red: var(--ca-red-500);
+  --side: var(--ca-violet-300);
+  --metric-very-weak: var(--ca-red-500);
+  --metric-weak: var(--ca-red-400);
+  --metric-below: var(--ca-amber-500);
+  --metric-neutral: var(--ca-paper-neutral);
+  --metric-above: var(--ca-green-400);
+  --metric-strong: var(--ca-green-300);
+  --metric-elite: var(--ca-green-200);
+  --font-primary: var(--ca-font-ui);
+  --font-body: var(--ca-font-ui);
+  --font-display: var(--ca-font-display);
+  --sans: var(--ca-font-ui);
+  --display: var(--ca-font-display);
+  --mono: var(--ca-font-display);
+}
