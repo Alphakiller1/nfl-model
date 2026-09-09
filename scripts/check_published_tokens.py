@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""Compare this repo's vendored chase_tokens.css to published Chase TIER 1.
+"""Compare this repo's vendored TIER 1 file to published Chase tokens.
 
-Published (after mlbma deploys):
+Published:
   https://chase-analytics.com/design/chase-tokens-v1.css
 
-Until that URL 200s, fetch the WP1 branch raw file so CI can pass now:
-  https://raw.githubusercontent.com/Alphakiller1/mlbma-pipeline/cursor/wp1-design-layer-4ee4/design/chase-tokens-v1.css
-
-chase-tokens-v1.css is NOT byte-identical to vendored chase_tokens.css (TIER 1
-renamed primitives; hex values match the seed). Vendored files MUST stay
-byte-identical to design/tokens/chase_tokens.vendor.css (seed sha256 below).
-
-board.css is sport-specific and is not part of this check.
+Site builders concatenate chase-tokens-v1.css in front of chase_tokens.css
+(aliases + board extras) because CSS is inlined into <style>.
 """
 from __future__ import annotations
 
@@ -22,16 +16,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-SEED_SHA256 = "13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911"
+ALIASES_SHA256 = "d2a929732e081ed8d2d5208aa915829e693c767f2f14fb29e2bffafc188a1fcd"
+TIER1_SHA256 = "3cd1f89f4e00618e1f006d2434fadc2f50617e7e220f8509b64be016598e03cf"
 
 PUBLISHED_URL = "https://chase-analytics.com/design/chase-tokens-v1.css"
 FALLBACK_TIER1 = (
     "https://raw.githubusercontent.com/Alphakiller1/mlbma-pipeline/"
-    "cursor/wp1-design-layer-4ee4/design/chase-tokens-v1.css"
-)
-FALLBACK_VENDOR = (
-    "https://raw.githubusercontent.com/Alphakiller1/mlbma-pipeline/"
-    "cursor/wp1-design-layer-4ee4/design/tokens/chase_tokens.vendor.css"
+    "master/design/chase-tokens-v1.css"
 )
 
 IDENTITY = ("#08090F", "#9A6BFF", "DM Sans", "Roboto Condensed")
@@ -64,16 +55,28 @@ def _looks_like_tier1(data: bytes) -> bool:
     return ":root" in text and "#08090F" in text and "#9A6BFF" in text
 
 
-def _find_tokens(root: Path) -> Path:
-    candidates = [
-        root / "mlbmodel" / "report" / "static" / "chase_tokens.css",
-        root / "src" / "wnba_edges" / "static" / "chase_tokens.css",
-        root / "src" / "nflmodel" / "static" / "chase_tokens.css",
-        root / "src" / "cfbmodel" / "static" / "chase_tokens.css",
+def _find_pair(root: Path) -> tuple[Path, Path]:
+    pairs = [
+        (
+            root / "mlbmodel" / "report" / "static" / "chase_tokens.css",
+            root / "mlbmodel" / "report" / "static" / "chase-tokens-v1.css",
+        ),
+        (
+            root / "src" / "wnba_edges" / "static" / "chase_tokens.css",
+            root / "src" / "wnba_edges" / "static" / "chase-tokens-v1.css",
+        ),
+        (
+            root / "src" / "nflmodel" / "static" / "chase_tokens.css",
+            root / "src" / "nflmodel" / "static" / "chase-tokens-v1.css",
+        ),
+        (
+            root / "src" / "cfbmodel" / "static" / "chase_tokens.css",
+            root / "src" / "cfbmodel" / "static" / "chase-tokens-v1.css",
+        ),
     ]
-    for path in candidates:
-        if path.is_file():
-            return path
+    for aliases, v1 in pairs:
+        if aliases.is_file():
+            return aliases, v1
     raise SystemExit(f"chase_tokens.css not found under {root}")
 
 
@@ -83,37 +86,40 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tokens", type=Path)
     args = parser.parse_args(argv)
     root = args.root.resolve()
-    tokens_path = args.tokens.resolve() if args.tokens else _find_tokens(root)
-    local = tokens_path.read_bytes()
-    local_hash = _digest(local)
-    if local_hash != SEED_SHA256:
+    aliases_path, v1_path = _find_pair(root)
+    if args.tokens:
+        aliases_path = args.tokens.resolve()
+        v1_path = aliases_path.with_name("chase-tokens-v1.css")
+
+    aliases = aliases_path.read_bytes()
+    aliases_hash = _digest(aliases)
+    text = aliases.decode("utf-8", errors="replace")
+    if "@import url" in text:
+        print("FAIL chase_tokens.css must not @import; builders inline CSS", file=sys.stderr)
+        return 1
+    if "var(--ca-ink-950)" not in text:
+        print("FAIL chase_tokens.css must map --bg onto var(--ca-ink-950)", file=sys.stderr)
+        return 1
+    if aliases_hash != ALIASES_SHA256:
         print(
-            f"FAIL vendored chase_tokens.css sha256 {local_hash} != seed {SEED_SHA256}",
+            f"FAIL chase_tokens.css sha256 {aliases_hash} != {ALIASES_SHA256}",
             file=sys.stderr,
         )
         return 1
-    print(f"OK local chase_tokens.css matches seed {SEED_SHA256}")
+    print(f"OK local chase_tokens.css matches alias pin {ALIASES_SHA256}")
 
-    vendor = _fetch(FALLBACK_VENDOR)
-    if vendor is None:
-        for extra in (
-            Path("/workspace/design/tokens/chase_tokens.vendor.css"),
-            root.parent / "mlbma-pipeline" / "design" / "tokens" / "chase_tokens.vendor.css",
-        ):
-            if extra.is_file():
-                vendor = extra.read_bytes()
-                print(f"using sibling vendor snapshot {extra}")
-                break
-    if vendor is not None:
-        if _digest(vendor) != local_hash:
-            print(
-                "FAIL vendored chase_tokens.css drifted from mlbma chase_tokens.vendor.css",
-                file=sys.stderr,
-            )
-            return 1
-        print("OK vendored file matches mlbma design/tokens/chase_tokens.vendor.css")
-    else:
-        print("vendor snapshot URL not reachable; local seed hash is the pin")
+    if not v1_path.is_file():
+        print(f"FAIL missing {v1_path}", file=sys.stderr)
+        return 1
+    v1 = v1_path.read_bytes()
+    v1_hash = _digest(v1)
+    if v1_hash != TIER1_SHA256:
+        print(f"FAIL chase-tokens-v1.css sha256 {v1_hash} != {TIER1_SHA256}", file=sys.stderr)
+        return 1
+    if not _looks_like_tier1(v1):
+        print("FAIL chase-tokens-v1.css is missing Chase identity literals", file=sys.stderr)
+        return 1
+    print(f"OK local chase-tokens-v1.css matches TIER 1 pin {TIER1_SHA256}")
 
     source = PUBLISHED_URL
     published = _fetch(PUBLISHED_URL)
@@ -132,14 +138,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"using sibling TIER 1 file {extra}")
                 break
     if published is None or not _looks_like_tier1(published):
-        print(
-            "SKIP TIER 1 fetch: chase-analytics.com/design/chase-tokens-v1.css is not "
-            "CSS yet and the WP1 raw fallback is not readable from this job. "
-            f"Local chase_tokens.css still matches seed {SEED_SHA256}."
-        )
+        print("SKIP TIER 1 fetch; local pins still match.")
         return 0
-    text = published.decode("utf-8", errors="replace")
-    missing = [key for key in IDENTITY if key not in text]
+    pub_text = published.decode("utf-8", errors="replace")
+    missing = [key for key in IDENTITY if key not in pub_text]
     if missing:
         print(f"FAIL {source} missing identity tokens: {missing}", file=sys.stderr)
         return 1

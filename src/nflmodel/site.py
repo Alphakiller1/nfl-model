@@ -68,7 +68,9 @@ EVIDENCE = {
 
 def brand_css() -> str:
     """Fonts + chase_tokens.css + the board kernel -- the shared Chase identity."""
-    tokens = (_STATIC / "chase_tokens.css").read_text(encoding="utf-8")
+    v1 = _STATIC / "chase-tokens-v1.css"
+    tokens = (v1.read_text(encoding="utf-8") + "\n") if v1.is_file() else ""
+    tokens += (_STATIC / "chase_tokens.css").read_text(encoding="utf-8")
     board = (_STATIC / "board.css").read_text(encoding="utf-8")
     return _FONT_IMPORT + tokens + board
 

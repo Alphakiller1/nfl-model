@@ -20,9 +20,10 @@ _VENDORED = {
     "board.py": _REPO / "src" / "nflmodel" / "board.py",
     "board.css": _REPO / "src" / "nflmodel" / "static" / "board.css",
     "chase_tokens.css": _REPO / "src" / "nflmodel" / "static" / "chase_tokens.css",
+    "chase-tokens-v1.css": _REPO / "src" / "nflmodel" / "static" / "chase-tokens-v1.css",
 }
 
-SHARED_TOKENS_SHA256 = "13014f566ee570d283b12859a6578d12d179a4cc39aecf8845518700fb85e911"
+SHARED_TOKENS_SHA256 = "d2a929732e081ed8d2d5208aa915829e693c767f2f14fb29e2bffafc188a1fcd"
 
 _CRLF = b"\r\n"
 _LF = b"\n"

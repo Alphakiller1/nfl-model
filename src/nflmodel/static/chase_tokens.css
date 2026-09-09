@@ -1,15 +1,10 @@
 /*
  * Chase Analytics design tokens — vendored, canonical copy.
  *
- * Source of truth: mlbma-pipeline/dashboard/mlbma_design_system.css (+ chase_nav.css for the
- * nav-specific values). Do not invent new values here or redefine a token differently than
- * that file. If MLBMA's tokens change, resync this file by hand — it intentionally has no
- * runtime dependency on the mlbma-pipeline repo so this product stays independently deployable.
+ * Primitives live in chase-tokens-v1.css (design-system 1.0.0). Site builders
+ * concatenate that file in front of this one before inlining into <style>.
+ * Do not @import here — relative imports die inside inlined CSS.
  */
-/* Consumes @chase-analytics/design-system 1.0.0 (chase-tokens-v1.css). */
-@import url("./chase-tokens-v1.css");
-
-
 :root {
   color-scheme: dark;
 
