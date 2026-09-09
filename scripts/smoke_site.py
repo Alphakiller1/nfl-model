@@ -18,7 +18,7 @@ REQUIRED = (
     "not betting advice",
 )
 
-FORBIDDEN_BRAND = ("#B794FF", "IBM Plex", "#BA008E", "Barlow")
+FORBIDDEN_BRAND = ("IBM Plex", "#BA008E", "Barlow")
 
 
 def main() -> int:

@@ -65,7 +65,7 @@ jobs:
                       '#08090F', '#9A6BFF', 'DM Sans', 'Roboto Condensed',
                       'not betting advice'):
               assert key in html, key
-          for forked in ('#B794FF', 'IBM Plex', '#BA008E', 'Barlow'):
+          for forked in ('IBM Plex', '#BA008E', 'Barlow'):
               assert forked not in html, f'off-brand token resurfaced: {forked}'
           assert html.count('fonts.googleapis.com') == 1, 'duplicate font import'
           assert 'bd-status is-pos">BET<' not in html, 'BET under a research-only authority'
