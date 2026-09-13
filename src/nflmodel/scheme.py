@@ -93,9 +93,36 @@ class SchemeMatchup:
 
 
 @dataclass(frozen=True)
+class PlayerCoverageProfile:
+    """Observed receiving results against charted coverage, never a forecast."""
+
+    player_id: str
+    player_name: str
+    team: str
+    position: str
+    source_season: int
+    splits: dict[str, dict[str, float | int | None]]
+
+
+@dataclass(frozen=True)
+class PlayerSchemeProfile:
+    """Observed QB passing or RB rushing results by charted defensive look."""
+
+    player_id: str
+    player_name: str
+    team: str
+    position: str
+    source_season: int
+    play_family: str
+    splits: dict[str, dict[str, float | int | None]]
+
+
+@dataclass(frozen=True)
 class BuildResult:
     profiles: dict[str, TeamSchemeProfile]
     matchups: dict[tuple[str, str], SchemeMatchup]
+    player_coverage: tuple[PlayerCoverageProfile, ...]
+    player_scheme: tuple[PlayerSchemeProfile, ...]
     league: dict[str, float]
     status: dict
 
@@ -233,7 +260,7 @@ def _canonical_position(value: str) -> str | None:
     position = str(value or "").upper().strip()
     if position in {"RB", "FB", "HB"}:
         return "RB"
-    return position if position in {"WR", "TE"} else None
+    return position if position in {"QB", "WR", "TE"} else None
 
 
 def position_index(player_rows: list[dict]) -> dict[str, str]:
@@ -248,6 +275,134 @@ def position_index(player_rows: list[dict]) -> dict[str, str]:
         if order >= ordered.get(player_id, (-1, ""))[0]:
             ordered[player_id] = (order, position)
     return {player_id: value[1] for player_id, value in ordered.items()}
+
+
+def player_index(player_rows: list[dict]) -> dict[str, dict[str, str]]:
+    """Latest observed identity for receivers in the weekly player file."""
+    ordered: dict[str, tuple[int, dict[str, str]]] = {}
+    for row in player_rows:
+        player_id = str(row.get("player_id") or "").strip()
+        position = _canonical_position(row.get("position") or "")
+        name = str(
+            row.get("player_display_name") or row.get("player_name")
+            or row.get("full_name") or ""
+        ).strip()
+        team = teams.canonical(
+            row.get("recent_team") or row.get("team") or row.get("posteam") or ""
+        )
+        if not player_id or position is None or not name:
+            continue
+        order = _order(int(_num(row.get("season")) or 0), int(_num(row.get("week")) or 0))
+        if order >= ordered.get(player_id, (-1, {}))[0]:
+            ordered[player_id] = (order, {
+                "player_name": name, "position": position, "team": team,
+            })
+    return {player_id: value[1] for player_id, value in ordered.items()}
+
+
+def _player_split_payload(rows: list[dict]) -> dict[str, float | int | None]:
+    targets = len(rows)
+    completed = [_flag(row.get("complete_pass")) for row in rows]
+    completed = [value for value in completed if value is not None]
+    receptions = sum(completed) if completed else None
+    yards_seen = [_num(row.get("yards_gained")) for row in rows]
+    yards_seen = [value for value in yards_seen if value is not None]
+    yards = sum(yards_seen) if yards_seen else None
+    touchdown_flags = [_flag(row.get("touchdown")) for row in rows]
+    touchdown_flags = [value for value in touchdown_flags if value is not None]
+    touchdowns = sum(touchdown_flags) if touchdown_flags else None
+    epa = [_num(row.get("epa")) for row in rows]
+    epa = [value for value in epa if value is not None]
+    return {
+        "targets": targets,
+        "receptions": receptions,
+        "receiving_yards": round(yards, 1) if yards is not None else None,
+        "touchdowns": touchdowns,
+        "catch_rate": round(receptions / len(completed), 4) if receptions is not None else None,
+        "yards_per_target": round(yards / len(yards_seen), 2) if yards is not None else None,
+        "epa_per_target": round(sum(epa) / len(epa), 4) if epa else None,
+    }
+
+
+def _player_coverage_profiles(
+    rows: dict[tuple[int, str, str, str], dict[str, list[dict]]],
+    identities: dict[str, dict[str, str]],
+) -> tuple[PlayerCoverageProfile, ...]:
+    profiles = []
+    for (source_season, team, player_id, position), splits in sorted(rows.items()):
+        identity = identities.get(player_id, {})
+        profiles.append(PlayerCoverageProfile(
+            player_id=player_id,
+            player_name=identity.get("player_name") or player_id,
+            team=team or identity.get("team") or "",
+            position=position,
+            source_season=source_season,
+            splits={key: _player_split_payload(value) for key, value in sorted(splits.items())},
+        ))
+    return tuple(profiles)
+
+
+def _passing_split_payload(rows: list[dict]) -> dict[str, float | int | None]:
+    sacks = [_flag(row.get("sack")) for row in rows]
+    attempts = [row for row, sack in zip(rows, sacks) if sack is not True]
+    completed = [_flag(row.get("complete_pass")) for row in attempts]
+    completions = sum(value is True for value in completed)
+    yards = sum(_num(row.get("yards_gained")) or 0.0 for row in attempts)
+    touchdowns = sum(_flag(row.get("touchdown")) is True for row in attempts)
+    interceptions = sum(_flag(row.get("interception")) is True for row in attempts)
+    epa = [_num(row.get("epa")) for row in rows]
+    epa = [value for value in epa if value is not None]
+    success = [_flag(row.get("success")) for row in rows]
+    success = [value for value in success if value is not None]
+    return {
+        "dropbacks": len(rows),
+        "attempts": len(attempts),
+        "completions": completions,
+        "passing_yards": round(yards, 1),
+        "passing_tds": touchdowns,
+        "interceptions": interceptions,
+        "completion_rate": round(completions / len(attempts), 4) if attempts else None,
+        "yards_per_attempt": round(yards / len(attempts), 2) if attempts else None,
+        "epa_per_dropback": round(sum(epa) / len(epa), 4) if epa else None,
+        "success_rate": round(sum(success) / len(success), 4) if success else None,
+    }
+
+
+def _rushing_split_payload(rows: list[dict]) -> dict[str, float | int | None]:
+    yards = sum(_num(row.get("yards_gained")) or 0.0 for row in rows)
+    touchdowns = sum(_flag(row.get("touchdown")) is True for row in rows)
+    epa = [_num(row.get("epa")) for row in rows]
+    epa = [value for value in epa if value is not None]
+    success = [_flag(row.get("success")) for row in rows]
+    success = [value for value in success if value is not None]
+    return {
+        "carries": len(rows),
+        "rushing_yards": round(yards, 1),
+        "rushing_tds": touchdowns,
+        "yards_per_carry": round(yards / len(rows), 2) if rows else None,
+        "epa_per_carry": round(sum(epa) / len(epa), 4) if epa else None,
+        "success_rate": round(sum(success) / len(success), 4) if success else None,
+    }
+
+
+def _player_scheme_profiles(
+    rows: dict[tuple[int, str, str, str, str], dict[str, list[dict]]],
+    identities: dict[str, dict[str, str]],
+) -> tuple[PlayerSchemeProfile, ...]:
+    profiles = []
+    for (source_season, team, player_id, position, family), splits in sorted(rows.items()):
+        identity = identities.get(player_id, {})
+        payload = _passing_split_payload if family == "passing" else _rushing_split_payload
+        profiles.append(PlayerSchemeProfile(
+            player_id=player_id,
+            player_name=identity.get("player_name") or player_id,
+            team=team or identity.get("team") or "",
+            position=position,
+            source_season=source_season,
+            play_family=family,
+            splits={key: payload(value) for key, value in sorted(splits.items())},
+        ))
+    return tuple(profiles)
 
 
 def _league_accumulators(accumulators: dict[str, _Accumulator]) -> _Accumulator:
@@ -344,9 +499,11 @@ def build(
     participation_rows: list[dict],
     charting_rows: list[dict],
     player_positions: dict[str, str] | None = None,
+    player_identities: dict[str, dict[str, str]] | None = None,
 ) -> BuildResult:
     """Build profiles and slate matchups using only plays before ``season/week``."""
     player_positions = player_positions or {}
+    player_identities = player_identities or {}
     participation = {
         _key(row.get("nflverse_game_id"), row.get("play_id")): row
         for row in participation_rows
@@ -366,6 +523,12 @@ def build(
     offense: dict[str, _Accumulator] = defaultdict(_Accumulator)
     defense: dict[str, _Accumulator] = defaultdict(_Accumulator)
     source_seasons: set[int] = set()
+    player_coverage_rows: dict[
+        tuple[int, str, str, str], dict[str, list[dict]]
+    ] = defaultdict(lambda: defaultdict(list))
+    player_scheme_rows: dict[
+        tuple[int, str, str, str, str], dict[str, list[dict]]
+    ] = defaultdict(lambda: defaultdict(list))
 
     for row in pbp_rows:
         row_season = int(_num(row.get("season")) or 0)
@@ -462,6 +625,17 @@ def build(
                     off.rate("off_run_gap_" + label, gap == label, weight)
                     deff.rate("def_run_gap_" + label, gap == label, weight)
 
+            player_id = str(row.get("rusher_player_id") or "").strip()
+            if player_id and player_positions.get(player_id) == "RB":
+                key = (row_season, team, player_id, "RB", "rushing")
+                player_scheme_rows[key]["all"].append(row)
+                if box is not None:
+                    player_scheme_rows[key]["stacked_box" if box >= 8 else "light_box"].append(row)
+                if location in {"left", "middle", "right"}:
+                    player_scheme_rows[key][location].append(row)
+                if gap:
+                    player_scheme_rows[key]["gap_" + gap].append(row)
+
         if ftn:
             off.charting_samples += 1
             deff.charting_samples += 1
@@ -530,6 +704,20 @@ def build(
                 off.mean("off_pass_epa_" + coverage, _num(row.get("epa")), weight)
                 deff.mean("def_pass_epa_" + coverage, _num(row.get("epa")), weight)
 
+            passer_id = str(row.get("passer_player_id") or "").strip()
+            if passer_id and player_positions.get(passer_id) == "QB":
+                key = (row_season, team, passer_id, "QB", "passing")
+                player_scheme_rows[key]["all"].append(row)
+                if man_zone:
+                    player_scheme_rows[key][man_zone].append(row)
+                if coverage:
+                    player_scheme_rows[key][coverage].append(row)
+                blitzers = _num(ftn.get("n_blitzers"))
+                if blitzers is not None:
+                    player_scheme_rows[key]["blitz" if blitzers > 0 else "no_blitz"].append(row)
+                if pressure is not None:
+                    player_scheme_rows[key]["pressure" if pressure else "clean"].append(row)
+
             position = player_positions.get(str(row.get("receiver_player_id") or "").strip())
             if position:
                 for acc, prefix in ((off, "off_"), (deff, "def_")):
@@ -541,6 +729,14 @@ def build(
                                 position == label,
                                 weight,
                             )
+
+                player_id = str(row.get("receiver_player_id") or "").strip()
+                if player_id and man_zone:
+                    key = (row_season, team, player_id, position)
+                    player_coverage_rows[key]["all"].append(row)
+                    player_coverage_rows[key][man_zone].append(row)
+                    if coverage:
+                        player_coverage_rows[key][coverage].append(row)
 
     league_off = _league_accumulators(offense)
     league_def = _league_accumulators(defense)
@@ -611,7 +807,14 @@ def build(
         ),
         "attribution": "FTN Data via nflverse, CC-BY-SA 4.0 (2023 onward)",
     }
-    return BuildResult(profiles=profiles, matchups=matchups, league=league, status=status)
+    return BuildResult(
+        profiles=profiles,
+        matchups=matchups,
+        player_coverage=_player_coverage_profiles(player_coverage_rows, player_identities),
+        player_scheme=_player_scheme_profiles(player_scheme_rows, player_identities),
+        league=league,
+        status=status,
+    )
 
 
 def _blend(value: float, baseline: float, weight: float) -> float:
@@ -793,3 +996,11 @@ def profile_payload(profile: TeamSchemeProfile) -> dict:
 
 def matchup_payload(matchup: SchemeMatchup) -> dict:
     return asdict(matchup)
+
+
+def player_coverage_payload(profile: PlayerCoverageProfile) -> dict:
+    return asdict(profile)
+
+
+def player_scheme_payload(profile: PlayerSchemeProfile) -> dict:
+    return asdict(profile)

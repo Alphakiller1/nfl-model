@@ -197,6 +197,14 @@ def payload(slate, outlooks: list | None = None) -> dict:
             scheme.matchup_payload(matchup)
             for _, matchup in sorted(slate.scheme_matchups.items())
         ],
+        "player_coverage_profiles": [
+            scheme.player_coverage_payload(profile)
+            for profile in slate.player_coverage
+        ],
+        "player_scheme_profiles": [
+            scheme.player_scheme_payload(profile)
+            for profile in slate.player_scheme
+        ],
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {

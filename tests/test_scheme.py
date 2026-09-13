@@ -22,6 +22,12 @@ def _scheme_rows(plays=80):
                 "epa": ".2" if is_pass else ".05", "success": "1",
                 "run_location": "left", "run_gap": "guard",
                 "receiver_player_id": "receiver" if is_pass else "",
+                "passer_player_id": "quarterback" if is_pass else "",
+                "rusher_player_id": "runningback" if not is_pass else "",
+                "sack": "0", "interception": "0",
+                "complete_pass": "1" if is_pass and index % 3 else "0",
+                "yards_gained": "12" if is_pass and index % 3 else "0",
+                "touchdown": "1" if is_pass and index == 1 else "0",
             })
             participation.append({
                 "nflverse_game_id": "2025_TEST", "play_id": play_id,
@@ -53,7 +59,12 @@ def _build(extra_pbp=None):
     return scheme.build(
         season=2026, week=1, games=games, schedule=schedule, pbp_rows=pbp,
         participation_rows=participation, charting_rows=charting,
-        player_positions={"receiver": "WR"},
+        player_positions={"receiver": "WR", "quarterback": "QB", "runningback": "RB"},
+        player_identities={
+            "receiver": {"player_name": "Example Receiver", "position": "WR", "team": "NE"},
+            "quarterback": {"player_name": "Example Quarterback", "position": "QB", "team": "NE"},
+            "runningback": {"player_name": "Example Running Back", "position": "RB", "team": "NE"},
+        },
     )
 
 
@@ -93,6 +104,49 @@ def test_matchup_adjustments_are_bounded_and_preserve_position_level_response():
     assert -0.35 <= matchup.pass_efficiency_delta <= 0.35
     assert set(matchup.target_multipliers) == {"RB", "WR", "TE"}
     assert all(0.88 <= value <= 1.12 for value in matchup.target_multipliers.values())
+
+
+def test_player_coverage_profiles_are_observed_season_splits_only():
+    result = _build()
+    ne = next(row for row in result.player_coverage if row.team == "NE")
+    assert ne.player_name == "Example Receiver"
+    assert ne.position == "WR"
+    assert ne.source_season == 2025
+    assert ne.splits["zone"]["targets"] == 60
+    assert ne.splits["cover_3"]["targets"] == 60
+    assert ne.splits["zone"]["receptions"] == 40
+    assert ne.splits["zone"]["receiving_yards"] == 480.0
+    assert ne.splits["zone"]["touchdowns"] == 1
+    assert ne.splits["zone"]["catch_rate"] == 0.6667
+    assert ne.splits["zone"]["yards_per_target"] == 8.0
+
+
+def test_qb_and_rb_scheme_profiles_are_observed_player_splits():
+    result = _build()
+    quarterback = next(row for row in result.player_scheme
+                       if row.team == "NE" and row.position == "QB")
+    running_back = next(row for row in result.player_scheme
+                        if row.team == "NE" and row.position == "RB")
+    assert quarterback.play_family == "passing"
+    assert quarterback.splits["zone"]["dropbacks"] == 60
+    assert quarterback.splits["blitz"]["attempts"] == 60
+    assert quarterback.splits["pressure"]["dropbacks"] == 15
+    assert running_back.play_family == "rushing"
+    assert running_back.splits["all"]["carries"] == 20
+    assert running_back.splits["light_box"]["carries"] == 20
+    assert running_back.splits["left"]["yards_per_carry"] == 0.0
+
+
+def test_player_identity_index_prefers_latest_observed_row():
+    rows = [
+        {"player_id": "p", "player_display_name": "Old Name", "position": "WR",
+         "recent_team": "NE", "season": "2024", "week": "18"},
+        {"player_id": "p", "player_display_name": "Current Name", "position": "TE",
+         "recent_team": "SEA", "season": "2025", "week": "1"},
+    ]
+    assert scheme.player_index(rows)["p"] == {
+        "player_name": "Current Name", "position": "TE", "team": "SEA",
+    }
 
 
 def test_feed_taxonomies_do_not_collapse_two_man_or_defensive_back_counts():

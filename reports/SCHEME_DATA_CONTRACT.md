@@ -18,12 +18,19 @@ head-coach change (80% when staff continuity cannot be verified).
 | Coverage | `defense_man_zone_type`, `defense_coverage_type` | man/zone and Cover 0/1/2/3/4/6/2-Man |
 | Front/pressure | `defenders_in_box`, `n_blitzers`, `was_pressure` | average/stacked box, blitz and pressure rate |
 | Concepts | FTN motion/play-action/RPO/screen flags | concept frequency and defensive response |
-| Outcomes | `epa`, `success`, `receiver_player_id` | response EPA and RB/WR/TE target allocation |
+| Outcomes | `epa`, `success`, `complete_pass`, `yards_gained`, `touchdown`, `receiver_player_id` | response EPA, RB/WR/TE target allocation, and observed player receiving splits by charted coverage |
 
 The exported artifact reports source seasons separately for play-by-play,
 participation and FTN charting. That matters because nflverse documents that
 participation data from 2023 onward is published after the postseason; a current
 play-calling profile can therefore coexist with prior-season coverage/personnel.
+
+`player_coverage_profiles` is an isolated descriptive export. Each RB/WR/TE row
+is labelled with its source season and reports raw targets, receptions,
+receiving yards, touchdowns, catch rate, yards per target and EPA per target
+against man, zone and any charted shell. It is not read by the forecasting or
+promotion paths; low-volume splits retain their sample count rather than being
+presented as a stable player trait.
 
 ## Proxy-only and unavailable fields
 
