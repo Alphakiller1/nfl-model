@@ -103,6 +103,7 @@ class Slate:
     scheme_profiles: dict[str, scheme.TeamSchemeProfile] = field(default_factory=dict)
     scheme_matchups: dict[tuple[str, str], scheme.SchemeMatchup] = field(default_factory=dict)
     player_coverage: tuple[scheme.PlayerCoverageProfile, ...] = field(default_factory=tuple)
+    player_scheme: tuple[scheme.PlayerSchemeProfile, ...] = field(default_factory=tuple)
     scheme_status: dict = field(default_factory=dict)
     # Context, not model input. A preseason board with no records on it asks the
     # reader to take a rating on faith; "SEA +9.5, 12-5 last year" is a claim they
@@ -337,6 +338,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  scheme_profiles=scheme_result.profiles,
                  scheme_matchups=scheme_result.matchups,
                  player_coverage=scheme_result.player_coverage,
+                 player_scheme=scheme_result.player_scheme,
                  scheme_status=scheme_result.status,
                  prior_records=build_records(prior),
                  source_status=nflverse.status_report(), odds_status=odds_status,

@@ -22,6 +22,9 @@ def _scheme_rows(plays=80):
                 "epa": ".2" if is_pass else ".05", "success": "1",
                 "run_location": "left", "run_gap": "guard",
                 "receiver_player_id": "receiver" if is_pass else "",
+                "passer_player_id": "quarterback" if is_pass else "",
+                "rusher_player_id": "runningback" if not is_pass else "",
+                "sack": "0", "interception": "0",
                 "complete_pass": "1" if is_pass and index % 3 else "0",
                 "yards_gained": "12" if is_pass and index % 3 else "0",
                 "touchdown": "1" if is_pass and index == 1 else "0",
@@ -56,9 +59,11 @@ def _build(extra_pbp=None):
     return scheme.build(
         season=2026, week=1, games=games, schedule=schedule, pbp_rows=pbp,
         participation_rows=participation, charting_rows=charting,
-        player_positions={"receiver": "WR"},
+        player_positions={"receiver": "WR", "quarterback": "QB", "runningback": "RB"},
         player_identities={
-            "receiver": {"player_name": "Example Receiver", "position": "WR", "team": "NE"}
+            "receiver": {"player_name": "Example Receiver", "position": "WR", "team": "NE"},
+            "quarterback": {"player_name": "Example Quarterback", "position": "QB", "team": "NE"},
+            "runningback": {"player_name": "Example Running Back", "position": "RB", "team": "NE"},
         },
     )
 
@@ -114,6 +119,22 @@ def test_player_coverage_profiles_are_observed_season_splits_only():
     assert ne.splits["zone"]["touchdowns"] == 1
     assert ne.splits["zone"]["catch_rate"] == 0.6667
     assert ne.splits["zone"]["yards_per_target"] == 8.0
+
+
+def test_qb_and_rb_scheme_profiles_are_observed_player_splits():
+    result = _build()
+    quarterback = next(row for row in result.player_scheme
+                       if row.team == "NE" and row.position == "QB")
+    running_back = next(row for row in result.player_scheme
+                        if row.team == "NE" and row.position == "RB")
+    assert quarterback.play_family == "passing"
+    assert quarterback.splits["zone"]["dropbacks"] == 60
+    assert quarterback.splits["blitz"]["attempts"] == 60
+    assert quarterback.splits["pressure"]["dropbacks"] == 15
+    assert running_back.play_family == "rushing"
+    assert running_back.splits["all"]["carries"] == 20
+    assert running_back.splits["light_box"]["carries"] == 20
+    assert running_back.splits["left"]["yards_per_carry"] == 0.0
 
 
 def test_player_identity_index_prefers_latest_observed_row():
