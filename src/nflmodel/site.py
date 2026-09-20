@@ -28,7 +28,7 @@ from pathlib import Path
 
 from . import authority as auth
 from . import divisions as divisions_mod
-from . import forecast, matrix, player_props, ratings, teams, totals
+from . import forecast, matrix, player_props, ratings, recommendations, teams, totals
 from . import season as season_mod
 from .board import BOARD_JS, board_html
 from .board_nfl import build_board
@@ -145,6 +145,7 @@ def _nav(slate) -> str:
     <div class="nav-links">
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
+      <a class="nav-link" href="#best-bets">Best Bets</a>
       <a class="nav-link" href="#players">Players</a>
       <a class="nav-link" href="#scheme">Scheme</a>
       <a class="nav-link" href="#disagreements">Gaps</a>
@@ -319,6 +320,97 @@ def _board_section(slate) -> str:
     this authority permits none.</p>
   </div>
   {board_html(board)}
+</section>"""
+
+
+def _best_bets_section(slate) -> str:
+    report = recommendations.build_report(slate, limit=10)
+
+    def game_rows(rows: list[dict], *, total: bool = False) -> str:
+        output = []
+        for rank, row in enumerate(rows[:5], start=1):
+            market = row["market"] if total else e(str(row["market"]))
+            output.append(
+                f'<tr><td class="rank">{rank}</td><td><b>{e(row["selection"])}</b> '
+                f'<span class="dim">{e(row["game"])}</span></td>'
+                f'<td class="num">{market}</td><td class="num">{e(str(row["model"]))}</td>'
+                f'<td class="num score">{row["gap"]:.1f}</td>'
+                f'<td class="report-reason">{e(row["reason"])}</td></tr>'
+            )
+        return "".join(output)
+
+    quoted = report["top_player_props"]
+    props = quoted or report["projection_only_player_props"]
+    prop_rows = []
+    for rank, row in enumerate(props[:10], start=1):
+        if row["line"] is None:
+            call = "projection only"
+            line = "&ndash;"
+        else:
+            call = f'{row["selection"]} {row["line"]:g} ({row["price"]:+.0f})'
+            line = f'{row["line"]:g}'
+        prop_rows.append(
+            f'<tr><td class="rank">{rank}</td><td><b>{e(row["player"])}</b> '
+            f'<span class="dim">{e(row["team"])} {e(row["position"])}</span></td>'
+            f'<td>{e(row["market"])}</td><td>{e(call)}</td><td class="num">{line}</td>'
+            f'<td class="num score">{row["model"]:.1f}</td>'
+            f'<td class="num">{row["scheme_score"]:+.3f}</td>'
+            f'<td class="report-reason">{e(row["reason"])}</td></tr>'
+        )
+
+    matchup_rows = []
+    for rank, row in enumerate(report["best_team_matchups"][:8], start=1):
+        matchup_rows.append(
+            f'<tr><td class="rank">{rank}</td><td><b>{e(row["team"])}</b> vs '
+            f'{e(row["opponent"])}</td><td class="num">{row["pass_attempt_delta"]:+.1f}</td>'
+            f'<td class="num">{row["carry_delta"]:+.1f}</td>'
+            f'<td class="num">{row["pass_efficiency_delta"]:+.3f}</td>'
+            f'<td class="num">{row["rush_efficiency_delta"]:+.3f}</td>'
+            f'<td class="report-reason">{e(row["reason"])}</td></tr>'
+        )
+
+    prop_note = (
+        f'{len(quoted)} paired DraftKings prop lines matched to model projections.'
+        if quoted else
+        'No paired DraftKings prop lines were available; showing projection-only matchup '
+        'standouts, with no over/under call.'
+    )
+    return f"""
+<section id="best-bets">
+  <div class="sec-head">
+    <span class="kicker">Weekly report &middot; 03</span>
+    <h2>Best bets, props &amp; matchup advantages</h2>
+    <p class="blurb"><b>{e(report['label'])}</b>. This section ranks the model&rsquo;s strongest
+    disagreements and scheme advantages; it does not override the {e(report['authority'])}
+    authority gate. {e(report['method'])}</p>
+    <div class="prop-meta"><span class="pill warn">may bet: {str(report['may_bet']).lower()}</span>
+      <span class="pill">{e(prop_note)}</span></div>
+  </div>
+  <details class="prop-group" open><summary>Top spread model gaps
+    <span>{len(report['top_spreads'])} ranked</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Side / game</th>
+    <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
+    <th>Scheme explanation</th></tr></thead><tbody>{game_rows(report['top_spreads'])}</tbody>
+    </table></div></details>
+  <details class="prop-group" open><summary>Top total model gaps
+    <span>{len(report['top_totals'])} ranked</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Call / game</th>
+    <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
+    <th>Scheme explanation</th></tr></thead><tbody>
+    {game_rows(report['top_totals'], total=True)}</tbody>
+    </table></div></details>
+  <details class="prop-group" open><summary>Top player props &amp; projection standouts
+    <span>{len(props)} ranked &middot; {e(prop_note)}</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Player</th><th>Market</th>
+    <th>Call</th><th class="num">Line</th><th class="num">Model</th>
+    <th class="num">Scheme score</th><th>Why the matchup fits</th></tr></thead>
+    <tbody>{''.join(prop_rows)}</tbody></table></div></details>
+  <details class="prop-group"><summary>Best team scheme matchups
+    <span>{len(report['best_team_matchups'])} ranked</span></summary><div class="tablewrap">
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Offense</th>
+    <th class="num">Pass att Δ</th><th class="num">Carry Δ</th>
+    <th class="num">Pass eff Δ</th><th class="num">Rush eff Δ</th><th>Explanation</th></tr></thead>
+    <tbody>{''.join(matchup_rows)}</tbody></table></div></details>
 </section>"""
 
 
@@ -1026,6 +1118,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f'<main class="wrap">'
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
+            f"{_best_bets_section(slate)}"
             f"{_player_section(slate)}"
             f"{_scheme_section(slate)}"
             f"{_disagreements_section(slate)}"
@@ -1265,6 +1358,7 @@ text-transform:uppercase;letter-spacing:.06em;color:var(--text)}
 font-weight:500;text-transform:none;letter-spacing:0}
 .prop-group .tablewrap{border:0;border-top:1px solid var(--border-soft);border-radius:0}
 .prop-table th,.prop-table td{padding:7px 10px;font-size:var(--mm-text-xs)}
+.prop-table .report-reason{white-space:normal;min-width:360px;color:var(--text-2);line-height:1.45}
 .prop-player{min-width:205px}.prop-player .tname{gap:7px}
 .prop-role{display:block;color:var(--text-2)}
 .prop-role+small{display:block;color:var(--text-4)}

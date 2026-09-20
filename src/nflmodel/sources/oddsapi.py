@@ -37,6 +37,15 @@ CACHE_DIR = Path(
 CACHE_TTL_SECONDS = 15 * 60
 TIMEOUT = 45
 DEFAULT_BOOK = "draftkings"
+PLAYER_PROP_MARKETS = (
+    "player_pass_attempts",
+    "player_pass_yds",
+    "player_pass_tds",
+    "player_rush_attempts",
+    "player_rush_yds",
+    "player_receptions",
+    "player_reception_yds",
+)
 
 
 class OddsAPIError(RuntimeError):
@@ -75,11 +84,27 @@ class BookLine:
     away_moneyline: float | None
     last_update: str | None
     commence_time: str | None
+    event_id: str = ""
 
     @property
     def home_margin(self) -> float | None:
         """Expected home margin; books quote the opposite handicap sign."""
         return None if self.home_spread is None else -self.home_spread
+
+
+@dataclass(frozen=True)
+class PlayerPropQuote:
+    event_id: str
+    home_team: str
+    away_team: str
+    market: str
+    player_name: str
+    line: float
+    over_price: float
+    under_price: float
+    book: str
+    book_title: str
+    last_update: str | None
 
 
 _LAST_STATUS = OddsStatus("not_run", DEFAULT_BOOK, None, None, 0, 0, 0)
@@ -277,6 +302,7 @@ def fetch_lines(
             unmatched += 1
             continue
         out[(home, away)] = BookLine(
+            event_id=str(event.get("id") or ""),
             book=selected["key"],
             book_title=selected.get("title", selected["key"]),
             home_spread=spread,
@@ -297,3 +323,82 @@ def fetch_lines(
         age_seconds=_age_seconds(headers.get("fetched_at")),
     )
     return out
+
+
+def _parse_player_props(payload: dict, requested: str) -> list[PlayerPropQuote]:
+    """Parse paired DraftKings over/unders from one event response."""
+    index = team_index()
+    home = match_team(payload.get("home_team", ""), index)
+    away = match_team(payload.get("away_team", ""), index)
+    selected = _pick_book(payload.get("bookmakers", []), requested)
+    if not home or not away or not selected:
+        return []
+    output: list[PlayerPropQuote] = []
+    for market in selected.get("markets", []):
+        key = str(market.get("key") or "")
+        if key not in PLAYER_PROP_MARKETS:
+            continue
+        paired: dict[tuple[str, float], dict[str, float]] = {}
+        for outcome in market.get("outcomes", []):
+            side = str(outcome.get("name") or "").strip().lower()
+            player = str(outcome.get("description") or "").strip()
+            line = _number(outcome.get("point"), low=-1.0, high=1000.0)
+            price = _number(outcome.get("price"), low=-100000.0, high=100000.0)
+            if side not in {"over", "under"} or not player or line is None or price is None:
+                continue
+            paired.setdefault((player, line), {})[side] = price
+        for (player, line), sides in paired.items():
+            if "over" not in sides or "under" not in sides:
+                continue
+            output.append(PlayerPropQuote(
+                event_id=str(payload.get("id") or ""),
+                home_team=home,
+                away_team=away,
+                market=key,
+                player_name=player,
+                line=line,
+                over_price=sides["over"],
+                under_price=sides["under"],
+                book=selected["key"],
+                book_title=selected.get("title", selected["key"]),
+                last_update=market.get("last_update"),
+            ))
+    return output
+
+
+def fetch_player_props(
+    lines: dict[tuple[str, str], BookLine],
+    *,
+    book: str | None = None,
+    min_remaining: int = 80,
+) -> list[PlayerPropQuote]:
+    """Fetch paired NFL player props one event at a time.
+
+    The provider requires the event-odds endpoint for props. Requests are made
+    only for slate events already matched to the exact requested sportsbook and
+    stop before crossing the configured quota floor.
+    """
+    requested = (os.getenv("ODDS_BOOKMAKERS") or book or DEFAULT_BOOK).strip().lower()
+    if "," in requested or not requested:
+        raise OddsAPIError("NFL production accepts exactly one sportsbook")
+    output: list[PlayerPropQuote] = []
+    left = remaining()
+    for line in lines.values():
+        if not line.event_id:
+            continue
+        if left is not None and left < min_remaining:
+            break
+        query = {
+            "regions": "us",
+            "markets": ",".join(PLAYER_PROP_MARKETS),
+            "oddsFormat": "american",
+            "bookmakers": requested,
+        }
+        payload, headers = _get(
+            f"/sports/{SPORT}/events/{line.event_id}/odds", query
+        )
+        if headers.get("remaining") is not None:
+            left = int(headers["remaining"])
+        if isinstance(payload, dict):
+            output.extend(_parse_player_props(payload, requested))
+    return output

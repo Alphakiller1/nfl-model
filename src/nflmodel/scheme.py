@@ -20,8 +20,12 @@ from dataclasses import asdict, dataclass, field
 from . import teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-scheme-matrix/1.0.0"
+MODEL_VERSION = "nfl-scheme-matrix/2.0.0"
 HALF_LIFE_WEEKS = 16.0
+REACTION_WINDOW_WEEKS = 4
+REACTION_RATE_PRIOR_PLAYS = 32.0
+REACTION_RESPONSE_PRIOR_PLAYS = 24.0
+REACTION_MAX_WEIGHT = 0.35
 RATE_PRIOR_PLAYS = 48.0
 RESPONSE_PRIOR_PLAYS = 32.0
 TARGET_PRIOR_PLAYS = 24.0
@@ -66,6 +70,12 @@ class TeamSchemeProfile:
     carryover_weight: float
     coverage_samples: int
     charting_samples: int
+    current_season_plays: int = 0
+    reaction_window: tuple[int, int] | None = None
+    reaction_weight: float = 0.0
+    reaction: dict[str, float] = field(default_factory=dict)
+    regime_change_score: float = 0.0
+    regime_flags: tuple[str, ...] = ()
     model_version: str = MODEL_VERSION
 
 
@@ -292,6 +302,8 @@ def _profile_values(acc: _Accumulator, league: _Accumulator, *, defense: bool) -
         "cover_0", "cover_1", "cover_2", "cover_3", "cover_4", "cover_6",
         "cover_2_man", "blitz", "pressure", "stacked_box", "personnel_base",
         "personnel_nickel", "personnel_dime", "pass_success", "rush_success",
+        "pass", "early_down_pass", "explosive_pass", "explosive_rush", "sack",
+        "qb_hit", "turnover", "red_zone_td", "third_down_success",
     )
     for name in names:
         key = prefix + name
@@ -305,7 +317,8 @@ def _profile_values(acc: _Accumulator, league: _Accumulator, *, defense: bool) -
         "rush_epa_stacked_box", "rush_epa_light_box", "avg_box",
         "pass_epa_cover_0", "pass_epa_cover_1", "pass_epa_cover_2",
         "pass_epa_cover_3", "pass_epa_cover_4", "pass_epa_cover_6",
-        "pass_epa_cover_2_man",
+        "pass_epa_cover_2_man", "early_down_epa", "late_down_epa",
+        "air_yards", "yards_per_play",
     )
     for name in response_means:
         key = prefix + name
@@ -320,6 +333,92 @@ def _profile_values(acc: _Accumulator, league: _Accumulator, *, defense: bool) -
     return {key: round(value, 4) for key, value in values.items()}
 
 
+REACTION_METRICS = (
+    "neutral_pass_rate",
+    "early_down_pass_rate",
+    "pass_epa",
+    "rush_epa",
+    "pass_success_rate",
+    "rush_success_rate",
+    "explosive_pass_rate",
+    "explosive_rush_rate",
+    "sack_rate",
+    "qb_hit_rate",
+    "turnover_rate",
+    "third_down_success_rate",
+    "red_zone_td_rate",
+    "early_down_epa",
+    "late_down_epa",
+    "yards_per_play",
+)
+
+
+def _reaction_values(acc: _Accumulator, league: _Accumulator, *, defense: bool) -> dict[str, float]:
+    """Small-sample, current-regime snapshot with explicit shrinkage.
+
+    This deliberately excludes participation-only fields: current-season
+    participation is normally unavailable until after the season. PBP and FTN
+    signals can react now without pretending last year's coverage labels are live.
+    """
+    prefix = "def_" if defense else "off_"
+    out: dict[str, float] = {}
+    for name in REACTION_METRICS:
+        key = prefix + name.removesuffix("_rate")
+        pseudo = (
+            REACTION_RESPONSE_PRIOR_PLAYS
+            if name in {"pass_epa", "rush_epa", "early_down_epa", "late_down_epa", "yards_per_play"}
+            else REACTION_RATE_PRIOR_PLAYS
+        )
+        out[name] = round(_shrunk(acc, league, key, pseudo=pseudo), 4)
+    return out
+
+
+def _trend_profile(
+    recent: _Accumulator,
+    recent_league: _Accumulator,
+    baseline: dict[str, float],
+    *,
+    defense: bool,
+    start_week: int,
+    end_week: int,
+) -> tuple[dict[str, float], float, float, tuple[str, ...], tuple[int, int] | None]:
+    if recent.raw_plays == 0:
+        return {}, 0.0, 0.0, (), None
+    values = _reaction_values(recent, recent_league, defense=defense)
+    deltas = {
+        f"delta_{key}": round(value - baseline.get(key, value), 4)
+        for key, value in values.items()
+    }
+    reaction = {**values, **deltas}
+    reliability = recent.raw_plays / (recent.raw_plays + 160.0)
+    weight = min(REACTION_MAX_WEIGHT, REACTION_MAX_WEIGHT * reliability)
+    scales = {
+        "neutral_pass_rate": 0.10,
+        "early_down_pass_rate": 0.10,
+        "pass_epa": 0.18,
+        "rush_epa": 0.14,
+        "explosive_pass_rate": 0.05,
+        "sack_rate": 0.05,
+        "turnover_rate": 0.035,
+        "yards_per_play": 1.0,
+    }
+    scored = sorted(
+        (
+            (abs(deltas.get(f"delta_{metric}", 0.0)) / scale, metric,
+             deltas.get(f"delta_{metric}", 0.0))
+            for metric, scale in scales.items()
+        ),
+        reverse=True,
+    )
+    flags = tuple(
+        f"{metric} {'up' if delta > 0 else 'down'} {abs(delta):.3f}"
+        for magnitude, metric, delta in scored[:3]
+        if magnitude >= 0.50
+    )
+    score = sum(min(magnitude, 2.0) for magnitude, _, _ in scored) / len(scales)
+    return reaction, round(weight, 4), round(score, 3), flags, (start_week, end_week)
+
+
 def _coach_map(schedule: list[dict], season: int) -> dict[str, str]:
     coaches: dict[str, tuple[int, str]] = {}
     for row in schedule:
@@ -332,6 +431,73 @@ def _coach_map(schedule: list[dict], season: int) -> dict[str, str]:
             if team and coach and week >= coaches.get(team, (-1, ""))[0]:
                 coaches[team] = (week, coach)
     return {team: value[1] for team, value in coaches.items()}
+
+
+def _record_core_metrics(
+    off: _Accumulator,
+    deff: _Accumulator,
+    row: dict,
+    *,
+    is_pass: bool,
+    is_rush: bool,
+    neutral: bool,
+    down: int,
+    weight: float,
+) -> None:
+    """Record PBP-native signals shared by the long and reaction windows."""
+    epa = _num(row.get("epa"))
+    success = _flag(row.get("success"))
+    yards = _num(row.get("yards_gained"))
+    yardline = _num(row.get("yardline_100"))
+    red_zone = yardline is not None and yardline <= 20.0
+    third_down = down == 3
+    third_success = _flag(row.get("third_down_converted"))
+    if third_success is None and third_down:
+        third_success = success
+    interception = _flag(row.get("interception"))
+    fumble_lost = _flag(row.get("fumble_lost"))
+    turnover = (
+        None if interception is None and fumble_lost is None
+        else interception is True or fumble_lost is True
+    )
+    for acc, prefix in ((off, "off_"), (deff, "def_")):
+        acc.raw_plays += 1
+        acc.rate(prefix + "pass", is_pass, weight)
+        if neutral:
+            acc.rate(prefix + "neutral_pass", is_pass, weight)
+        if down in {1, 2}:
+            acc.rate(prefix + "early_down_pass", is_pass, weight)
+            acc.mean(prefix + "early_down_epa", epa, weight)
+        elif down in {3, 4}:
+            acc.mean(prefix + "late_down_epa", epa, weight)
+        acc.mean(prefix + "yards_per_play", yards, weight)
+        if turnover is not None:
+            acc.rate(prefix + "turnover", turnover, weight)
+        if red_zone:
+            touchdown = _flag(row.get("touchdown"))
+            if touchdown is not None:
+                acc.rate(prefix + "red_zone_td", touchdown, weight)
+        if third_down and third_success is not None:
+            acc.rate(prefix + "third_down_success", third_success, weight)
+        if is_pass:
+            acc.mean(prefix + "pass_epa", epa, weight)
+            if success is not None:
+                acc.rate(prefix + "pass_success", success, weight)
+            if yards is not None:
+                acc.rate(prefix + "explosive_pass", yards >= 20, weight)
+            sack = _flag(row.get("sack"))
+            if sack is not None:
+                acc.rate(prefix + "sack", sack, weight)
+            qb_hit = _flag(row.get("qb_hit"))
+            if qb_hit is not None:
+                acc.rate(prefix + "qb_hit", qb_hit, weight)
+            acc.mean(prefix + "air_yards", _num(row.get("air_yards")), weight)
+        if is_rush:
+            acc.mean(prefix + "rush_epa", epa, weight)
+            if success is not None:
+                acc.rate(prefix + "rush_success", success, weight)
+            if yards is not None:
+                acc.rate(prefix + "explosive_rush", yards >= 10, weight)
 
 
 def build(
@@ -365,7 +531,10 @@ def build(
     }))
     offense: dict[str, _Accumulator] = defaultdict(_Accumulator)
     defense: dict[str, _Accumulator] = defaultdict(_Accumulator)
+    recent_offense: dict[str, _Accumulator] = defaultdict(_Accumulator)
+    recent_defense: dict[str, _Accumulator] = defaultdict(_Accumulator)
     source_seasons: set[int] = set()
+    recent_start_week = max(1, week - REACTION_WINDOW_WEEKS)
 
     for row in pbp_rows:
         row_season = int(_num(row.get("season")) or 0)
@@ -384,8 +553,6 @@ def build(
         weight = _weight(row_season, row_week, season, week)
         off = offense[team]
         deff = defense[opponent]
-        off.raw_plays += 1
-        deff.raw_plays += 1
         context = participation.get(_key(row.get("game_id"), row.get("play_id")), {})
         ftn = charting.get(_key(row.get("game_id"), row.get("play_id")), {})
 
@@ -394,9 +561,17 @@ def build(
         wp = _num(row.get("wp"))
         score = abs(_num(row.get("score_differential")) or 0.0)
         neutral = down in {1, 2} and qtr <= 3 and score <= 10 and (wp is None or 0.2 <= wp <= 0.8)
-        if neutral:
-            off.rate("off_neutral_pass", is_pass, weight)
-            deff.rate("def_neutral_pass", is_pass, weight)
+        _record_core_metrics(
+            off, deff, row, is_pass=is_pass, is_rush=is_rush,
+            neutral=neutral, down=down, weight=weight,
+        )
+        if row_season == season and recent_start_week <= row_week < week:
+            recent_weight = 0.5 ** (max(0, week - row_week - 1) / 2.0)
+            _record_core_metrics(
+                recent_offense[team], recent_defense[opponent], row,
+                is_pass=is_pass, is_rush=is_rush, neutral=neutral,
+                down=down, weight=recent_weight,
+            )
 
         for acc, prefix in ((off, "off_"), (deff, "def_")):
             shotgun = _flag(row.get("shotgun"))
@@ -405,16 +580,6 @@ def build(
                 acc.rate(prefix + "shotgun", shotgun, weight)
             if no_huddle is not None:
                 acc.rate(prefix + "no_huddle", no_huddle, weight)
-            epa = _num(row.get("epa"))
-            success = _flag(row.get("success"))
-            if is_pass:
-                acc.mean(prefix + "pass_epa", epa, weight)
-                if success is not None:
-                    acc.rate(prefix + "pass_success", success, weight)
-            if is_rush:
-                acc.mean(prefix + "rush_epa", epa, weight)
-                if success is not None:
-                    acc.rate(prefix + "rush_success", success, weight)
 
         formation_text = str(context.get("offense_formation") or "")
         personnel_text = str(context.get("offense_personnel") or "")
@@ -544,6 +709,8 @@ def build(
 
     league_off = _league_accumulators(offense)
     league_def = _league_accumulators(defense)
+    recent_league_off = _league_accumulators(recent_offense)
+    recent_league_def = _league_accumulators(recent_defense)
     source_season = max(source_seasons, default=season - 1)
     prior_coaches = _coach_map(schedule, source_season)
     current_coaches = _coach_map(schedule, season)
@@ -565,6 +732,18 @@ def build(
         confidence = "high" if samples >= 700 else "medium" if samples >= 350 else "low"
         if carryover < 0.75 and confidence == "high":
             confidence = "medium"
+        offense_values = _profile_values(off, league_off, defense=False)
+        defense_values = _profile_values(deff, league_def, defense=True)
+        off_reaction, off_weight, off_score, off_flags, off_window = _trend_profile(
+            recent_offense[team], recent_league_off, offense_values,
+            defense=False, start_week=recent_start_week, end_week=week - 1,
+        )
+        def_reaction, def_weight, def_score, def_flags, def_window = _trend_profile(
+            recent_defense[team], recent_league_def, defense_values,
+            defense=True, start_week=recent_start_week, end_week=week - 1,
+        )
+        reaction = {"off_" + key: value for key, value in off_reaction.items()}
+        reaction.update({"def_" + key: value for key, value in def_reaction.items()})
         profiles[team] = TeamSchemeProfile(
             team=team,
             source_seasons=tuple(sorted(source_seasons)),
@@ -572,13 +751,22 @@ def build(
             charting_source_seasons=charting_seasons,
             offense_plays=off.raw_plays,
             defense_plays=deff.raw_plays,
-            offense=_profile_values(off, league_off, defense=False),
-            defense=_profile_values(deff, league_def, defense=True),
+            offense=offense_values,
+            defense=defense_values,
             confidence=confidence,
             staff_continuity=continuity,
             carryover_weight=carryover,
             coverage_samples=min(off.coverage_samples, deff.coverage_samples),
             charting_samples=min(off.charting_samples, deff.charting_samples),
+            current_season_plays=min(
+                recent_offense[team].raw_plays, recent_defense[team].raw_plays
+            ),
+            reaction_window=off_window or def_window,
+            reaction_weight=round((off_weight + def_weight) / 2.0, 4),
+            reaction=reaction,
+            regime_change_score=round(max(off_score, def_score), 3),
+            regime_flags=tuple(("offense: " + flag for flag in off_flags))
+            + tuple(("defense: " + flag for flag in def_flags)),
         )
 
     league = _profile_values(league_off, league_off, defense=False)
@@ -597,6 +785,16 @@ def build(
         "pbp_plays_ingested": sum(profile.offense_plays for profile in profiles.values()),
         "participation_rows": len(participation_rows),
         "charting_rows": len(charting_rows),
+        "current_season_pbp_plays": sum(
+            profile.current_season_plays for profile in profiles.values()
+        ),
+        "reaction_window_weeks": REACTION_WINDOW_WEEKS,
+        "reaction_teams": sum(bool(profile.reaction) for profile in profiles.values()),
+        "reaction_metrics": list(REACTION_METRICS),
+        "reaction_guardrail": (
+            "current-form deltas are league-shrunk and sample-weighted; their matchup "
+            f"influence is capped at {REACTION_MAX_WEIGHT:.0%}"
+        ),
         "observed": list(OBSERVED_FEATURES),
         "proxies": list(PROXY_FEATURES),
         "unavailable": list(UNAVAILABLE_FEATURES),
@@ -649,6 +847,12 @@ def build_matchups(
             expected_pass = 0.58 * offense.offense.get("neutral_pass_rate", league_pass)
             expected_pass += 0.42 * defense.defense.get("neutral_pass_rate", league_pass)
             expected_pass = _blend(expected_pass, league_pass, carryover)
+            reactive_pass = (
+                0.58 * offense.reaction.get("off_neutral_pass_rate", expected_pass)
+                + 0.42 * defense.reaction.get("def_neutral_pass_rate", expected_pass)
+            )
+            reaction_weight = min(offense.reaction_weight, defense.reaction_weight)
+            expected_pass = _blend(reactive_pass, expected_pass, reaction_weight)
             motion = _blend(
                 offense.offense.get("motion_rate", league.get("motion_rate", 0.50)),
                 league.get("motion_rate", 0.50),
@@ -707,6 +911,19 @@ def build_matchups(
                 offense.offense.get("rush_epa", league_rush_epa)
                 + defense.defense.get("rush_epa", league_rush_epa)
             ) / 2.0
+            # Live PBP can detect a new regime before current-season coverage
+            # participation exists. It nudges, but cannot replace, the charted
+            # concept response; the reliability-derived weight is capped above.
+            reactive_pass_epa = (
+                offense.reaction.get("off_pass_epa", pass_epa)
+                + defense.reaction.get("def_pass_epa", pass_epa)
+            ) / 2.0
+            reactive_rush_epa = (
+                offense.reaction.get("off_rush_epa", rush_epa)
+                + defense.reaction.get("def_rush_epa", rush_epa)
+            ) / 2.0
+            pass_epa = _blend(reactive_pass_epa, pass_epa, reaction_weight)
+            rush_epa = _blend(reactive_rush_epa, rush_epa, reaction_weight)
             pass_efficiency = _clamp(
                 carryover * (pass_epa - league_pass_epa) * 1.15, -0.35, 0.35
             )
@@ -751,10 +968,17 @@ def build_matchups(
                     for key, value in coverages.items()
                 }
             top = max(coverages, key=coverages.get) if coverage_total else "coverage unavailable"
+            reaction_factor = (
+                f"live {max(offense.current_season_plays, defense.current_season_plays)}-play "
+                f"reaction layer weighted {reaction_weight:.0%}"
+                if reaction_weight > 0
+                else "live reaction layer unavailable; carryover only"
+            )
             factors = (
                 f"{opponent} expected {man:.0%} man / {zone:.0%} zone",
                 f"most frequent family: {top.replace('_', ' ')}",
                 f"{team} {offense.staff_continuity}; {opponent} {defense.staff_continuity}",
+                reaction_factor,
                 "target response is position-level and re-normalized to the team pool",
             )
             confidence = "low" if "low" in {offense.confidence, defense.confidence} else (

@@ -27,7 +27,7 @@ from pathlib import Path
 from . import authority as auth
 from . import divisions as divisions_mod
 from . import export as export_mod
-from . import matrix, ratings, teams
+from . import matrix, ratings, recommendations, teams
 from . import season as season_mod
 from .forecast import DEFAULT_LAMBDA, SPREAD_LAMBDA, forecast_slate, write_slate
 
@@ -260,6 +260,20 @@ def _cmd_build_site(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_best_bets(args: argparse.Namespace) -> int:
+    slate = _slate(args)
+    report = recommendations.build_report(slate, limit=args.limit)
+    rendered = json.dumps(report, indent=2)
+    if args.out:
+        path = Path(args.out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(rendered + "\n", encoding="utf-8")
+        print(path)
+    else:
+        print(rendered)
+    return 0
+
+
 def _add_slate_args(parser: argparse.ArgumentParser, *, simulations: int | None = None
                     ) -> argparse.ArgumentParser:
     parser.add_argument("--season", type=int, help="default: current season")
@@ -304,6 +318,11 @@ def main(argv: list[str] | None = None) -> int:
                         simulations=divisions_mod.SIMULATIONS)
     s.add_argument("--out", default="docs/index.html")
 
+    b = _add_slate_args(sub.add_parser(
+        "best-bets", help="rank model gaps and scheme matchups"))
+    b.add_argument("--limit", type=int, default=10)
+    b.add_argument("--out", help="write JSON report here instead of stdout")
+
     args = parser.parse_args(argv)
     return {
         "status": _cmd_status,
@@ -315,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         "forecast": _cmd_forecast,
         "export": _cmd_export,
         "build-site": _cmd_build_site,
+        "best-bets": _cmd_best_bets,
     }[args.cmd](args)
 
 

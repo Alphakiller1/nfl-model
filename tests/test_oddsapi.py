@@ -78,3 +78,32 @@ def test_quota_floor_refuses_the_paid_request(monkeypatch):
     else:
         raise AssertionError("quota floor did not fail closed")
     assert called is False
+
+
+def test_player_props_require_paired_over_under_at_the_same_line():
+    payload = {
+        "id": "event-1",
+        "home_team": "Buffalo Bills",
+        "away_team": "New York Jets",
+        "bookmakers": [{
+            "key": "draftkings", "title": "DraftKings",
+            "markets": [{
+                "key": "player_pass_yds", "last_update": "2026-09-20T12:00:00Z",
+                "outcomes": [
+                    {"name": "Over", "description": "Josh Allen", "point": 267.5,
+                     "price": -115},
+                    {"name": "Under", "description": "Josh Allen", "point": 267.5,
+                     "price": -105},
+                    {"name": "Over", "description": "Missing Under", "point": 199.5,
+                     "price": -110},
+                ],
+            }],
+        }],
+    }
+    quotes = oddsapi._parse_player_props(payload, "draftkings")
+    assert len(quotes) == 1
+    quote = quotes[0]
+    assert quote.player_name == "Josh Allen"
+    assert quote.line == 267.5
+    assert quote.over_price == -115
+    assert quote.under_price == -105

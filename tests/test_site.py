@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 
 from nflmodel import authority as auth
-from nflmodel import divisions, export, matrix, site, teams
+from nflmodel import divisions, export, matrix, recommendations, site, teams
 from nflmodel.board import board_html
 from nflmodel.board_nfl import build_board, build_card
 from nflmodel.sources.oddsapi import BookLine
@@ -163,11 +163,21 @@ def test_site_leads_with_the_authority_gate(slate):
 def test_site_sections_appear_in_the_documented_order(slate):
     html = _render(slate)
     order = [
-        'id="authority"', 'id="board"', 'id="players"', 'id="scheme"',
+        'id="authority"', 'id="board"', 'id="best-bets"', 'id="players"', 'id="scheme"',
         'id="ratings"', 'id="units"', 'id="divisions"', 'id="methodology"',
     ]
     positions = [html.index(marker) for marker in order]
     assert positions == sorted(positions)
+
+
+def test_weekly_report_ranks_gaps_but_preserves_research_only_authority(slate):
+    report = recommendations.build_report(slate)
+    assert report["authority"] == "RESEARCH_ONLY"
+    assert report["may_bet"] is False
+    assert "NOT A VALIDATED EDGE" in report["label"]
+    assert report["top_spreads"]
+    assert report["top_totals"]
+    assert 'id="best-bets"' in _render(slate)
 
 
 def test_site_lists_every_production_gate(slate):

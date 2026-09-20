@@ -86,7 +86,9 @@ SCHEME_PBP_FIELDS = (
     "play_type", "down", "ydstogo", "yardline_100", "score_differential", "wp",
     "qtr", "pass", "rush", "shotgun", "no_huddle", "pass_oe", "pass_length",
     "pass_location", "run_location", "run_gap", "epa", "success", "air_yards",
-    "yards_gained", "sack", "complete_pass", "touchdown", "receiver_player_id",
+    "yards_gained", "yards_after_catch", "sack", "qb_hit", "complete_pass",
+    "touchdown", "interception", "fumble_lost", "first_down",
+    "third_down_converted", "third_down_failed", "receiver_player_id",
 )
 SCHEME_PARTICIPATION_FIELDS = (
     "nflverse_game_id", "play_id", "possession_team", "offense_formation",

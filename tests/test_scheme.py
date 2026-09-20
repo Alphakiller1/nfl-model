@@ -115,3 +115,41 @@ def test_player_position_index_uses_latest_position():
         {"player_id": "p", "position": "TE", "season": "2025", "week": "1"},
     ]
     assert scheme.position_index(rows) == {"p": "TE"}
+
+
+def test_live_reaction_layer_uses_only_current_preforecast_plays_and_is_bounded():
+    pbp, participation, charting = _scheme_rows()
+    for offense, defense in (("NE", "SEA"), ("SEA", "NE")):
+        for index in range(60):
+            is_pass = offense == "NE" or index < 20
+            pbp.append({
+                "season": "2026", "week": "1", "season_type": "REG",
+                "game_id": f"2026_{offense}", "play_id": str(2000 + index),
+                "posteam": offense, "defteam": defense,
+                "play_type": "pass" if is_pass else "run",
+                "pass": str(int(is_pass)), "rush": str(int(not is_pass)),
+                "down": "1", "qtr": "2", "wp": ".5", "score_differential": "0",
+                "yardline_100": "45", "epa": ".45" if is_pass else "-.05",
+                "success": "1" if is_pass else "0", "yards_gained": "22" if is_pass else "3",
+                "sack": "0", "qb_hit": "0", "interception": "0", "fumble_lost": "0",
+            })
+    result = scheme.build(
+        season=2026, week=3, games=[{"home_team": "NE", "away_team": "SEA"}],
+        schedule=[
+            {"season": 2025, "week": 18, "home_team": "NE", "away_team": "SEA",
+             "home_coach": "NE Coach", "away_coach": "SEA Coach"},
+            {"season": 2026, "week": 3, "home_team": "NE", "away_team": "SEA",
+             "home_coach": "NE Coach", "away_coach": "SEA Coach"},
+        ],
+        pbp_rows=pbp, participation_rows=participation, charting_rows=charting,
+        player_positions={"receiver": "WR"},
+    )
+    profile = result.profiles["NE"]
+    assert profile.current_season_plays == 60
+    assert profile.reaction_window == (1, 2)
+    assert 0 < profile.reaction_weight <= scheme.REACTION_MAX_WEIGHT
+    assert profile.reaction["off_neutral_pass_rate"] > profile.offense["neutral_pass_rate"]
+    assert profile.regime_flags
+    matchup = result.matchups[("NE", "SEA")]
+    assert any("reaction layer weighted" in factor for factor in matchup.factors)
+    assert result.status["reaction_teams"] == 2

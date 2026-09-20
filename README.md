@@ -55,6 +55,7 @@ or locked prospective trial. The forward ledger is the prospective evidence.
 | Operations | nflverse freshness, exact DraftKings coverage/quota, active model protocol, and forward-record state |
 | Authority | what the numbers may be used for, and which of the twelve gates are unmet |
 | Board | verified DraftKings spread/total/paired moneylines first, then independent projections and a factor-by-factor breakdown |
+| Weekly report | top spread/total gaps, paired DraftKings player-prop gaps, and scheme-ranked team/player matchups |
 | Players | role-aware QB, RB, WR, TE and kicker projections from the current active roster and dated depth chart |
 | Scheme | point-in-time personnel, formation, coverage, pressure, play-call and matchup-response distributions |
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
@@ -80,6 +81,14 @@ individual efficiency is shrunk and opponent-adjusted. DraftKings game lines may
 condition team volume and implied scoring, but no player-prop line or player edge
 is invented.
 
+The weekly report can match those projections to paired DraftKings over/under
+player lines from The Odds API. It ranks the raw model-line gap within each prop
+family and publishes the exact line, price, model value, scheme score and matchup
+explanation. When no paired prop exists, it shows a projection-only standout and
+does not manufacture an over/under call. Because the authority remains
+`RESEARCH_ONLY`, the section is labelled a model-gap watchlist rather than a
+validated edge or betting card.
+
 The scheme matrix is a separate, versioned challenger. It uses nflverse
 play-by-play, participation and FTN charting to track neutral-situation pass rate,
 shotgun/under-center/pistol, 11/12/21/13 personnel, motion, play action, RPO,
@@ -89,6 +98,15 @@ man and zone and position target shares under the expected coverage mix. Rates
 are recency-weighted, league-shrunk, strictly pre-forecast, and discounted after a
 head-coach change. Its bounded changes feed player opportunity and efficiency;
 they do not alter the audited spread model.
+
+The v2 matrix also carries a four-week live reaction layer built from
+current-season play-by-play. It tracks early-down passing, pass/rush EPA and
+success, explosive plays, sacks and QB hits, turnovers, third-down and red-zone
+results, and yards per play. Each short-window estimate is league-shrunk,
+sample-weighted and capped at 35% of the matchup blend. The exported profile
+shows the recent value, its long-baseline delta, the effective weight and regime
+flags, so "reactive" remains observable and bounded rather than a hot-streak
+override.
 
 Provenance is explicit. `run_location` and nflverse's `run_gap` values
 (`guard`/`tackle`/`end`) describe the run point and are labelled proxies. The
@@ -176,6 +194,7 @@ nfl-model board                         # this week's slate, scores and totals
 nfl-model ratings                       # power ratings, offence/defence split
 nfl-model units                         # offensive and defensive rankings
 nfl-model players --position WR         # QB/RB/WR/TE/K projections
+nfl-model best-bets --limit 10          # ranked gaps + scheme matchup report
 nfl-model divisions                     # simulated division and playoff odds
 nfl-model export --out board.json       # the JSON contract
 nfl-model build-site --out docs/index.html

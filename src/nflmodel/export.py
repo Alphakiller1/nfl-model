@@ -23,9 +23,9 @@ from pathlib import Path
 
 from . import authority as auth
 from . import divisions as divisions_mod
-from . import forecast, matrix, ratings, scheme, teams
+from . import forecast, matrix, ratings, recommendations, scheme, teams
 
-SCHEMA = "nfl-model/board/3"
+SCHEMA = "nfl-model/board/4"
 
 
 def _round(value, places: int = 3):
@@ -197,6 +197,7 @@ def payload(slate, outlooks: list | None = None) -> dict:
             scheme.matchup_payload(matchup)
             for _, matchup in sorted(slate.scheme_matchups.items())
         ],
+        "weekly_report": recommendations.build_report(slate),
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {

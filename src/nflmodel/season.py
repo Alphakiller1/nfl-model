@@ -100,6 +100,7 @@ class Slate:
     player_projections: list[player_props.PlayerProjection] = field(default_factory=list)
     player_status: dict = field(default_factory=dict)
     player_results: list[dict] = field(default_factory=list)
+    player_prop_quotes: list[oddsapi.PlayerPropQuote] = field(default_factory=list)
     scheme_profiles: dict[str, scheme.TeamSchemeProfile] = field(default_factory=dict)
     scheme_matchups: dict[tuple[str, str], scheme.SchemeMatchup] = field(default_factory=dict)
     scheme_status: dict = field(default_factory=dict)
@@ -220,6 +221,13 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     except Exception as exc:
         book_lines = {}
         odds_error = f"{type(exc).__name__}: {exc}"
+    prop_quotes: list[oddsapi.PlayerPropQuote] = []
+    prop_error = None
+    if book_lines:
+        try:
+            prop_quotes = oddsapi.fetch_player_props(book_lines)
+        except Exception as exc:
+            prop_error = f"{type(exc).__name__}: {exc}"
 
     authority = auth_mod.current()
     projections = [
@@ -249,7 +257,10 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         player_history.extend(nflverse.player_week(prior_season))
     current_player_rows: list[dict] = []
     if week > 1:
-        current_player_rows = nflverse.player_week(season, completed_season=False)
+        current_player_rows = [
+            row for row in nflverse.player_week(season, completed_season=False)
+            if int(nflverse.number(row.get("week")) or 0) < week
+        ]
         player_history.extend(current_player_rows)
     roster = nflverse.weekly_roster(season, week=week)
     first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
@@ -306,6 +317,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             and p.away_moneyline is not None
             for p in projections
         ),
+        "player_prop_quotes": len(prop_quotes),
     })
     issues: list[str] = []
     stale = [status for status in nflverse.status_report() if status.get("stale")]
@@ -318,6 +330,8 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         issues.append("No active offensive player or kicker projections were generated")
     if odds_error:
         issues.append(f"Live sportsbook feed failed: {odds_error}")
+    if prop_error:
+        issues.append(f"Player-prop feed failed: {prop_error}")
     elif games and not odds_status["slate_matched"]:
         issues.append("DraftKings returned no matched lines for this slate")
     elif odds_status["slate_complete"] < len(games):
@@ -332,6 +346,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  player_projections=player_result.projections,
                  player_status=player_result.status,
                  player_results=current_player_rows,
+                 player_prop_quotes=prop_quotes,
                  scheme_profiles=scheme_result.profiles,
                  scheme_matchups=scheme_result.matchups,
                  scheme_status=scheme_result.status,
