@@ -68,6 +68,10 @@ jobs:
             ${{ github.event.inputs.week && format('--week {0}', github.event.inputs.week) || '' }}
 
       - name: Post-build smoke
+        env:
+          # Publish a visibly degraded row when one late-posting game is absent
+          # instead of leaving the entire public board on an older commit.
+          NFL_MIN_BOOK_COVERAGE: "0.90"
         run: |
           python scripts/smoke_site.py _site/index.html
           python scripts/verify_build.py _site/build.json

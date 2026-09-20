@@ -61,3 +61,21 @@ def test_partial_or_stale_release_fails_closed(tmp_path) -> None:
     assert any("totals coverage" in error for error in errors)
     assert any("snapshot is 1201s old" in error for error in errors)
     assert any("publication issue" in error for error in errors)
+
+
+def test_configured_coverage_floor_allows_one_explicit_missing_book_row(
+    tmp_path, monkeypatch
+) -> None:
+    payload = _manifest()
+    for field in (
+        "slate_matched", "slate_spreads", "slate_totals",
+        "slate_moneylines", "slate_complete",
+    ):
+        payload["odds"][field] = 15
+    payload["issues"] = [
+        "DraftKings has an incomplete spread/total/paired-moneyline set for 1 game(s)"
+    ]
+    path = tmp_path / "build.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setenv("NFL_MIN_BOOK_COVERAGE", "0.90")
+    assert verify(path) == []
