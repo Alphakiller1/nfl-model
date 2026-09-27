@@ -52,6 +52,8 @@ def _projection(p: forecast.GameProjection) -> dict:
         "neutral": p.neutral,
         "rating_margin": _round(p.rating_margin, 2),
         "efficiency_margin": _round(p.efficiency_margin, 2),
+        "availability_margin": _round(p.availability_margin, 2),
+        "qb_out": list(p.qb_out),
         "model_margin": _round(p.model_margin, 2),
         "market_margin": _round(p.market_margin, 2),
         "anchor_margin": _round(p.anchor_margin, 2),

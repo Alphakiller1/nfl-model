@@ -34,7 +34,10 @@ sits entirely below breakeven — unproven and slightly negative, not a signal.
 The audit also found that 72.32% of model/market disagreements point toward the
 market underdog. This is a measured symptom of an under-dispersed information
 set, especially when the market knows injuries and quarterback news the model
-does not. Global, week-specific, and regime-specific recalibrations all reduced
+does not. Starting-quarterback availability is now modelled (`availability.py`,
+fitted by `scripts/fit_availability.py`): a usual starter listed Out/Doubtful or
+on a reserve list is worth 4.2 points, and on those 201 games (2021-2025) the
+model's MAE falls from 10.86 to 10.36 time-forward. Other positions are not. Global, week-specific, and regime-specific recalibrations all reduced
 that imbalance but worsened time-forward MAE and ATS, so none was adopted merely
 to make the slate look balanced.
 

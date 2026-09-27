@@ -214,6 +214,10 @@ class GameProjection:
     # show which one is doing the work.
     rating_margin: float | None = None
     efficiency_margin: float | None = None
+    # Starting-quarterback availability, already inside `model_margin`
+    # (`availability.py`). `qb_out` names each unavailable usual starter.
+    availability_margin: float = 0.0
+    qb_out: tuple[str, ...] = ()
     model_margin: float | None = None
     # nflverse consensus/history remains a benchmark input.  The published
     # anchor below prefers an exact-identity live sportsbook quote when present.
@@ -286,7 +290,8 @@ def _points_edge(market_gap: float | None, *, used_efficiency: bool
     interval of [47.09%, 52.02%] — an interval that contains 50% and sits
     entirely below the 52.38% breakeven. Both estimators are calibrated (slope
     1.035); the market simply conditions on more, chiefly injuries and
-    availability this repo does not model.
+    availability. The starting quarterback is now modelled (`availability.py`,
+    MAE on those games 10.86 -> 10.36 time-forward); every other position is not.
 
     So the difference between the two numbers is dominated by what the market
     knows and the model does not. It stays visible as `market_gap` and is not
@@ -317,6 +322,8 @@ def project_game(
     week: int = 0,
     kickoff: str = "",
     kickoff_utc: str = "",
+    availability_margin: float = 0.0,
+    qb_out: tuple[str, ...] = (),
     lam: float = SPREAD_LAMBDA,
     authority: auth.Authority | None = None,
 ) -> GameProjection:
@@ -327,7 +334,7 @@ def project_game(
     a = authority or auth.current()
     rating_margin = ratings_mod.projected_margin(team_ratings, home, away, neutral=neutral)
     projection = totals_mod.project(home_form, away_form, rating_margin=rating_margin,
-                                    neutral=neutral)
+                                    neutral=neutral, adjustment=availability_margin)
     model_margin = projection.margin
     used_efficiency = projection.modelled
 
@@ -361,6 +368,8 @@ def project_game(
         kickoff_utc=kickoff_utc,
         rating_margin=rating_margin,
         efficiency_margin=projection.efficiency_margin,
+        availability_margin=availability_margin if model_margin is not None else 0.0,
+        qb_out=qb_out,
         model_margin=model_margin,
         market_margin=market_margin,
         anchor_margin=anchor_margin,

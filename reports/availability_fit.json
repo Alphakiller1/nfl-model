@@ -1,0 +1,131 @@
+{
+  "method": "time-forward; coefficient for season S fitted on seasons < S",
+  "scored_seasons": [
+    2021,
+    2025
+  ],
+  "games": 1359,
+  "flagged_games": 201,
+  "folds": [
+    {
+      "test_season": 2021,
+      "points": 3.019,
+      "se": 1.944
+    },
+    {
+      "test_season": 2022,
+      "points": 3.952,
+      "se": 1.358
+    },
+    {
+      "test_season": 2023,
+      "points": 2.855,
+      "se": 1.071
+    },
+    {
+      "test_season": 2024,
+      "points": 2.983,
+      "se": 0.981
+    },
+    {
+      "test_season": 2025,
+      "points": 4.324,
+      "se": 0.934
+    }
+  ],
+  "mae_all": {
+    "model": 10.2404,
+    "model_plus_availability": 10.1676
+  },
+  "mae_flagged": {
+    "model": 10.8557,
+    "model_plus_availability": 10.3635,
+    "market": 9.9154
+  },
+  "market_gap_flagged": {
+    "model": 3.5964,
+    "model_plus_availability": 3.0645
+  },
+  "outcome_points": {
+    "all_seasons": 4.185,
+    "se": 0.858
+  },
+  "market_implied_points": {
+    "all_seasons": 2.835,
+    "se": 0.248
+  },
+  "examples": [
+    {
+      "season": 2025,
+      "week": 15,
+      "home": "PHI",
+      "away": "LV",
+      "who": [
+        "Geno Smith"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 15,
+      "home": "SEA",
+      "away": "IND",
+      "who": [
+        "Daniel Jones"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 16,
+      "home": "TEN",
+      "away": "KC",
+      "who": [
+        "Patrick Mahomes"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 16,
+      "home": "IND",
+      "away": "SF",
+      "who": [
+        "Daniel Jones"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 17,
+      "home": "WAS",
+      "away": "DAL",
+      "who": [
+        "Marcus Mariota"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 17,
+      "home": "MIN",
+      "away": "DET",
+      "who": [
+        "J.J. McCarthy"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 17,
+      "home": "KC",
+      "away": "DEN",
+      "who": [
+        "Patrick Mahomes"
+      ]
+    },
+    {
+      "season": 2025,
+      "week": 18,
+      "home": "PHI",
+      "away": "WAS",
+      "who": [
+        "Marcus Mariota"
+      ]
+    }
+  ]
+}

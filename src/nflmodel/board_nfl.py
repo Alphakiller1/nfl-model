@@ -300,6 +300,16 @@ def _matchup_group(p: GameProjection) -> Group | None:
             note=("The other half of the published margin: opponent-adjusted scoring "
                   "margin, home field removed before rating and added back here."),
         ))
+    if p.qb_out:
+        tiles.append(Tile(
+            label="QB availability",
+            value=(f"{p.home if p.availability_margin >= 0 else p.away} "
+                   f"+{abs(p.availability_margin):.1f}"),
+            state=" · ".join(p.qb_out),
+            tone="mut",
+            note=("A usual starter ruled Out or Doubtful on the injury report, or on a "
+                  "reserve list, moves the model margin by a fitted amount."),
+        ))
     if not tiles:
         return None
     return Group(label="Why this projection", tiles=tuple(tiles), tag="matchup",

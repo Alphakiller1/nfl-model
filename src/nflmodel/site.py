@@ -27,8 +27,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import authority as auth
+from . import (
+    availability,
+    forecast,
+    matrix,
+    player_props,
+    ratings,
+    recommendations,
+    teams,
+    totals,
+)
 from . import divisions as divisions_mod
-from . import forecast, matrix, player_props, ratings, recommendations, teams, totals
 from . import season as season_mod
 from .board import BOARD_JS, board_html
 from .board_nfl import build_board
@@ -1078,8 +1087,12 @@ def _method_section() -> str:
       and the gap is
       <em>widest</em> late (weeks 10&ndash;18: +0.55) rather than early (weeks 1&ndash;4:
       +0.39). That is the opposite of the college case, and the reason is availability: by
-      November the market is pricing injuries and roster news this repo does not model at all,
-      while in September there is less of it to know.</p>
+      November the market is pricing injuries and roster news, while in September there is
+      less of it to know. The model now reads one piece of it: a usual starting quarterback
+      listed Out or Doubtful, or moved to a reserve list, costs his team
+      {availability.QB_OUT_POINTS:.1f} points (fitted time-forward; on those games the
+      model's error falls from 10.86 to 10.36 against the market's 9.92). Every other
+      position is still unmodelled.</p>
       <p>Three families the inherited research prior asserted &mdash; early-down pass
       efficiency, red-zone conversion and special-teams field position &mdash; are not
       derivable from the weekly team box score and are <b>not</b> in the model. They were

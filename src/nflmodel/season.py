@@ -19,7 +19,17 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from . import authority as auth_mod
-from . import efficiency, forecast, matrix, player_props, preseason, ratings, scheme, teams
+from . import (
+    availability,
+    efficiency,
+    forecast,
+    matrix,
+    player_props,
+    preseason,
+    ratings,
+    scheme,
+    teams,
+)
 from .sources import nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
@@ -229,6 +239,23 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         except Exception as exc:
             prop_error = f"{type(exc).__name__}: {exc}"
 
+    player_history: list[dict] = []
+    for prior_season in history_seasons:
+        player_history.extend(nflverse.player_week(prior_season))
+    current_player_rows: list[dict] = []
+    if week > 1:
+        current_player_rows = [
+            row for row in nflverse.player_week(season, completed_season=False)
+            if int(nflverse.number(row.get("week")) or 0) < week
+        ]
+        player_history.extend(current_player_rows)
+    roster = nflverse.weekly_roster(season, week=week)
+    first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
+    depth = nflverse.depth_charts(season, before=first_kickoff)
+    injury_rows = nflverse.injuries(season, week=week)
+    quarterbacks = availability.quarterback_status(
+        availability.usual_starters(player_history, season, week), injury_rows, roster)
+
     authority = auth_mod.current()
     projections = [
         forecast.project_game(
@@ -247,25 +274,18 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             season=season, week=week,
             kickoff=kickoff_label(row),
             kickoff_utc=kickoff_utc(row),
+            availability_margin=availability.margin_adjustment(
+                quarterbacks, teams.canonical(row["home_team"]),
+                teams.canonical(row["away_team"])),
+            qb_out=tuple(
+                f"{quarterbacks[t].starter_name} ({quarterbacks[t].reason})"
+                for t in (teams.canonical(row["away_team"]), teams.canonical(row["home_team"]))
+                if t in quarterbacks and not quarterbacks[t].available),
             authority=authority,
         )
         for row in games
     ]
 
-    player_history: list[dict] = []
-    for prior_season in history_seasons:
-        player_history.extend(nflverse.player_week(prior_season))
-    current_player_rows: list[dict] = []
-    if week > 1:
-        current_player_rows = [
-            row for row in nflverse.player_week(season, completed_season=False)
-            if int(nflverse.number(row.get("week")) or 0) < week
-        ]
-        player_history.extend(current_player_rows)
-    roster = nflverse.weekly_roster(season, week=week)
-    first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
-    depth = nflverse.depth_charts(season, before=first_kickoff)
-    injury_rows = nflverse.injuries(season, week=week)
 
     # The prior season supplies the complete participation/coverage baseline.
     # During the season, current PBP and FTN charting join it as soon as those
