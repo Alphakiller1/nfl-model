@@ -150,12 +150,23 @@ def current_week(schedule: list[dict], season: int) -> int:
                     if row["season"] == season and row["game_type"] == "REG"})
     if not weeks:
         return 1
-    for week in weeks:
-        unplayed = [row for row in schedule
-                    if row["season"] == season and row["week"] == week
-                    and row["game_type"] == "REG" and row["home_score"] is None]
-        if unplayed:
-            return week
+    for index, week in enumerate(weeks):
+        games = [row for row in schedule
+                 if row["season"] == season and row["week"] == week
+                 and row["game_type"] == "REG"]
+        unplayed = [row for row in games if row["home_score"] is None]
+        if not unplayed:
+            continue
+        # Once Sunday is done, the board looks ahead: when the only games left
+        # are on the week's final day (Monday night) and the rest are final,
+        # the next week - whose lines are already posted - is the slate.
+        final_day = max(str(row.get("gameday") or "") for row in games)
+        tail_only = all(str(row.get("gameday") or "") == final_day for row in unplayed)
+        if tail_only and len(unplayed) < len(games) and index + 1 < len(weeks):
+            earlier_days = {str(row.get("gameday") or "") for row in games} - {final_day}
+            if earlier_days:
+                return weeks[index + 1]
+        return week
     return weeks[-1]
 
 
