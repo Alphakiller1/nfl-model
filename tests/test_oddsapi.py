@@ -168,3 +168,28 @@ def test_the_board_looks_ahead_once_only_monday_night_remains():
     # A week that has not started is not skipped.
     fresh = [game(4, "2026-10-01", None), game(4, "2026-10-04", None)]
     assert season.current_week([game(3, "2026-09-27", 20)] + fresh, 2026) == 4
+
+
+def test_complete_free_lines_skip_the_paid_request(monkeypatch):
+    from nflmodel.sources import espn_odds
+
+    def paid(*args, **kwargs):
+        raise AssertionError("paid call")
+
+    monkeypatch.setattr(oddsapi, "_get", paid)
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 500)
+    monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([ESPN_QUOTE], "t"))
+    lines = oddsapi.fetch_lines(needed={("BUF", "NYJ")})
+    assert lines[("BUF", "NYJ")].total == 44.5
+
+
+def test_a_game_missing_from_the_free_feed_still_buys_the_paid_request(monkeypatch):
+    from nflmodel.sources import espn_odds
+
+    called = []
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 500)
+    monkeypatch.setattr(oddsapi, "_get",
+                        lambda *a, **k: called.append(1) or ([], {"source": "live"}))
+    monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([ESPN_QUOTE], "t"))
+    oddsapi.fetch_lines(needed={("BUF", "NYJ"), ("KC", "LV")})
+    assert called

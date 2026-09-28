@@ -237,8 +237,12 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     games.sort(key=_kickoff_key)
 
     odds_error = None
+    open_games = {
+        (teams.canonical(row["home_team"]), teams.canonical(row["away_team"]))
+        for row in games if row.get("home_score") is None
+    }
     try:
-        book_lines = oddsapi.fetch_lines()
+        book_lines = oddsapi.fetch_lines(needed=open_games)
     except Exception as exc:
         book_lines = {}
         odds_error = f"{type(exc).__name__}: {exc}"
