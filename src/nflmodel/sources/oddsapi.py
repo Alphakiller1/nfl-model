@@ -286,13 +286,31 @@ def _espn_fallback(
 
 
 def fetch_lines(
-    *, book: str | None = None, min_remaining: int = 20
+    *, book: str | None = None, min_remaining: int = 20,
+    needed: set[tuple[str, str]] | None = None,
 ) -> dict[tuple[str, str], BookLine]:
-    """Return ``(home_abbr, away_abbr) -> BookLine`` for exactly one book."""
+    """Return ``(home_abbr, away_abbr) -> BookLine`` for exactly one book.
+
+    ``needed`` is the slate's open games. When ESPN's scoreboard already carries
+    the requested book's complete line for every one of them, those lines are
+    used and no paid request is made: game lines are free there, and the Odds
+    API allowance is kept for player props, which only it prices.
+    """
     global _LAST_STATUS
     requested = (os.getenv("ODDS_BOOKMAKERS") or book or DEFAULT_BOOK).strip().lower()
     if "," in requested or not requested:
         raise OddsAPIError("NFL production accepts exactly one sportsbook")
+    free_first = os.getenv("NFL_GAME_LINES_FREE_FIRST", "1").lower() not in {"0", "false", "no"}
+    if needed and free_first:
+        espn = _espn_fallback(requested, None, "free first")
+        complete = {
+            key for key, line in espn.items()
+            if None not in (
+                line.home_spread, line.total, line.home_moneyline, line.away_moneyline
+            )
+        }
+        if set(needed) <= complete:
+            return espn
     left = remaining()
     if left is not None and left < min_remaining:
         _LAST_STATUS = OddsStatus(
