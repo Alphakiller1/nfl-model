@@ -18,12 +18,23 @@ SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scorebo
 TIMEOUT = 30
 
 
+# ESPN's edge refuses some agents some of the time (the same plain
+# "Mozilla/5.0" passed at one hour and 403'd the next), so try a short list
+# and take the first that answers.
+AGENTS = (None, "curl/8.5.0", "Mozilla/5.0", "python-requests/2.32")
+
+
 def _get(url: str) -> dict:
-    # ESPN answers a plain agent; a full browser string with an Accept header
-    # is refused (403).
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    last: Exception | None = None
+    for agent in AGENTS:
+        headers = {"User-Agent": agent} if agent else {}
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers),
+                                        timeout=TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:  # 403 from the edge, a timeout: try the next agent
+            last = exc
+    raise last if last else RuntimeError("ESPN scoreboard unavailable")
 
 
 def _num(value, *, low: float, high: float) -> float | None:
