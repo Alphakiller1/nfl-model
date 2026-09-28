@@ -150,3 +150,21 @@ def test_a_game_the_provider_left_incomplete_is_filled_from_espn(monkeypatch):
     monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([ESPN_QUOTE], "t"))
     line = oddsapi.fetch_lines()[("BUF", "NYJ")]
     assert line.total == 44.5 and line.home_spread == -6.5
+
+
+def test_the_board_looks_ahead_once_only_monday_night_remains():
+    from nflmodel import season
+
+    def game(week, day, score):
+        return {"season": 2026, "week": week, "game_type": "REG", "gameday": day,
+                "home_score": score}
+    week3 = [game(3, "2026-09-24", 20), game(3, "2026-09-27", 17), game(3, "2026-09-27", 24),
+             game(3, "2026-09-28", None)]
+    week4 = [game(4, "2026-10-01", None), game(4, "2026-10-04", None)]
+    assert season.current_week(week3 + week4, 2026) == 4
+    # Sunday still in play: week 3 stays the slate.
+    sunday = [game(3, "2026-09-24", 20), game(3, "2026-09-27", None), game(3, "2026-09-28", None)]
+    assert season.current_week(sunday + week4, 2026) == 3
+    # A week that has not started is not skipped.
+    fresh = [game(4, "2026-10-01", None), game(4, "2026-10-04", None)]
+    assert season.current_week([game(3, "2026-09-27", 20)] + fresh, 2026) == 4
