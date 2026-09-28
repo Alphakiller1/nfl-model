@@ -107,3 +107,46 @@ def test_player_props_require_paired_over_under_at_the_same_line():
     assert quote.line == 267.5
     assert quote.over_price == -115
     assert quote.under_price == -105
+
+
+ESPN_QUOTE = {
+    "event_id": "401", "home_name": "Buffalo Bills", "away_name": "New York Jets",
+    "commence_time": "2026-10-04T17:00Z", "home_spread": -6.5, "total": 44.5,
+    "home_moneyline": -280.0, "away_moneyline": 225.0,
+}
+
+
+def test_quota_floor_falls_back_to_the_same_book_on_espn(monkeypatch):
+    from nflmodel.sources import espn_odds
+
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 2)
+    def paid(*args, **kwargs):
+        raise AssertionError("paid call")
+
+    monkeypatch.setattr(oddsapi, "_get", paid)
+    monkeypatch.setattr(espn_odds, "lines",
+                        lambda requested="draftkings": ([ESPN_QUOTE], "2026-10-01T00:00:00+00:00"))
+    lines = oddsapi.fetch_lines(min_remaining=20)
+    line = lines[("BUF", "NYJ")]
+    assert (line.home_spread, line.total) == (-6.5, 44.5)
+    assert (line.home_moneyline, line.away_moneyline) == (-280.0, 225.0)
+    assert line.book == "draftkings" and line.event_id == "espn:401"
+    assert oddsapi.status_report()["state"] == "fresh"
+
+
+def test_a_game_the_provider_left_incomplete_is_filled_from_espn(monkeypatch):
+    from nflmodel.sources import espn_odds
+
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 500)
+    event = {
+        "id": "e1", "home_team": "Buffalo Bills", "away_team": "New York Jets",
+        "commence_time": "2026-10-04T17:00:00Z",
+        "bookmakers": [{"key": "draftkings", "title": "DraftKings", "markets": [
+            {"key": "h2h", "outcomes": [{"name": "Buffalo Bills", "price": -280},
+                                         {"name": "New York Jets", "price": 225}]}]}],
+    }
+    monkeypatch.setattr(oddsapi, "_get",
+                        lambda *a, **k: ([event], {"source": "live", "remaining": 499}))
+    monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([ESPN_QUOTE], "t"))
+    line = oddsapi.fetch_lines()[("BUF", "NYJ")]
+    assert line.total == 44.5 and line.home_spread == -6.5

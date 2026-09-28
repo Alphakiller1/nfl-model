@@ -319,23 +319,31 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         scheme_matchups=scheme_result.matchups,
     )
     odds_status = oddsapi.status_report()
+    # Book coverage is measured over games still to be played: a book quotes
+    # no line on a final, so late in a week "1 of 16 covered" would really be
+    # one of one. Projections are built in slate order, one per game.
+    open_projections = [
+        p for p, row in zip(projections, games)
+        if nflverse.number(row.get("home_score")) is None
+    ]
     odds_status.update({
-        "slate_games": len(games),
-        "slate_matched": sum(p.book_name is not None for p in projections),
-        "slate_spreads": sum(p.book_margin is not None for p in projections),
-        "slate_totals": sum(p.book_total is not None for p in projections),
+        "slate_games": len(open_projections),
+        "slate_total_games": len(games),
+        "slate_matched": sum(p.book_name is not None for p in open_projections),
+        "slate_spreads": sum(p.book_margin is not None for p in open_projections),
+        "slate_totals": sum(p.book_total is not None for p in open_projections),
         "slate_moneylines": sum(
             p.book_name is not None
             and p.home_moneyline is not None
             and p.away_moneyline is not None
-            for p in projections
+            for p in open_projections
         ),
         "slate_complete": sum(
             p.book_margin is not None
             and p.book_total is not None
             and p.home_moneyline is not None
             and p.away_moneyline is not None
-            for p in projections
+            for p in open_projections
         ),
         "player_prop_quotes": len(prop_quotes),
     })
@@ -352,12 +360,12 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         issues.append(f"Live sportsbook feed failed: {odds_error}")
     if prop_error:
         issues.append(f"Player-prop feed failed: {prop_error}")
-    elif games and not odds_status["slate_matched"]:
+    elif open_projections and not odds_status["slate_matched"]:
         issues.append("DraftKings returned no matched lines for this slate")
-    elif odds_status["slate_complete"] < len(games):
+    elif odds_status["slate_complete"] < len(open_projections):
         issues.append(
             f"DraftKings has an incomplete spread/total/paired-moneyline set for "
-            f"{len(games) - odds_status['slate_complete']} game(s)"
+            f"{len(open_projections) - odds_status['slate_complete']} game(s)"
         )
     prior = [g for g in history if g.season == season - 1]
     return Slate(season=season, week=week, table=table, forms=forms, games=games,

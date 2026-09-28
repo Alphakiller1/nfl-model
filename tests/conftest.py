@@ -17,6 +17,15 @@ import pytest
 from nflmodel import authority as auth
 from nflmodel import forecast, matrix, season, teams
 
+
+@pytest.fixture(autouse=True)
+def _offline_espn(monkeypatch):
+    """ESPN's scoreboard is the free fallback book source; tests never reach it."""
+    from nflmodel.sources import espn_odds
+
+    monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([], ""))
+
+
 # A four-team league with a clear ordering, so a ranking test can assert an
 # expected order rather than merely that the code ran.
 LEAGUE = {

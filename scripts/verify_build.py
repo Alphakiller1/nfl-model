@@ -21,7 +21,8 @@ def verify(path: Path) -> list[str]:
     games = int(odds.get("slate_games") or 0)
     matched = int(odds.get("slate_matched") or 0)
     complete = int(odds.get("slate_complete") or 0)
-    if games <= 0:
+    week_games = int(odds.get("slate_total_games") or games)
+    if week_games <= 0:
         errors.append("current week contains no regular-season games")
     if games and matched <= 0:
         errors.append("no DraftKings lines matched the slate")
@@ -60,6 +61,11 @@ def verify(path: Path) -> list[str]:
             "DraftKings has an incomplete spread/total/paired-moneyline set"
         )
         if incomplete_book and coverage >= minimum:
+            continue
+        # Player props are one section of the board; a spent prop quota
+        # publishes the board without them rather than freezing every game line.
+        if str(issue).startswith("Player-prop feed failed"):
+            print(f"[WARN] {issue}")
             continue
         errors.append(f"publication issue: {issue}")
 
