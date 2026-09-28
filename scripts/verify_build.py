@@ -87,8 +87,14 @@ def verify(path: Path) -> list[str]:
         errors.append("no offensive player or kicker projections were generated")
     if team_count < 32:
         errors.append(f"player projections cover {team_count}/32 teams")
-    if int(players.get("active_roster_week") or 0) < int(payload.get("week") or 0):
+    roster_week = int(players.get("active_roster_week") or 0)
+    week = int(payload.get("week") or 0)
+    if roster_week < week - 1:
         errors.append("active roster snapshot predates the projected week")
+    elif roster_week < week:
+        # The board looks ahead once only Monday night remains; nflverse posts
+        # the new week's rosters midweek, so the prior week's is the latest.
+        print(f"[WARN] active roster is week {roster_week} for the week {week} board")
     if not players.get("depth_chart_as_of"):
         errors.append("depth-chart timestamp is unavailable")
     scheme = payload.get("scheme") or {}
