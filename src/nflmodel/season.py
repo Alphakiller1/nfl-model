@@ -118,6 +118,8 @@ class Slate:
     # reader to take a rating on faith; "SEA +9.5, 12-5 last year" is a claim they
     # can check against something they remember.
     records: dict[str, "Record"] = field(default_factory=dict)
+    current_forms: dict[str, matrix.TeamForm] = field(default_factory=dict)
+    live_share: dict[str, float] = field(default_factory=dict)
     prior_records: dict[str, "Record"] = field(default_factory=dict)
     source_status: list[dict] = field(default_factory=list)
     odds_status: dict = field(default_factory=dict)
@@ -220,7 +222,13 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         played[game.away] = played.get(game.away, 0.0) + 1
 
     table = preseason.blend_ratings(prior_ratings, ratings.build(completed), played)
-    forms = preseason.blend_forms(prior_forms, preseason.live_form(live_lines), played)
+    live_forms = preseason.live_form(live_lines)
+    forms = preseason.blend_forms(prior_forms, live_forms, played)
+    # Published beside the blend: the current season alone (opponent-adjusted
+    # the same way) and the share of it inside the blend, so a reader shown
+    # "form" can tell model form from this season's form.
+    current_forms = preseason.blend_forms({}, live_forms, played)
+    live_share = {team: preseason.live_weight(played.get(team, 0.0)) for team in forms}
     # A franchise with no history stays OUT of the table rather than being seeded
     # at 0.0. An earlier version defaulted the 32 abbreviations in and called it
     # "surfaced as unrated", which it was not: 0.0 is a rating, and it means
@@ -384,6 +392,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         )
     prior = [g for g in history if g.season == season - 1]
     return Slate(season=season, week=week, table=table, forms=forms, games=games,
+                 current_forms=current_forms, live_share=live_share,
                  schedule=schedule, games_played=played, authority=authority,
                  projections=projections, records=build_records(completed),
                  player_projections=player_result.projections,
