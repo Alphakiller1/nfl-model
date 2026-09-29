@@ -148,6 +148,10 @@ def payload(slate, outlooks: list | None = None) -> dict:
             "division": meta.division,
             "rating": _round(rating, 2),
             "form": _form(form),
+            # The model's form above blends prior seasons with this one; this is
+            # the current season alone and the share of it inside the blend.
+            "form_current": _form(getattr(slate, "current_forms", {}).get(team)),
+            "form_live_share": _round(getattr(slate, "live_share", {}).get(team), 3),
             "projected_wins": _round(getattr(outlook, "projected_wins", None), 2),
             "win_division": _round(getattr(outlook, "win_division", None), 4),
             "make_playoffs": _round(getattr(outlook, "make_playoffs", None), 4),
