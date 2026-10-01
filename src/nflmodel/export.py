@@ -23,7 +23,7 @@ from pathlib import Path
 
 from . import authority as auth
 from . import divisions as divisions_mod
-from . import forecast, matrix, ratings, recommendations, scheme, teams
+from . import forecast, matrix, prop_distributions, ratings, recommendations, scheme, teams
 
 SCHEMA = "nfl-model/board/4"
 
@@ -121,6 +121,9 @@ def _player_projection(p) -> dict:
         "implied_team_points": _round(p.implied_team_points, 2),
         "scheme_context": p.scheme_context,
         "metrics": {key: _round(value, 2) for key, value in p.metrics.items()},
+        # Mean, 10th-90th band and a pmf or quantile ladder per stat, so a
+        # reader can price any line (prop_distributions; fitted 2023-2025).
+        "stats": prop_distributions.stats(p.metrics),
         "model_version": p.model_version,
         "sportsbook_line": None,
         "edge": None,
