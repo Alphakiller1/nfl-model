@@ -117,3 +117,19 @@ def test_best_bets_are_logged_and_graded(slate, tmp_path):
     assert results == {"spread": "win", "total": "loss", "prop": "win"}
     summary = payload["summary"]["best_bets"]
     assert summary["total"]["units"] == -1.0 and summary["spread"]["win"] == 1
+
+
+def test_a_published_pick_is_locked_at_its_first_line(slate, tmp_path):
+    s = replace(slate, week=1, projections=[_game(slate)], player_projections=[],
+                player_prop_quotes=[], injuries=[])
+    picks = [p.to_json() for p in bb.build(s)]
+    path = tmp_path / "ledger.json"
+    ledger.update(season=2026, projections=[], schedule=[], best_bets=picks, path=path,
+                  recorded_at=NOW)
+    spread = next(p for p in picks if p["family"] == "spread")
+    moved = dict(spread, line=spread["line"] + 1.5)
+    payload = ledger.update(season=2026, projections=[], schedule=[], best_bets=[moved],
+                            path=path, recorded_at=NOW + timedelta(hours=6))
+    assert len(payload["best_bets"]) == len(picks)          # nothing withdrawn
+    assert next(b for b in payload["best_bets"]
+                if b["family"] == "spread")["line"] == spread["line"]
