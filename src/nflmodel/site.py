@@ -20,6 +20,7 @@ implies over a whole schedule (`divisions`). All three read the same
 """
 from __future__ import annotations
 
+import gzip
 import html
 import json
 import os
@@ -1184,6 +1185,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         if abs((left - right).total_seconds()) > 6 * 60 * 60:
             issues.append(f"Kickoff mismatch for {projection.away} at {projection.home}")
 
+    ledger_payload: dict | None = None
     try:
         ledger_payload = ledger.update(
             season=slate.season,
@@ -1229,6 +1231,16 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     (out.parent / "record.json").write_text(
         json.dumps(record, indent=2) + "\n", encoding="utf-8"
     )
+    if ledger_payload is not None:
+        # The published copy is the durable one: CI restores from it when the
+        # Actions cache has been evicted, so the record never silently restarts.
+        (out.parent / "plays.json").write_text(
+            json.dumps(ledger.plays(ledger_payload, season=slate.season), indent=2) + "\n",
+            encoding="utf-8",
+        )
+        (out.parent / "ledger.json.gz").write_bytes(
+            gzip.compress(json.dumps(ledger_payload).encode("utf-8"), mtime=0)
+        )
     return out
 
 
