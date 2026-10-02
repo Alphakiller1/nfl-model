@@ -196,3 +196,33 @@ def test_plays_log_is_one_row_per_game_with_the_side_taken(slate, tmp_path):
     assert rows[0]["status"] == "graded"
     assert rows[0]["ats_result"] in {"win", "loss", "push"}
     assert rows[0]["ats_side"] in {projection.home, projection.away}
+
+
+def test_player_projection_replaces_its_pending_predecessor(tmp_path):
+    now = datetime(2026, 9, 2, 13, tzinfo=timezone.utc)
+    path = tmp_path / "ledger.json"
+    for hours in (0, 6, 12):
+        payload = ledger.update(
+            season=2026, projections=[],
+            player_projections=[_test_player(now, metrics={"passing_yards": 250.0 + hours})],
+            schedule=[], path=path, recorded_at=now + timedelta(hours=hours),
+        )
+    rows = payload["player_snapshots"]
+    assert len(rows) == 1 and rows[0]["metrics"]["passing_yards"] == 262.0
+
+
+def test_old_duplicate_rows_are_compacted_to_the_latest(tmp_path):
+    import json
+
+    now = datetime(2026, 9, 2, 13, tzinfo=timezone.utc)
+    path = tmp_path / "ledger.json"
+    ledger.update(season=2026, projections=[], player_projections=[_test_player(now)],
+                  schedule=[], path=path, recorded_at=now)
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    first = stored["player_snapshots"][0]
+    stored["player_snapshots"] = [dict(first, recorded_at=f"2026-09-02T0{h}:00:00Z",
+                                       snapshot_id=f"x{h}") for h in range(5)]
+    path.write_text(json.dumps(stored), encoding="utf-8")
+    payload = ledger.update(season=2026, projections=[], schedule=[], path=path,
+                            recorded_at=now + timedelta(hours=1))
+    assert [r["snapshot_id"] for r in payload["player_snapshots"]] == ["x4"]

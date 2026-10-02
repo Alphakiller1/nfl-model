@@ -249,6 +249,26 @@ def _grade_player(snapshot: dict, result: dict | None) -> None:
         ) ** 2
 
 
+def _player_key(row: dict) -> tuple:
+    return (row.get("season"), row.get("week"), row.get("game_id"), row.get("player_id"))
+
+
+def _latest_per_player_game(rows: list[dict]) -> list[dict]:
+    """Keep one row per player-game: the latest recorded, graded or not.
+
+    Compacts ledgers written before projections replaced each other in place.
+    Order is preserved so the oldest seasons are still the first to be trimmed.
+    """
+    latest: dict[tuple, int] = {}
+    for i, row in enumerate(rows):
+        key = _player_key(row)
+        held = latest.get(key)
+        if held is None or row.get("recorded_at", "") >= rows[held].get("recorded_at", ""):
+            latest[key] = i
+    keep = set(latest.values())
+    return [row for i, row in enumerate(rows) if i in keep]
+
+
 def _player_summary(payload: dict, season: int) -> dict:
     graded = [
         row for row in payload.get("player_snapshots", [])
@@ -431,6 +451,13 @@ def update(
         known.add(snapshot_id)
 
     known_players = {row.get("snapshot_id") for row in payload["player_snapshots"]}
+    # Only the latest pre-kickoff projection per player-game is ever scored
+    # (`_player_summary`), so a newer one replaces a pending older one instead of
+    # piling up: every build used to add a full copy of the slate, ~8 per game.
+    pending_at = {
+        _player_key(row): i for i, row in enumerate(payload["player_snapshots"])
+        if row.get("status") == "pending"
+    }
     for projection in player_projections or []:
         kickoff = _parse(projection.kickoff_utc)
         if kickoff is None or kickoff <= now:
@@ -445,7 +472,7 @@ def update(
         # player produced an official stat row.
         home = projection.team if projection.home else projection.opponent
         away = projection.opponent if projection.home else projection.team
-        payload["player_snapshots"].append({
+        row = {
             "snapshot_id": snapshot_id,
             "recorded_at": _stamp(now),
             "season": projection.season,
@@ -469,7 +496,13 @@ def update(
             "metrics": projection.metrics,
             "status": "pending",
             "authority": "shadow_only",
-        })
+        }
+        existing = pending_at.get(_player_key(row))
+        if existing is None:
+            pending_at[_player_key(row)] = len(payload["player_snapshots"])
+            payload["player_snapshots"].append(row)
+        else:
+            payload["player_snapshots"][existing] = row
         known_players.add(snapshot_id)
 
     payload["schema_version"] = SCHEMA_VERSION
@@ -477,10 +510,10 @@ def update(
     payload["snapshots"] = [
         row for row in payload["snapshots"] if int(row.get("season", season)) >= season - 2
     ][-5000:]
-    payload["player_snapshots"] = [
+    payload["player_snapshots"] = _latest_per_player_game([
         row for row in payload["player_snapshots"]
         if int(row.get("season", season)) >= season - 2
-    ][-100000:]
+    ])[-100000:]
     payload["summary"] = summary(payload, season=season)
     _write(path, payload)
     return payload
