@@ -337,6 +337,27 @@ def _board_section(slate) -> str:
 _FAMILY = {"spread": "Spreads", "total": "Totals", "prop": "Player props"}
 
 
+GATE_MIN_PICKS = 200
+BREAKEVEN = 0.5238
+
+
+def _gate_line(record: dict) -> str:
+    """Progress toward the evidence bar for calling these picks an edge."""
+    wins = sum((record.get(f) or {}).get("win", 0) for f in ("spread", "total"))
+    losses = sum((record.get(f) or {}).get("loss", 0) for f in ("spread", "total"))
+    n = wins + losses
+    if not n:
+        return (f"Evidence bar: {GATE_MIN_PICKS} graded spread/total picks with a 95% "
+                f"win-rate interval above {BREAKEVEN:.1%}. None graded yet.")
+    rate, z = wins / n, 1.96
+    lower = ((rate + z * z / (2 * n) - z * ((rate * (1 - rate) + z * z / (4 * n)) / n) ** 0.5)
+             / (1 + z * z / n))
+    met = n >= GATE_MIN_PICKS and lower > BREAKEVEN
+    return (f"Evidence bar: {n} of {GATE_MIN_PICKS} graded picks, win rate {rate:.1%} "
+            f"(95% lower bound {lower:.1%} vs {BREAKEVEN:.1%} breakeven) - "
+            + ("met." if met else "not met; these stay research picks."))
+
+
 def _picks_block(picks: list, record: dict) -> str:
     """Graded picks, each with the angle that produced it, and their season record."""
     bits = []
@@ -368,7 +389,7 @@ def _picks_block(picks: list, record: dict) -> str:
     return (f'<div class="bb-wrap"><p class="blurb"><b>Season record of these picks:</b> '
             f'{e(line)}. &ldquo;Model view&rdquo; is the model&rsquo;s own probability; the '
             "research harness has not shown it beats the close (ATS on disagreements 49.8%), "
-            f"so treat it as a lean, not a price.</p>{body}</div>")
+            f"so treat it as a lean, not a price. {e(_gate_line(record))}</p>{body}</div>")
 
 
 def _sharp_section(spots: list, record: dict, week: int) -> str:

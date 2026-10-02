@@ -133,3 +133,11 @@ def test_a_published_pick_is_locked_at_its_first_line(slate, tmp_path):
     assert len(payload["best_bets"]) == len(picks)          # nothing withdrawn
     assert next(b for b in payload["best_bets"]
                 if b["family"] == "spread")["line"] == spread["line"]
+
+
+def test_evidence_gate_line():
+    from nflmodel import site
+
+    assert "None graded yet" in site._gate_line({})
+    assert "not met" in site._gate_line({"spread": {"win": 30, "loss": 20}})
+    assert "met." in site._gate_line({"spread": {"win": 160, "loss": 100}})
