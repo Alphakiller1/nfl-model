@@ -333,7 +333,43 @@ def _board_section(slate) -> str:
 </section>"""
 
 
-def _best_bets_section(slate) -> str:
+_FAMILY = {"spread": "Spreads", "total": "Totals", "prop": "Player props"}
+
+
+def _picks_block(picks: list, record: dict) -> str:
+    """Graded picks, each with the angle that produced it, and their season record."""
+    bits = []
+    for family in ("spread", "total", "prop"):
+        r = record.get(family)
+        if r and (r["win"] + r["loss"] + r["push"]):
+            bits.append(f"{_FAMILY[family]} {r['win']}-{r['loss']}-{r['push']} "
+                        f"({r.get('units', 0.0):+.1f}u)")
+    line = " · ".join(bits) if bits else "no best bets graded yet this season"
+    groups = []
+    for family in ("spread", "total", "prop"):
+        rows = [p for p in picks if p.family == family]
+        if not rows:
+            continue
+        cards = "".join(
+            f'''<article class="bb"><div class="bb-head">
+<span class="bb-pick">{e(p.selection)}</span>
+<span class="bb-price">{p.price:+d}</span></div>
+<div class="bb-meta">{e(p.away)} @ {e(p.home)} · model {p.model_number:g} vs book {p.book_number:g}
+ · gap {(f"{p.edge:.1f} pts" if family != "prop" else f"+{p.edge:.0%} vs book")}
+ · model view {p.probability:.0%}</div>
+<p class="bb-angle"><b>The angle:</b> {e(p.angle)}</p></article>'''
+            for p in rows)
+        groups.append(f'<h3 class="bb-family">{_FAMILY[family]}</h3>'
+                      f'<div class="bb-list">{cards}</div>')
+    body = "".join(groups) or (
+        '<p class="dim">No game or posted prop clears the minimum disagreement yet.</p>')
+    return (f'<div class="bb-wrap"><p class="blurb"><b>Season record of these picks:</b> '
+            f'{e(line)}. &ldquo;Model view&rdquo; is the model&rsquo;s own probability; the '
+            "research harness has not shown it beats the close (ATS on disagreements 49.8%), "
+            f"so treat it as a lean, not a price.</p>{body}</div>")
+
+
+def _best_bets_section(slate, picks: list | None = None, record: dict | None = None) -> str:
     report = recommendations.build_report(slate, limit=10)
 
     def game_rows(rows: list[dict], *, total: bool = False) -> str:
@@ -396,6 +432,7 @@ def _best_bets_section(slate) -> str:
     <div class="prop-meta"><span class="pill warn">may bet: {str(report['may_bet']).lower()}</span>
       <span class="pill">{e(prop_note)}</span></div>
   </div>
+  {_picks_block(picks or [], (record or {}).get("best_bets") or {})}
   <details class="prop-group" open><summary>Top spread model gaps
     <span>{len(report['top_spreads'])} ranked</span></summary><div class="tablewrap">
     <table class="pr prop-table"><thead><tr><th>#</th><th>Side / game</th>
@@ -1124,7 +1161,8 @@ def _footer(built_at: str) -> str:
 
 # ── page ─────────────────────────────────────────────────────────────────────
 def render(slate, outlooks, *, health: dict | None = None,
-           record: dict | None = None, generated_at: datetime | None = None) -> str:
+           record: dict | None = None, generated_at: datetime | None = None,
+           picks: list | None = None) -> str:
     moment = generated_at or datetime.now(UTC)
     built_at = moment.strftime("%b %d %Y · %H:%M UTC")
     body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
@@ -1132,7 +1170,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f'<main class="wrap">'
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
-            f"{_best_bets_section(slate)}"
+            f"{_best_bets_section(slate, picks, record)}"
             f"{_player_section(slate)}"
             f"{_scheme_section(slate)}"
             f"{_disagreements_section(slate)}"
@@ -1157,7 +1195,7 @@ def render(slate, outlooks, *, health: dict | None = None,
 def build_site(out: Path, season: int | None = None, week: int | None = None,
                simulations: int = divisions_mod.SIMULATIONS) -> Path:
     """Build one atomic, evidenced publication bundle."""
-    from . import export, ledger
+    from . import best_bets, export, ledger
 
     generated_at = datetime.now(UTC).replace(microsecond=0)
     slate = season_mod.assemble(season, week)
@@ -1185,6 +1223,11 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         if abs((left - right).total_seconds()) > 6 * 60 * 60:
             issues.append(f"Kickoff mismatch for {projection.away} at {projection.home}")
 
+    try:
+        picks = best_bets.build(slate)
+    except Exception as exc:
+        picks = []
+        issues.append(f"Best bets failed: {type(exc).__name__}: {exc}")
     ledger_payload: dict | None = None
     try:
         ledger_payload = ledger.update(
@@ -1193,6 +1236,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
             player_projections=slate.player_projections,
             player_results=slate.player_results,
             schedule=slate.schedule,
+            best_bets=[pick.to_json() for pick in picks],
             recorded_at=generated_at,
         )
         record = ledger_payload.get("summary", {})
@@ -1221,7 +1265,8 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
-        render(slate, outlooks, health=health, record=record, generated_at=generated_at),
+        render(slate, outlooks, health=health, record=record, generated_at=generated_at,
+               picks=picks),
         encoding="utf-8",
     )
     export.write(slate, out.parent / "board.json", outlooks)
@@ -1464,4 +1509,12 @@ footer b{color:var(--text-2)}
 .chase-status .pill{font-size:10px;padding:3px 8px}
 .tile-v{font-size:var(--mm-text-xl)}
 }
+.bb-wrap{margin:14px 0 18px}.bb-family{font-size:13px;letter-spacing:.12em;
+text-transform:uppercase;color:var(--text-2);margin:16px 0 8px}
+.bb-list{display:grid;gap:10px}.bb{border:1px solid var(--border-soft);
+border-radius:var(--ca-card-radius);padding:12px 16px}
+.bb-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.bb-pick{font-weight:700;color:var(--text)}.bb-price{color:var(--text-3);font-size:12px}
+.bb-meta{color:var(--text-3);font-size:11.5px;margin-top:3px}
+.bb-angle{margin-top:8px;font-size:12.5px;color:var(--text-2);line-height:1.5}
 """

@@ -111,6 +111,8 @@ class Slate:
     player_status: dict = field(default_factory=dict)
     player_results: list[dict] = field(default_factory=list)
     player_prop_quotes: list[oddsapi.PlayerPropQuote] = field(default_factory=list)
+    # This week's official injury report rows (nflverse), for best-bet angles.
+    injuries: list[dict] = field(default_factory=list)
     scheme_profiles: dict[str, scheme.TeamSchemeProfile] = field(default_factory=dict)
     scheme_matchups: dict[tuple[str, str], scheme.SchemeMatchup] = field(default_factory=dict)
     scheme_status: dict = field(default_factory=dict)
@@ -405,6 +407,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  player_status=player_result.status,
                  player_results=season_player_rows,
                  player_prop_quotes=prop_quotes,
+                 injuries=injury_rows,
                  scheme_profiles=scheme_result.profiles,
                  scheme_matchups=scheme_result.matchups,
                  scheme_status=scheme_result.status,

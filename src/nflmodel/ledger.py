@@ -76,16 +76,19 @@ def _reopen_player_grades(payload: dict) -> None:
 
 def _load(path: Path) -> dict:
     if not path.is_file():
-        return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": []}
+        return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
+                "best_bets": []}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload.get("snapshots"), list):
             payload.setdefault("player_snapshots", [])
+            payload.setdefault("best_bets", [])
             _reopen_player_grades(payload)
             return payload
     except (json.JSONDecodeError, AttributeError):
         pass
-    return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": []}
+    return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
+                "best_bets": []}
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -302,6 +305,89 @@ def _player_summary(payload: dict, season: int) -> dict:
     }
 
 
+def _units(result: str, price) -> float:
+    if result == "win":
+        price = float(price or -110)
+        return round(price / 100.0 if price > 0 else 100.0 / -price, 3)
+    return -1.0 if result == "loss" else 0.0
+
+
+def _grade_bet(bet: dict, results: dict, player_index: dict, published: set) -> None:
+    line = float(bet["line"])
+    result = results.get((bet["season"], bet["week"], bet["home"], bet["away"]))
+    if result is None:
+        return
+    if bet["family"] in ("spread", "total"):
+        margin = float(result["home_score"]) - float(result["away_score"])
+        total = float(result["home_score"]) + float(result["away_score"])
+        if bet["family"] == "spread":
+            value = (margin if bet["side"] == "home" else -margin) + line
+            bet["actual"] = margin
+        else:
+            value = (total - line) if bet["side"] == "over" else (line - total)
+            bet["actual"] = total
+    else:
+        team = bet.get("team") or ""
+        if (bet["season"], bet["week"], team) not in published:
+            return                                  # box score not out yet
+        row = player_index.get((bet["season"], bet["week"], team, bet.get("player_id") or ""))
+        if row is None:
+            bet.update({"status": "graded", "graded_at": _stamp(), "result": "void",
+                        "units": 0.0, "actual": None})   # books void a DNP
+            return
+        actual = _actual_player_metrics(row, {bet["metric"]}).get(bet["metric"])
+        if actual is None:
+            return
+        value = (actual - line) if bet["side"] == "over" else (line - actual)
+        bet["actual"] = actual
+    outcome = "push" if abs(value) < 1e-9 else "win" if value > 0 else "loss"
+    bet.update({"status": "graded", "graded_at": _stamp(), "result": outcome,
+                "units": _units(outcome, bet.get("price"))})
+
+
+def _best_bet_summary(payload: dict, season: int) -> dict:
+    out: dict[str, dict] = {}
+    for bet in payload.get("best_bets", []):
+        if int(bet.get("season", 0)) != season:
+            continue
+        family = out.setdefault(bet["family"], {"win": 0, "loss": 0, "push": 0, "void": 0,
+                                                "pending": 0, "units": 0.0})
+        if bet.get("status") != "graded":
+            family["pending"] += 1
+            continue
+        family[bet["result"]] += 1
+        family["units"] = round(family["units"] + float(bet.get("units") or 0.0), 3)
+    return out
+
+
+def _record_best_bets(payload: dict, best_bets: list[dict] | None, now: datetime) -> None:
+    """The last list published before kickoff is the one graded; a pick dropped
+    from a later pre-kickoff build is withdrawn."""
+    if best_bets is None:
+        return
+    listed = {bet["pick_id"]: bet for bet in best_bets}
+    kept = []
+    for bet in payload["best_bets"]:
+        kickoff = _parse(bet.get("kickoff"))
+        still_open = bet.get("status") == "pending" and kickoff is not None and kickoff > now
+        if still_open and bet["pick_id"] not in listed:
+            continue
+        kept.append(bet)
+    payload["best_bets"] = kept
+    index = {bet["pick_id"]: i for i, bet in enumerate(kept)}
+    for pick_id, bet in listed.items():
+        kickoff = _parse(bet.get("kickoff"))
+        if kickoff is None or kickoff <= now:
+            continue
+        row = {**bet, "recorded_at": _stamp(now), "status": "pending",
+               "authority": "shadow_only"}
+        if pick_id not in index:
+            index[pick_id] = len(payload["best_bets"])
+            payload["best_bets"].append(row)
+        elif payload["best_bets"][index[pick_id]].get("status") == "pending":
+            payload["best_bets"][index[pick_id]] = row
+
+
 def summary(payload: dict, *, season: int) -> dict:
     graded = [
         row for row in payload.get("snapshots", [])
@@ -330,6 +416,7 @@ def summary(payload: dict, *, season: int) -> dict:
         "book_total_mae": _mean(rows, "book_total_abs_error"),
         "totals": {name: totals.count(name) for name in ("win", "loss", "push")},
         "players": _player_summary(payload, season),
+        "best_bets": _best_bet_summary(payload, season),
     }
 
 
@@ -379,6 +466,7 @@ def update(
     player_projections: list["PlayerProjection"] | None = None,
     player_results: list[dict] | None = None,
     schedule: list[dict],
+    best_bets: list[dict] | None = None,
     path: Path = DEFAULT_PATH,
     recorded_at: datetime | None = None,
 ) -> dict:
@@ -413,7 +501,12 @@ def update(
         # zero-stat DNP, not an indefinitely pending observation.
         _grade_player(snapshot, result)
 
+    for bet in payload["best_bets"]:
+        if bet.get("status") == "pending":
+            _grade_bet(bet, results, player_index, published)
+
     now = recorded_at or _now()
+    _record_best_bets(payload, best_bets, now)
     known = {row.get("snapshot_id") for row in payload["snapshots"]}
     for projection in projections:
         kickoff = _parse(projection.kickoff_utc)
