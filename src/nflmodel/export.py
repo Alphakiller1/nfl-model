@@ -22,8 +22,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import authority as auth
+from . import (
+    best_bets,
+    forecast,
+    matrix,
+    prop_distributions,
+    ratings,
+    recommendations,
+    scheme,
+    teams,
+)
 from . import divisions as divisions_mod
-from . import forecast, matrix, prop_distributions, ratings, recommendations, scheme, teams
 
 SCHEMA = "nfl-model/board/4"
 
@@ -207,6 +216,7 @@ def payload(slate, outlooks: list | None = None) -> dict:
             for _, matchup in sorted(slate.scheme_matchups.items())
         ],
         "weekly_report": recommendations.build_report(slate),
+        "best_bets": [pick.to_json() for pick in best_bets.build(slate)],
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {
