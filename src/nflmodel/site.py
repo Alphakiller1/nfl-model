@@ -156,6 +156,7 @@ def _nav(slate) -> str:
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#best-bets">Best Bets</a>
+      <a class="nav-link" href="#sharp">Sharp Money</a>
       <a class="nav-link" href="#players">Players</a>
       <a class="nav-link" href="#scheme">Scheme</a>
       <a class="nav-link" href="#disagreements">Gaps</a>
@@ -367,6 +368,48 @@ def _picks_block(picks: list, record: dict) -> str:
             f'{e(line)}. &ldquo;Model view&rdquo; is the model&rsquo;s own probability; the '
             "research harness has not shown it beats the close (ATS on disagreements 49.8%), "
             f"so treat it as a lean, not a price.</p>{body}</div>")
+
+
+def _sharp_section(spots: list, record: dict, week: int) -> str:
+    """Where the money runs ahead of the tickets, and how the line has moved."""
+    bits = []
+    for family, label in (("spread", "Spreads"), ("total", "Totals")):
+        r = record.get(family)
+        if r and (r["win"] + r["loss"] + r["push"]):
+            clv = f", mean CLV {r['mean_clv']:+.2f}" if r.get("mean_clv") is not None else ""
+            bits.append(f"{label} {r['win']}-{r['loss']}-{r['push']} ({r['units']:+.1f}u{clv})")
+    line = " · ".join(bits) if bits else "no sharp spots graded yet this season"
+    cards = []
+    for s in spots:
+        moved = ("&ndash;" if s.open_line is None else
+                 f"{s.open_line:+g} &rarr; {s.line:+g}" if s.family == "spread" else
+                 f"{s.open_line:g} &rarr; {s.line:g}")
+        flags = []
+        if s.reverse:
+            flags.append("reverse line move")
+        if s.model_agrees is not None:
+            flags.append("model agrees" if s.model_agrees else "model disagrees")
+        cards.append(
+            f'''<article class="bb"><div class="bb-head">
+<span class="bb-pick">{e(s.selection)}</span>
+<span class="bb-price">concentration {s.concentration:.0f}</span></div>
+<div class="bb-meta">{e(s.away)} @ {e(s.home)} · {s.handle_pct:.0f}% of money / {s.bets_pct:.0f}%
+ of bets · line {moved}{" · " + e(", ".join(flags)) if flags else ""}</div>
+<p class="bb-angle">{e(s.note)}</p></article>''')
+    body = "".join(cards) or (
+        '<p class="dim">No game has money running 10+ points ahead of its tickets yet.</p>')
+    return f"""
+<section id="sharp">
+  <div class="sec-head">
+    <span class="kicker">Market &middot; 03b</span>
+    <h2>Week {week} sharp money &amp; line moves</h2>
+    <p class="blurb">DraftKings&rsquo; public splits: where the share of money runs well ahead
+    of the share of bets, ranked with how far the line has moved toward that side since the
+    ledger first logged it. <b>Season record of these spots:</b> {e(line)}. Market
+    observations, not model picks.</p>
+  </div>
+  <div class="bb-list">{body}</div>
+</section>"""
 
 
 def _best_bets_section(slate, picks: list | None = None, record: dict | None = None) -> str:
@@ -1162,7 +1205,7 @@ def _footer(built_at: str) -> str:
 # ── page ─────────────────────────────────────────────────────────────────────
 def render(slate, outlooks, *, health: dict | None = None,
            record: dict | None = None, generated_at: datetime | None = None,
-           picks: list | None = None) -> str:
+           picks: list | None = None, spots: list | None = None) -> str:
     moment = generated_at or datetime.now(UTC)
     built_at = moment.strftime("%b %d %Y · %H:%M UTC")
     body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
@@ -1171,6 +1214,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
             f"{_best_bets_section(slate, picks, record)}"
+            f"{_sharp_section(spots or [], (record or {}).get('sharp_spots') or {}, slate.week)}"
             f"{_player_section(slate)}"
             f"{_scheme_section(slate)}"
             f"{_disagreements_section(slate)}"
@@ -1195,7 +1239,8 @@ def render(slate, outlooks, *, health: dict | None = None,
 def build_site(out: Path, season: int | None = None, week: int | None = None,
                simulations: int = divisions_mod.SIMULATIONS) -> Path:
     """Build one atomic, evidenced publication bundle."""
-    from . import best_bets, export, ledger
+    from . import best_bets, export, ledger, sharp
+    from .sources import dk_splits
 
     generated_at = datetime.now(UTC).replace(microsecond=0)
     slate = season_mod.assemble(season, week)
@@ -1228,6 +1273,14 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     except Exception as exc:
         picks = []
         issues.append(f"Best bets failed: {type(exc).__name__}: {exc}")
+    try:
+        splits = dk_splits.fetch("nfl")
+        history = ledger._load(ledger.DEFAULT_PATH).get("snapshots", [])
+        spots = sharp.build(slate.projections, splits, history,
+                            season=slate.season, week=slate.week)
+    except Exception as exc:
+        spots = []
+        issues.append(f"Sharp money failed: {type(exc).__name__}: {exc}")
     ledger_payload: dict | None = None
     try:
         ledger_payload = ledger.update(
@@ -1237,6 +1290,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
             player_results=slate.player_results,
             schedule=slate.schedule,
             best_bets=[pick.to_json() for pick in picks],
+            sharp_spots=[spot.to_json() for spot in spots],
             recorded_at=generated_at,
         )
         record = ledger_payload.get("summary", {})
@@ -1255,6 +1309,8 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         "odds": odds,
         "players": slate.player_status,
         "scheme": slate.scheme_status,
+        "splits": dk_splits.status(),
+        "sharp_spots": len(spots),
         "issues": list(dict.fromkeys(issues)),
     }
     if os.getenv("NFL_REQUIRE_LIVE_ODDS", "").lower() in {"1", "true", "yes"}:
@@ -1266,12 +1322,15 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         render(slate, outlooks, health=health, record=record, generated_at=generated_at,
-               picks=picks),
+               picks=picks, spots=spots),
         encoding="utf-8",
     )
     export.write(slate, out.parent / "board.json", outlooks)
     (out.parent / "build.json").write_text(
         json.dumps(health, indent=2) + "\n", encoding="utf-8"
+    )
+    (out.parent / "sharp.json").write_text(
+        json.dumps([spot.to_json() for spot in spots], indent=2) + "\n", encoding="utf-8"
     )
     (out.parent / "record.json").write_text(
         json.dumps(record, indent=2) + "\n", encoding="utf-8"

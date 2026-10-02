@@ -77,18 +77,19 @@ def _reopen_player_grades(payload: dict) -> None:
 def _load(path: Path) -> dict:
     if not path.is_file():
         return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
-                "best_bets": []}
+                "best_bets": [], "sharp_spots": []}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload.get("snapshots"), list):
             payload.setdefault("player_snapshots", [])
             payload.setdefault("best_bets", [])
+            payload.setdefault("sharp_spots", [])
             _reopen_player_grades(payload)
             return payload
     except (json.JSONDecodeError, AttributeError):
         pass
     return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
-                "best_bets": []}
+                "best_bets": [], "sharp_spots": []}
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -345,6 +346,51 @@ def _grade_bet(bet: dict, results: dict, player_index: dict, published: set) -> 
                 "units": _units(outcome, bet.get("price"))})
 
 
+def _closing_lines(snapshots: list[dict]) -> dict[tuple, dict]:
+    out: dict[tuple, dict] = {}
+    for row in snapshots:
+        k = (row.get("season"), row.get("week"), row.get("home"), row.get("away"))
+        if k not in out or row.get("recorded_at", "") > out[k].get("recorded_at", ""):
+            out[k] = row
+    return out
+
+
+def _clv(spot: dict, close: dict | None) -> float | None:
+    """How much better the logged number was than the last pre-kickoff number."""
+    if not close:
+        return None
+    line = float(spot["line"])
+    if spot["family"] == "spread":
+        if close.get("book_margin") is None:
+            return None
+        closing = -close["book_margin"] if spot["side"] == "home" else close["book_margin"]
+        return round(line - closing, 2)
+    if close.get("book_total") is None:
+        return None
+    closing = float(close["book_total"])
+    return round((closing - line) if spot["side"] == "over" else (line - closing), 2)
+
+
+def _sharp_summary(payload: dict, season: int) -> dict:
+    out: dict[str, dict] = {}
+    for spot in payload.get("sharp_spots", []):
+        if int(spot.get("season", 0)) != season:
+            continue
+        fam = out.setdefault(spot["family"], {"win": 0, "loss": 0, "push": 0, "void": 0,
+                                              "pending": 0, "units": 0.0, "clv": []})
+        if spot.get("status") != "graded":
+            fam["pending"] += 1
+            continue
+        fam[spot["result"]] += 1
+        fam["units"] = round(fam["units"] + float(spot.get("units") or 0.0), 3)
+        if spot.get("clv") is not None:
+            fam["clv"].append(float(spot["clv"]))
+    for fam in out.values():
+        values = fam.pop("clv")
+        fam["mean_clv"] = round(statistics.fmean(values), 2) if values else None
+    return out
+
+
 def _best_bet_summary(payload: dict, season: int) -> dict:
     out: dict[str, dict] = {}
     for bet in payload.get("best_bets", []):
@@ -360,20 +406,21 @@ def _best_bet_summary(payload: dict, season: int) -> dict:
     return out
 
 
-def _record_best_bets(payload: dict, best_bets: list[dict] | None, now: datetime) -> None:
+def _record_best_bets(payload: dict, best_bets: list[dict] | None, now: datetime,
+                      key: str = "best_bets") -> None:
     """The last list published before kickoff is the one graded; a pick dropped
     from a later pre-kickoff build is withdrawn."""
     if best_bets is None:
         return
     listed = {bet["pick_id"]: bet for bet in best_bets}
     kept = []
-    for bet in payload["best_bets"]:
+    for bet in payload[key]:
         kickoff = _parse(bet.get("kickoff"))
         still_open = bet.get("status") == "pending" and kickoff is not None and kickoff > now
         if still_open and bet["pick_id"] not in listed:
             continue
         kept.append(bet)
-    payload["best_bets"] = kept
+    payload[key] = kept
     index = {bet["pick_id"]: i for i, bet in enumerate(kept)}
     for pick_id, bet in listed.items():
         kickoff = _parse(bet.get("kickoff"))
@@ -382,10 +429,10 @@ def _record_best_bets(payload: dict, best_bets: list[dict] | None, now: datetime
         row = {**bet, "recorded_at": _stamp(now), "status": "pending",
                "authority": "shadow_only"}
         if pick_id not in index:
-            index[pick_id] = len(payload["best_bets"])
-            payload["best_bets"].append(row)
-        elif payload["best_bets"][index[pick_id]].get("status") == "pending":
-            payload["best_bets"][index[pick_id]] = row
+            index[pick_id] = len(payload[key])
+            payload[key].append(row)
+        elif payload[key][index[pick_id]].get("status") == "pending":
+            payload[key][index[pick_id]] = row
 
 
 def summary(payload: dict, *, season: int) -> dict:
@@ -417,6 +464,7 @@ def summary(payload: dict, *, season: int) -> dict:
         "totals": {name: totals.count(name) for name in ("win", "loss", "push")},
         "players": _player_summary(payload, season),
         "best_bets": _best_bet_summary(payload, season),
+        "sharp_spots": _sharp_summary(payload, season),
     }
 
 
@@ -467,6 +515,7 @@ def update(
     player_results: list[dict] | None = None,
     schedule: list[dict],
     best_bets: list[dict] | None = None,
+    sharp_spots: list[dict] | None = None,
     path: Path = DEFAULT_PATH,
     recorded_at: datetime | None = None,
 ) -> dict:
@@ -504,9 +553,17 @@ def update(
     for bet in payload["best_bets"]:
         if bet.get("status") == "pending":
             _grade_bet(bet, results, player_index, published)
+    closing = _closing_lines(payload["snapshots"])
+    for spot in payload["sharp_spots"]:
+        if spot.get("status") == "pending":
+            _grade_bet(spot, results, player_index, published)
+            if spot.get("status") == "graded":
+                spot["clv"] = _clv(spot, closing.get(
+                    (spot["season"], spot["week"], spot["home"], spot["away"])))
 
     now = recorded_at or _now()
     _record_best_bets(payload, best_bets, now)
+    _record_best_bets(payload, sharp_spots, now, key="sharp_spots")
     known = {row.get("snapshot_id") for row in payload["snapshots"]}
     for projection in projections:
         kickoff = _parse(projection.kickoff_utc)
