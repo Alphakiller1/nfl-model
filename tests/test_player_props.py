@@ -129,7 +129,13 @@ def test_current_role_changes_discount_history_instead_of_copying_it(player_buil
 def test_player_opportunities_reconcile_to_one_team_pool(player_build):
     players = player_build.projections
     quarterback = next(row for row in players if row.position == "QB")
-    targets = sum(row.metrics.get("targets", 0.0) for row in players)
+    # Shares reconcile before the depth-slot active rate is applied; afterwards
+    # each player's targets are an expectation that includes not recording one.
+    targets = sum(
+        row.metrics.get("targets", 0.0)
+        / player_props.ACTIVE_RATE.get((row.position, row.depth_rank), 1.0)
+        for row in players
+    )
     # Targetable attempts exclude throwaways while QB attempts include them.
     assert targets <= quarterback.metrics["pass_attempts"] * 1.04
     assert targets >= quarterback.metrics["pass_attempts"] * 0.80
@@ -160,3 +166,13 @@ def test_latest_depth_parser_respects_the_point_in_time_cutoff():
         raw, "dt", before="2026-09-02T18:00:00Z"
     )
     assert [row["player_name"] for row in rows] == ["Second"]
+
+
+
+def test_deep_depth_slots_are_scaled_by_their_active_rate(player_build):
+    for row in player_build.projections:
+        rate = player_props.ACTIVE_RATE.get((row.position, row.depth_rank))
+        if rate is None or "targets" not in row.metrics:
+            continue
+        assert 0.0 < rate <= 1.0
+        assert 0.0 <= row.metrics["anytime_td_probability"] <= 0.82

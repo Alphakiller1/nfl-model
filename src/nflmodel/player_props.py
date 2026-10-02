@@ -23,9 +23,20 @@ from dataclasses import dataclass, field
 from . import teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/1.1.0"
+MODEL_VERSION = "nfl-player-projections/1.2.0"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
+# Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
+# target or catch: nflverse 2025 depth charts snapped before each week's first
+# kickoff, joined to weekly stats (~550 player-weeks per slot). Applied to the
+# 2026 shadow ledger out of sample it cut MAE 6.6% on receiving yards, 6.4% on
+# receptions, 6.3% on targets, 8.5% on rushing yards and 5.8% on carries; the
+# anytime-TD Brier was unchanged, so it is not applied there.
+ACTIVE_RATE = {
+    ("RB", 1): 0.923, ("RB", 2): 0.872, ("RB", 3): 0.468,
+    ("WR", 1): 0.901, ("WR", 2): 0.884, ("WR", 3): 0.829, ("WR", 4): 0.638,
+    ("TE", 1): 0.891, ("TE", 2): 0.686,
+}
 HALF_LIFE_WEEKS = 12.0
 
 # Forward role priors by present-day depth rank.  These are starting points,
@@ -677,6 +688,15 @@ def project(
                     metrics["anytime_td_probability"] = _clamp(
                         1.0 - math.exp(-touchdown_lambda), 0.01, 0.82
                     )
+                    # Usage shares describe the games a player plays in; deep
+                    # depth slots often record nothing. Scale volume (not the TD
+                    # probability, which already held calibration) by the slot's
+                    # measured chance of recording a stat. See ACTIVE_RATE.
+                    rate = ACTIVE_RATE.get((position, int(player["depth_rank"])), 1.0)
+                    for volume in ("targets", "receptions", "receiving_yards",
+                                   "carries", "rushing_yards"):
+                        if volume in metrics:
+                            metrics[volume] *= rate
                 else:  # K
                     implied = float(environment["implied_points"] or 22.5)
                     observed_fg_attempts = (
