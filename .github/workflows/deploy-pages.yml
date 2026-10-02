@@ -52,6 +52,22 @@ jobs:
           restore-keys: |
             nfl-runtime-${{ runner.os }}-
 
+      - name: Recover the shadow ledger from the published site
+        # The Actions cache is evicted after seven idle days. Without this, a miss
+        # restarts the ledger empty and the season's record silently disappears.
+        run: |
+          ledger=data/runtime-cache/prediction-ledger.json
+          if [ ! -s "$ledger" ]; then
+            mkdir -p data/runtime-cache
+            if curl -fsSL "https://alphakiller1.github.io/nfl-model/ledger.json.gz" | gunzip > "$ledger.tmp"; then
+              mv "$ledger.tmp" "$ledger"
+              echo "Recovered ledger from Pages"
+            else
+              rm -f "$ledger.tmp"
+              echo "::warning::No cached or published ledger; starting a new one"
+            fi
+          fi
+
       - name: Build static dashboard
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}

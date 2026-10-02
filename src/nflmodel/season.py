@@ -266,9 +266,15 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     for prior_season in history_seasons:
         player_history.extend(nflverse.player_week(prior_season))
     current_player_rows: list[dict] = []
+    # Every published stat line this season, including games already final in
+    # the board week. The ledger grades from these; projections must not see
+    # them, so only rows before the board week join the history.
+    season_player_rows: list[dict] = []
+    if week > 1 or any(row.get("home_score") is not None for row in games):
+        season_player_rows = nflverse.player_week(season, completed_season=False)
     if week > 1:
         current_player_rows = [
-            row for row in nflverse.player_week(season, completed_season=False)
+            row for row in season_player_rows
             if int(nflverse.number(row.get("week")) or 0) < week
         ]
         player_history.extend(current_player_rows)
@@ -397,7 +403,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  projections=projections, records=build_records(completed),
                  player_projections=player_result.projections,
                  player_status=player_result.status,
-                 player_results=current_player_rows,
+                 player_results=season_player_rows,
                  player_prop_quotes=prop_quotes,
                  scheme_profiles=scheme_result.profiles,
                  scheme_matchups=scheme_result.matchups,

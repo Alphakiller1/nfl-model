@@ -21,7 +21,13 @@ if TYPE_CHECKING:
     from .player_props import PlayerProjection
 
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
+
+# Ledgers written before 1.2.0 graded player snapshots against stat rows filtered
+# to weeks *before* the board week, so a Monday build graded every Sunday player
+# as a zero-stat DNP. The projections themselves were stored intact, so those
+# rows are re-opened and graded again from the published stat file.
+_PLAYER_REGRADE_BEFORE = (1, 2, 0)
 DEFAULT_PATH = Path(
     os.getenv(
         "NFL_LEDGER_PATH",
@@ -50,6 +56,24 @@ def _parse(value: str | None) -> datetime | None:
         return None
 
 
+def _version(value) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in str(value).split("."))
+    except ValueError:
+        return (0,)
+
+
+def _reopen_player_grades(payload: dict) -> None:
+    if _version(payload.get("schema_version")) >= _PLAYER_REGRADE_BEFORE:
+        return
+    for row in payload.get("player_snapshots", []):
+        if row.get("status") != "graded":
+            continue
+        for key in ("graded_at", "actual_metrics", "absolute_errors", "anytime_td_brier"):
+            row.pop(key, None)
+        row["status"] = "pending"
+
+
 def _load(path: Path) -> dict:
     if not path.is_file():
         return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": []}
@@ -57,6 +81,7 @@ def _load(path: Path) -> dict:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload.get("snapshots"), list):
             payload.setdefault("player_snapshots", [])
+            _reopen_player_grades(payload)
             return payload
     except (json.JSONDecodeError, AttributeError):
         pass
@@ -132,6 +157,20 @@ def _grade(snapshot: dict, result: dict) -> None:
 def _mean(rows: list[dict], key: str) -> float | None:
     values = [float(row[key]) for row in rows if row.get(key) is not None]
     return round(statistics.fmean(values), 4) if values else None
+
+
+def _published_team_weeks(rows: list[dict]) -> set[tuple[int, int, str]]:
+    """Team-weeks whose stat lines exist in the source at all.
+
+    A missing player row only means "did not play" once the team's box score has
+    been published. Before that it means nothing, and grading would record zeros.
+    """
+    out = set()
+    for row in rows:
+        team = teams.canonical(row.get("team") or "")
+        if team:
+            out.add((int(row.get("season") or 0), int(row.get("week") or 0), team))
+    return out
 
 
 def _player_result_index(rows: list[dict]) -> dict[tuple[int, int, str, str], dict]:
@@ -274,6 +313,45 @@ def summary(payload: dict, *, season: int) -> dict:
     }
 
 
+_PLAY_FIELDS = (
+    "season", "week", "away", "home", "kickoff", "recorded_at", "book", "book_margin",
+    "book_total", "model_margin", "model_total", "status", "actual_margin",
+    "actual_total", "ats_result", "total_result", "graded_at", "authority",
+)
+
+
+def plays(payload: dict, *, season: int) -> list[dict]:
+    """One row per game: the last pre-kickoff snapshot, graded once final.
+
+    This is the readable log of what the board showed and how it came out; the
+    full ledger keeps every vintage.
+    """
+    latest: dict[tuple, dict] = {}
+    for row in payload.get("snapshots", []):
+        if int(row.get("season", 0)) != season:
+            continue
+        key = (row["season"], row["week"], row["home"], row["away"])
+        if key not in latest or row.get("recorded_at", "") > latest[key].get(
+            "recorded_at", ""
+        ):
+            latest[key] = row
+    out = []
+    for row in latest.values():
+        play = {field: row.get(field) for field in _PLAY_FIELDS}
+        if row.get("model_margin") is not None and row.get("book_margin") is not None:
+            play["ats_side"] = (
+                row["home"] if float(row["model_margin"]) > float(row["book_margin"])
+                else row["away"]
+            )
+        if row.get("model_total") is not None and row.get("book_total") is not None:
+            play["total_side"] = (
+                "over" if float(row["model_total"]) > float(row["book_total"]) else "under"
+            )
+        out.append(play)
+    return sorted(out, key=lambda play: (play["week"], play.get("kickoff") or "",
+                                         play["away"]))
+
+
 def update(
     *,
     season: int,
@@ -297,6 +375,7 @@ def update(
             _grade(snapshot, result)
 
     player_index = _player_result_index(player_results or [])
+    published = _published_team_weeks(player_results or [])
     for snapshot in payload["player_snapshots"]:
         if snapshot.get("status") != "pending":
             continue
@@ -305,11 +384,13 @@ def update(
         )
         if game_result is None:
             continue
+        if (snapshot["season"], snapshot["week"], snapshot["team"]) not in published:
+            continue
         result = player_index.get((
             snapshot["season"], snapshot["week"], snapshot["team"], snapshot["player_id"]
         ))
-        # Once the team game is final, an absent stat row is a zero-stat DNP,
-        # not an indefinitely pending observation.
+        # Once the team's box score is published, an absent stat row is a
+        # zero-stat DNP, not an indefinitely pending observation.
         _grade_player(snapshot, result)
 
     now = recorded_at or _now()
