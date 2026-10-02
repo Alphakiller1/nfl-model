@@ -343,8 +343,9 @@ def _picks_block(picks: list, record: dict) -> str:
     for family in ("spread", "total", "prop"):
         r = record.get(family)
         if r and (r["win"] + r["loss"] + r["push"]):
+            clv = f", mean CLV {r['mean_clv']:+.2f}" if r.get("mean_clv") is not None else ""
             bits.append(f"{_FAMILY[family]} {r['win']}-{r['loss']}-{r['push']} "
-                        f"({r.get('units', 0.0):+.1f}u)")
+                        f"({r.get('units', 0.0):+.1f}u{clv})")
     line = " · ".join(bits) if bits else "no best bets graded yet this season"
     groups = []
     for family in ("spread", "total", "prop"):
