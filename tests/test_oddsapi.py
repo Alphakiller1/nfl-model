@@ -193,3 +193,43 @@ def test_a_game_missing_from_the_free_feed_still_buys_the_paid_request(monkeypat
     monkeypatch.setattr(espn_odds, "lines", lambda requested="draftkings": ([ESPN_QUOTE], "t"))
     oddsapi.fetch_lines(needed={("BUF", "NYJ"), ("KC", "LV")})
     assert called
+
+
+def test_props_use_the_providers_own_event_id_not_espns(monkeypatch):
+    """Lines can come from ESPN, whose event ids the Odds API rejects with a 422;
+    every prop on the slate was lost that way. Ids now come from /events."""
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 500)
+    requested = []
+
+    def fake_get(path, params, **_):
+        requested.append(path)
+        if path.endswith("/events"):
+            return [{"id": "odds-1", "home_team": "Kansas City Chiefs",
+                     "away_team": "Buffalo Bills"}], {}
+        if "odds-1" in path:
+            return {"id": "odds-1", "home_team": "Kansas City Chiefs",
+                    "away_team": "Buffalo Bills", "bookmakers": [{
+                        "key": "draftkings", "title": "DraftKings", "markets": [{
+                            "key": "player_pass_yds", "outcomes": [
+                                {"name": "Over", "description": "QB One", "point": 250.5,
+                                 "price": -115},
+                                {"name": "Under", "description": "QB One", "point": 250.5,
+                                 "price": -105}]}]}]}, {"remaining": "490"}
+        raise oddsapi.OddsAPIError("Odds API error 422")
+
+    monkeypatch.setattr(oddsapi, "_get", fake_get)
+    from datetime import datetime, timedelta, timezone
+
+    soon = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()
+    later = (datetime.now(timezone.utc) + timedelta(days=4)).isoformat()
+    line = oddsapi.BookLine("draftkings", "DraftKings", -2.5, 47.5, -140, 120, None, soon,
+                            event_id="espn-401")
+    quotes = oddsapi.fetch_player_props({("KC", "BUF"): line, ("NYJ", "CAR"): line})
+    assert [q.player_name for q in quotes] == ["QB One"]
+    assert not any("espn-401" in path for path in requested)
+
+    # Games further out than the pull window cost nothing.
+    requested.clear()
+    far = oddsapi.BookLine("draftkings", "DraftKings", -2.5, 47.5, -140, 120, None, later)
+    assert oddsapi.fetch_player_props({("KC", "BUF"): far}) == []
+    assert not any("/odds" in path for path in requested)

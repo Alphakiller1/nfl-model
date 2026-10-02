@@ -37,6 +37,11 @@ CACHE_DIR = Path(
 CACHE_TTL_SECONDS = 15 * 60
 TIMEOUT = 45
 DEFAULT_BOOK = "draftkings"
+# Props cost markets x regions credits per game - 7 here, ~112 for a full slate.
+# Pull only inside this window before kickoff and reuse a pull this long, so a
+# week costs one or two slate pulls rather than one per build.
+PROP_LEAD_HOURS = 30
+PROP_TTL_SECONDS = 20 * 60 * 60
 PLAYER_PROP_MARKETS = (
     "player_pass_attempts",
     "player_pass_yds",
@@ -469,8 +474,30 @@ def fetch_player_props(
         raise OddsAPIError("NFL production accepts exactly one sportsbook")
     output: list[PlayerPropQuote] = []
     left = remaining()
-    for line in lines.values():
-        if not line.event_id:
+    # Game lines may come from ESPN, whose event ids mean nothing to this
+    # provider (a 422 that took every prop down). Resolve this provider's own
+    # ids from the free /events listing, by team.
+    try:
+        events, _ = _get(f"/sports/{SPORT}/events", {})
+    except OddsAPIError:
+        events = []
+    event_ids = {}
+    for event in events if isinstance(events, list) else []:
+        home = match_team(event.get("home_team", ""))
+        away = match_team(event.get("away_team", ""))
+        if home and away and event.get("id"):
+            event_ids[(home, away)] = str(event["id"])
+    failures = 0
+    now = datetime.now(timezone.utc)
+    for (home, away), line in lines.items():
+        event_id = event_ids.get((home, away))
+        if not event_id:
+            continue
+        try:
+            kickoff = datetime.fromisoformat(str(line.commence_time).replace("Z", "+00:00"))
+        except ValueError:
+            kickoff = None
+        if kickoff is None or not 0 < (kickoff - now).total_seconds() < PROP_LEAD_HOURS * 3600:
             continue
         if left is not None and left < min_remaining:
             break
@@ -480,9 +507,17 @@ def fetch_player_props(
             "oddsFormat": "american",
             "bookmakers": requested,
         }
-        payload, headers = _get(
-            f"/sports/{SPORT}/events/{line.event_id}/odds", query
-        )
+        try:
+            payload, headers = _get(f"/sports/{SPORT}/events/{event_id}/odds", query,
+                                    ttl=PROP_TTL_SECONDS)
+        except QuotaExhausted:
+            raise
+        except OddsAPIError:
+            # One unpriceable event must not take every other game's props down.
+            failures += 1
+            if failures >= 3:
+                raise
+            continue
         if headers.get("remaining") is not None:
             left = int(headers["remaining"])
         if isinstance(payload, dict):
