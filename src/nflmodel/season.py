@@ -30,7 +30,7 @@ from . import (
     scheme,
     teams,
 )
-from .sources import espn_props, nflverse, oddsapi
+from .sources import espn_injuries, espn_props, nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
 # `preseason.FORM_SEASON_WEIGHTS` asks for; loading fewer silently degrades the
@@ -256,6 +256,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     except Exception as exc:
         book_lines = {}
         odds_error = f"{type(exc).__name__}: {exc}"
+    issues_early: list[str] = []
     prop_quotes: list[oddsapi.PlayerPropQuote] = []
     prop_error = None
     prop_source = "oddsapi"
@@ -297,6 +298,14 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
     depth = nflverse.depth_charts(season, before=first_kickoff)
     injury_rows = nflverse.injuries(season, week=week)
+    if open_games:
+        # Game-day downgrades and IR moves reach ESPN before the nflverse report.
+        try:
+            injury_rows = espn_injuries.merge(
+                injury_rows,
+                espn_injuries.fetch(open_games, roster, season=season, week=week))
+        except Exception as exc:
+            issues_early.append(f"ESPN injury feed failed: {type(exc).__name__}: {exc}")
     quarterbacks = availability.quarterback_status(
         availability.usual_starters(player_history, season, week), injury_rows, roster)
 
@@ -395,7 +404,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         "player_prop_quotes": len(prop_quotes),
         "player_prop_source": prop_source if prop_quotes else None,
     })
-    issues: list[str] = []
+    issues: list[str] = list(issues_early)
     stale = [status for status in nflverse.status_report() if status.get("stale")]
     failed = [status for status in nflverse.status_report() if status.get("state") == "error"]
     if stale:

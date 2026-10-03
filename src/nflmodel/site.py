@@ -392,6 +392,46 @@ def _picks_block(picks: list, record: dict) -> str:
             f"so treat it as a lean, not a price. {e(_gate_line(record))}</p>{body}</div>")
 
 
+def _slips_section(plan: dict | None, record: dict) -> str:
+    """The weekly pick'em slips, the rules behind them, and their graded record."""
+    if not plan or not plan.get("slips"):
+        return ""
+    est = plan.get("estimates") or {}
+    legs = record.get("legs") or {}
+    season_line = (f"{record.get('graded_weeks', 0)} graded weeks, legs {legs.get('win', 0)}-"
+                   f"{legs.get('loss', 0)}, paid ${record.get('paid', 0):,.0f} on "
+                   f"${record.get('staked', 0):,.0f}" if record.get("graded_weeks") else
+                   "first week on the ledger")
+    rows = []
+    for n, slip in enumerate(plan["slips"], start=1):
+        picks = "".join(
+            f'<li><b>{e(leg["label"])}</b> <span class="dim">{e(leg["team"])} '
+            f'{e(leg["position"])} &middot; proj {leg["projection"]:g} &middot; '
+            f'{leg["probability"]:.0%} &middot; market {leg["market_record"][0]}-'
+            f'{leg["market_record"][1] - leg["market_record"][0]}</span></li>'
+            for leg in slip["legs"])
+        rows.append(f'<article class="bb"><div class="bb-head"><span class="bb-pick">'
+                    f'Slip {n}</span><span class="bb-price">${slip["stake"]:g} '
+                    f'{e(plan["format"])}</span></div><ul class="slip-legs">{picks}</ul></article>')
+    excluded = ", ".join(f"{k} {v}" for k, v in sorted((plan.get("excluded") or {}).items(),
+                                                          key=lambda kv: -kv[1]))
+    return f"""
+<section id="prop-slips">
+  <div class="sec-head">
+    <span class="kicker">Weekly report &middot; 03b</span>
+    <h2>Pick&rsquo;em slips</h2>
+    <p class="blurb">{plan["entries"]} &times; ${plan["stake"]:g} {e(plan["format"])}, chosen to
+    clear a ${plan["target"]:g} payout: estimated {est.get("p_payout_above_target", 0):.0%}
+    to clear it, {est.get("p_zero", 0):.0%} to pay nothing, ${est.get("expected_payout", 0):,.0f}
+    expected. Legs come only from markets with a record, starters with two games of history,
+    no role expansion, no line moved against the pick, no recent form against it.
+    Season: {e(season_line)}.</p>
+    <p class="dim">Dropped this week: {e(excluded)}. {e(plan.get("note", ""))}</p>
+  </div>
+  <div class="bb-list">{"".join(rows)}</div>
+</section>"""
+
+
 def _sharp_section(spots: list, record: dict, week: int) -> str:
     """Where the money runs ahead of the tickets, and how the line has moved."""
     bits = []
@@ -1227,7 +1267,8 @@ def _footer(built_at: str) -> str:
 # ── page ─────────────────────────────────────────────────────────────────────
 def render(slate, outlooks, *, health: dict | None = None,
            record: dict | None = None, generated_at: datetime | None = None,
-           picks: list | None = None, spots: list | None = None) -> str:
+           picks: list | None = None, spots: list | None = None,
+           slip_plan: dict | None = None) -> str:
     moment = generated_at or datetime.now(UTC)
     built_at = moment.strftime("%b %d %Y · %H:%M UTC")
     body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
@@ -1236,6 +1277,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f"{_authority_section(slate.authority)}"
             f"{_board_section(slate)}"
             f"{_best_bets_section(slate, picks, record)}"
+            f"{_slips_section(slip_plan, (record or {}).get('prop_slips') or {})}"
             f"{_sharp_section(spots or [], (record or {}).get('sharp_spots') or {}, slate.week)}"
             f"{_player_section(slate)}"
             f"{_scheme_section(slate)}"
@@ -1261,7 +1303,7 @@ def render(slate, outlooks, *, health: dict | None = None,
 def build_site(out: Path, season: int | None = None, week: int | None = None,
                simulations: int = divisions_mod.SIMULATIONS) -> Path:
     """Build one atomic, evidenced publication bundle."""
-    from . import best_bets, export, ledger, sharp
+    from . import best_bets, export, ledger, sharp, slips
     from .sources import dk_splits
 
     generated_at = datetime.now(UTC).replace(microsecond=0)
@@ -1296,6 +1338,11 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         picks = []
         issues.append(f"Best bets failed: {type(exc).__name__}: {exc}")
     try:
+        slip_plan = slips.plan(slate, now=generated_at).to_json()
+    except Exception as exc:
+        slip_plan = None
+        issues.append(f"Prop slips failed: {type(exc).__name__}: {exc}")
+    try:
         splits = dk_splits.fetch("nfl")
         history = ledger._load(ledger.DEFAULT_PATH).get("snapshots", [])
         spots = sharp.build(slate.projections, splits, history,
@@ -1314,6 +1361,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
             schedule=slate.schedule,
             best_bets=[pick.to_json() for pick in picks],
             sharp_spots=[spot.to_json() for spot in spots],
+            prop_slips=slip_plan,
             recorded_at=generated_at,
         )
         record = ledger_payload.get("summary", {})
@@ -1345,10 +1393,10 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         render(slate, outlooks, health=health, record=record, generated_at=generated_at,
-               picks=picks, spots=spots),
+               picks=picks, spots=spots, slip_plan=slip_plan),
         encoding="utf-8",
     )
-    export.write(slate, out.parent / "board.json", outlooks)
+    export.write(slate, out.parent / "board.json", outlooks, prop_slips=slip_plan)
     (out.parent / "build.json").write_text(
         json.dumps(health, indent=2) + "\n", encoding="utf-8"
     )

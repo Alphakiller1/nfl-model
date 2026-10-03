@@ -141,7 +141,7 @@ def _player_projection(p) -> dict:
     }
 
 
-def payload(slate, outlooks: list | None = None) -> dict:
+def payload(slate, outlooks: list | None = None, prop_slips: dict | None = None) -> dict:
     """The whole week: authority, ratings, units, games and season outlook."""
     authority = slate.authority
     ranked = ratings.rank_table(slate.table)
@@ -217,6 +217,9 @@ def payload(slate, outlooks: list | None = None) -> dict:
         ],
         "weekly_report": recommendations.build_report(slate),
         "best_bets": [pick.to_json() for pick in best_bets.build(slate)],
+        # The weekly pick'em slip plan (slips.py): rule-filtered legs, the
+        # format that best clears the payout target, and its estimates.
+        "prop_slips": prop_slips,
         "division_winners": champions,
         "simulations": divisions_mod.SIMULATIONS if outlooks else 0,
         "sources": {
@@ -227,9 +230,10 @@ def payload(slate, outlooks: list | None = None) -> dict:
     }
 
 
-def write(slate, destination: str | Path, outlooks: list | None = None) -> Path:
+def write(slate, destination: str | Path, outlooks: list | None = None,
+          prop_slips: dict | None = None) -> Path:
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload(slate, outlooks), indent=2) + "\n",
+    path.write_text(json.dumps(payload(slate, outlooks, prop_slips), indent=2) + "\n",
                     encoding="utf-8")
     return path
