@@ -77,19 +77,20 @@ def _reopen_player_grades(payload: dict) -> None:
 def _load(path: Path) -> dict:
     if not path.is_file():
         return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
-                "best_bets": [], "sharp_spots": []}
+                "best_bets": [], "sharp_spots": [], "prop_slips": []}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if isinstance(payload.get("snapshots"), list):
             payload.setdefault("player_snapshots", [])
             payload.setdefault("best_bets", [])
+            payload.setdefault("prop_slips", [])
             payload.setdefault("sharp_spots", [])
             _reopen_player_grades(payload)
             return payload
     except (json.JSONDecodeError, AttributeError):
         pass
     return {"schema_version": SCHEMA_VERSION, "snapshots": [], "player_snapshots": [],
-                "best_bets": [], "sharp_spots": []}
+                "best_bets": [], "sharp_spots": [], "prop_slips": []}
 
 
 def _write(path: Path, payload: dict) -> None:
@@ -501,6 +502,93 @@ def _best_bet_summary(payload: dict, season: int) -> dict:
     return out
 
 
+def _leg_bet(leg: dict) -> dict:
+    """A slip leg in the shape `_grade_bet` grades (a prop pick at its line)."""
+    return {"family": "prop", "season": leg["season"], "week": leg["week"],
+            "home": leg["home"], "away": leg["away"], "team": leg["team"],
+            "player_id": leg["player_id"], "metric": leg["metric"], "side": leg["side"],
+            "line": leg["line"], "price": -110}
+
+
+def _record_prop_slips(payload: dict, plan: dict | None, now: datetime) -> None:
+    """Keep each week's latest slip plan until its first leg kicks off, then freeze it.
+
+    Slips follow the news (a Saturday downgrade can change a leg), so the plan
+    that counts is the last one published before any of its games started.
+    """
+    if not plan or not plan.get("slips"):
+        return
+    kickoffs = [_parse(leg.get("kickoff")) for slip in plan["slips"] for leg in slip["legs"]]
+    first = min((k for k in kickoffs if k is not None), default=None)
+    if first is None or first <= now:
+        return
+    entry = {**plan, "recorded_at": _stamp(now), "status": "pending",
+             "first_kickoff": first.isoformat(), "authority": "shadow_only"}
+    for i, held in enumerate(payload["prop_slips"]):
+        if (held["season"], held["week"]) == (plan["season"], plan["week"]):
+            if held.get("status") == "pending" and _parse(held.get("first_kickoff")) > now:
+                payload["prop_slips"][i] = entry
+            return
+    payload["prop_slips"].append(entry)
+
+
+def _grade_prop_slips(payload: dict, results: dict, player_index: dict, published: set) -> None:
+    from .slips import PAYOUTS
+
+    for entry in payload.get("prop_slips", []):
+        if entry.get("status") != "pending":
+            continue
+        legs = [leg for slip in entry["slips"] for leg in slip["legs"]] + entry.get("dropped", [])
+        for leg in legs:
+            if leg.get("result") in (None, "pending"):
+                bet = _leg_bet(leg)
+                _grade_bet(bet, results, player_index, published)
+                leg["result"] = bet.get("result", "pending")
+                leg["actual"] = bet.get("actual")
+        if any(leg["result"] == "pending" for leg in legs):
+            continue
+        total = 0.0
+        for slip in entry["slips"]:
+            live = [leg for leg in slip["legs"] if leg["result"] != "void"]
+            hits = sum(leg["result"] == "win" for leg in live)
+            slip["hits"] = hits
+            if len(live) < 2:
+                slip["payout"] = slip["stake"]   # too few live legs: the entry is refunded
+            else:
+                # PrizePicks reverts a slip with a void leg to the next smaller format.
+                fmt = slip["format"][:-1] + str(len(live))
+                slip["payout"] = round(slip["stake"] * PAYOUTS.get(fmt, {}).get(hits, 0.0), 2)
+            total += slip["payout"]
+        entry.update({"status": "graded", "graded_at": _stamp(), "payout": round(total, 2),
+                      "beat_target": total > float(entry.get("target") or 0)})
+
+
+def _slip_summary(payload: dict, season: int) -> dict:
+    weeks = [e for e in payload.get("prop_slips", []) if int(e.get("season", 0)) == season]
+    graded = [e for e in weeks if e.get("status") == "graded"]
+    legs = [leg for e in graded for slip in e["slips"] for leg in slip["legs"]]
+    by_reason: dict[str, list[int]] = {}
+    for e in graded:
+        for leg in e.get("dropped", []):
+            if leg.get("result") in ("win", "loss"):
+                cell = by_reason.setdefault(leg["reason"], [0, 0])
+                cell[0] += leg["result"] == "win"
+                cell[1] += 1
+    return {
+        "weeks": len(weeks), "graded_weeks": len(graded),
+        "staked": round(sum(e["stake"] * e["entries"] for e in graded), 2),
+        "paid": round(sum(e.get("payout", 0.0) for e in graded), 2),
+        "weeks_beating_target": sum(bool(e.get("beat_target")) for e in graded),
+        "legs": {"win": sum(leg["result"] == "win" for leg in legs),
+                 "loss": sum(leg["result"] == "loss" for leg in legs),
+                 "void": sum(leg["result"] == "void" for leg in legs)},
+        # Legs a rule dropped, graded as if they had been played: a rule earns
+        # its place when what it drops loses.
+        "dropped_by_rule": {reason: {"win": w, "loss": n - w} for reason, (w, n) in
+                            sorted(by_reason.items())},
+    }
+
+
 def _record_best_bets(payload: dict, best_bets: list[dict] | None, now: datetime,
                       key: str = "best_bets") -> None:
     """Log each pick the first time it is published, and lock it there.
@@ -550,6 +638,7 @@ def summary(payload: dict, *, season: int) -> dict:
         "players": _player_summary(payload, season),
         "best_bets": _best_bet_summary(payload, season),
         "sharp_spots": _sharp_summary(payload, season),
+        "prop_slips": _slip_summary(payload, season),
     }
 
 
@@ -602,6 +691,7 @@ def update(
     schedule: list[dict],
     best_bets: list[dict] | None = None,
     sharp_spots: list[dict] | None = None,
+    prop_slips: dict | None = None,
     path: Path = DEFAULT_PATH,
     recorded_at: datetime | None = None,
 ) -> dict:
@@ -650,7 +740,10 @@ def update(
                 spot["clv"] = _clv(spot, closing.get(
                     (spot["season"], spot["week"], spot["home"], spot["away"])))
 
+    _grade_prop_slips(payload, results, player_index, published)
+
     now = recorded_at or _now()
+    _record_prop_slips(payload, prop_slips, now)
     _record_best_bets(payload, best_bets, now)
     _record_best_bets(payload, sharp_spots, now, key="sharp_spots")
     known = {row.get("snapshot_id") for row in payload["snapshots"]}

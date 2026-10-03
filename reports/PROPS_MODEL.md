@@ -360,6 +360,43 @@ priced 269 receiving unders and 0 overs in week 1. That was a constant, not
 a read on any player; through 50% its slopes were ~0. Pricing now starts
 from the projection's own distribution, with no base-rate term.
 
+## H. Weekly pick'em slips (`slips.py`)
+
+The strategy used for week 4 of 2026, as code. Every build publishes a slip
+plan (`board.json` `prop_slips`, the "Pick'em slips" section) and the ledger
+grades it (`summary.prop_slips`).
+
+**Which legs.** A leg must clear every rule; each dropped leg is counted by
+reason on the board.
+
+| rule | why |
+|---|---|
+| (position, market, side) record >= 56% on >= 15 replay plays | RB catch unders 33-16, TE catch unders 36-25, TE yardage unders 25-14, QB rush and passing-TD unders; RB carries unders (24-26) and WR catch unders (43-38) never qualify |
+| calibrated lean >= 53% | |
+| starter (depth 1-2), not Questionable/Doubtful, >= 2 games this season | backup unders 44-39 in the replay; no read on players without history |
+| no role expansion: a recent regular (>= 15% target share, or >= 8% at the same position, or >= 30% carry share) missing from this week's projections, or a new starting QB (also blocks QB rushing unders when a target earner or lead back is missing) | the week-4 audit's misses: Keenan Allen out (Downs), Jefferson out (Aaron Jones), Caleb Williams out (Swift) |
+| no line moved against the pick by a unit (or 10%) | |
+| no 0.5 lines | juiced and non-standard on pick'em |
+| no recent form against the pick (cleared the line in 2 of the last 3) | judgment guard; measured by the ledger |
+
+**Which format.** The plan's target is the owner's: six $25 entries in promo
+credits, cash payout above $50. For each format (2-pick and 3-pick Power, 3-
+and 4-pick Flex) the strongest legs are snake-drafted into slips (one leg per
+player, never two legs from one game in a slip) and simulated: each leg's
+edge trusted at the replay's measured rate (53%), a shared game shock (rho
+0.15) and a shared week shock (0.05). The format with the highest chance of
+clearing the target wins; for week 4 that is 6 x 2-pick Power, ~85%.
+
+**Fresh injuries.** The nflverse report lagged game-day news (Keenan Allen
+Questionable there, Out on ESPN), so ESPN's game-summary designations,
+including IR, are merged over it before projecting
+(`sources/espn_injuries.py`). That also corrects the projections: Josh
+Downs' week-4 targets went from 6.6 to 8.3.
+
+**Measuring the rules.** Legs a rule drops are stored with the plan and
+graded as if played; `summary.prop_slips.dropped_by_rule` reports their
+record. A rule earns its place when what it drops loses.
+
 ## F. What did not work, kept so nobody re-runs it blind
 
 * Matchup metrics (defensive EPA, coverage, scheme) against the line: r ≈ 0.
