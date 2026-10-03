@@ -19,6 +19,8 @@ from . import espn_odds
 from .oddsapi import normalise, team_index
 
 SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event={event}"
+# What the last fetch did, published on the board so a silent failure shows.
+LAST: dict = {"state": "not_run"}
 STATUS = {
     "out": "Out", "doubtful": "Doubtful", "questionable": "Questionable",
     "injured reserve": "Out", "physically unable to perform": "Out",
@@ -64,17 +66,28 @@ def fetch(needed: set[tuple[str, str]], roster: list[dict], *, season: int, week
         if home and away and (teams.canonical(home), teams.canonical(away)) in needed:
             wanted.append(str(event["event_id"]))
 
+    errors: list[str] = []
+
     def one(event_id):
         try:
             return parse(espn_odds._get(SUMMARY.format(event=event_id)),
                          gsis_by_espn=gsis_by_espn, season=season, week=week)
-        except Exception:
-            return []  # a missing summary leaves the nflverse report in place
+        except Exception as exc:  # a missing summary leaves the nflverse report in place
+            errors.append(f"{event_id}: {type(exc).__name__}: {exc}"[:160])
+            return []
 
     out: list[dict] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
         for rows in pool.map(one, wanted):
             out.extend(rows)
+    LAST.clear()
+    LAST.update({
+        "state": "ok" if out else ("error" if errors else "empty"),
+        "scoreboard_events": len(events), "matched_games": len(wanted),
+        "needed_games": len(needed), "designations": len(out),
+        "unmatched_players": sum(1 for row in out if not row["gsis_id"]),
+        "errors": errors[:5],
+    })
     return out
 
 

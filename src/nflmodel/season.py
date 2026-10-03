@@ -306,6 +306,11 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                 espn_injuries.fetch(open_games, roster, season=season, week=week))
         except Exception as exc:
             issues_early.append(f"ESPN injury feed failed: {type(exc).__name__}: {exc}")
+        if espn_injuries.LAST.get("state") in ("error", "empty"):
+            issues_early.append(
+                f"ESPN game-day injuries {espn_injuries.LAST['state']}: "
+                f"{espn_injuries.LAST.get('matched_games', 0)} games matched, "
+                f"{(espn_injuries.LAST.get('errors') or ['no error'])[0]}")
     quarterbacks = availability.quarterback_status(
         availability.usual_starters(player_history, season, week), injury_rows, roster)
 
@@ -403,6 +408,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         ),
         "player_prop_quotes": len(prop_quotes),
         "player_prop_source": prop_source if prop_quotes else None,
+        "injury_feed": dict(espn_injuries.LAST),
     })
     issues: list[str] = list(issues_early)
     stale = [status for status in nflverse.status_report() if status.get("stale")]
