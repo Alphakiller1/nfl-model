@@ -68,6 +68,15 @@ def test_slips_use_each_player_once_and_never_pair_a_game():
     assert len({leg.player_id for slip in built for leg in slip}) == 12
 
 
+def test_the_draft_reaches_past_a_game_clash_to_fill_every_slip():
+    # Two strong legs share a game: one slip cannot take both, so a weaker
+    # leg further down fills it.
+    legs = [_leg("a", "g1", p=0.6), _leg("b", "g1", p=0.59), _leg("c", "g2", p=0.55),
+            _leg("d", "g3", p=0.54)]
+    built = slips.build_slips(legs, 2, 2)
+    assert len(built) == 2 and all(a.game_id != b.game_id for a, b in built)
+
+
 def test_one_winning_two_pick_clears_a_fifty_dollar_target():
     legs = [_leg(str(i), f"g{i}", p=0.99) for i in range(12)]
     built = slips.build_slips(legs, 2, 6)
