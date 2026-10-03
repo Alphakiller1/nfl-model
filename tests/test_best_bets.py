@@ -88,26 +88,42 @@ def _quote(line, over=-115, under=-105):
 
 @pytest.fixture
 def pricing(monkeypatch):
-    """Deterministic pricing: a 0.1 logit per unit of scaled gap, no lean."""
+    """Calibration off (p_over = the distribution's own probability)."""
     from nflmodel import prop_pricing
 
-    monkeypatch.setitem(prop_pricing.COEFFICIENTS, "rushing", {"w": 0.3, "a": 0.0, "b": 0.1})
+    monkeypatch.setattr(prop_pricing, "CALIBRATION", {"s": 1.0, "c": 0.5})
     return prop_pricing
 
 
-def test_prop_pick_is_priced_from_the_line(slate, pricing):
+def test_prop_pick_is_priced_from_the_matrix_distribution(slate, pricing):
     s = replace(slate, week=1, player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5)])
     picks = bb.prop_picks(s, {})
     assert len(picks) == 1 and picks[0].side == "over"
+    assert "Matrix projects 92.0 rushing yards" in picks[0].angle
     assert "Role: RB1" in picks[0].angle and "+2.5 team carries" in picks[0].angle
-    # The fair number moves the line only part of the way to the projection.
-    assert "fair number is 75.55" in picks[0].angle
-    # Until the held-out record beats -110 the pick says so.
-    assert pricing.research_only() and "research-only" in picks[0].tags
-    # A line equal to the projection prices at 50%: no pick either way.
-    fair = replace(s, player_prop_quotes=[_quote(92.0, -110, -110)])
-    assert bb.prop_picks(fair, {}) == []
+    assert "Held-out record of these leans" in picks[0].angle
+    # A line at the projection's median is even: no lean either way.
+    from nflmodel import prop_distributions
+
+    median = prop_distributions.distribution("rushing_yards", 92.0)["p50"]
+    assert bb.prop_picks(replace(s, player_prop_quotes=[_quote(median, -110, -110)]), {}) == []
+
+
+def test_leans_publish_every_week_and_say_how_strong_they_are(slate, monkeypatch):
+    from nflmodel import prop_pricing
+
+    monkeypatch.setattr(prop_pricing, "CALIBRATION", {"s": 0.1, "c": 0.5})
+    s = replace(slate, week=1, player_projections=[_player()],
+                player_prop_quotes=[_quote(68.5, -110, -110)])
+    pick = bb.prop_picks(s, {})[0]
+    # Calibrated toward even, this one is a lean, not a play.
+    assert pick.probability < bb.MIN_PROP_PROBABILITY and "lean" in pick.tags
+    assert not prop_pricing.research_only() and "research-only" not in pick.tags
+    monkeypatch.setattr(prop_pricing, "EVIDENCE", {**prop_pricing.EVIDENCE, "plays": 69,
+                                                   "wins": 32, "hit_rate": 0.464})
+    pick = bb.prop_picks(s, {})[0]
+    assert "research-only" in pick.tags   # still published, labelled
 
 
 def test_an_id_matched_line_without_prices_reads_as_fifty_fifty(slate, pricing):

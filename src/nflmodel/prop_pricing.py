@@ -1,29 +1,36 @@
-"""Price a player prop from the DraftKings line plus a shrunk model gap.
+"""Price a player prop from the projection matrix, calibrated against the line.
 
-Measured on 2026 weeks 1-3 (1,949 DraftKings closing lines, see
-reports/PROPS_MODEL.md part C), the line beats the raw projection on every
-market. The projection still carries information the line lacks, but only a
-fraction of its disagreement is real: the error-minimising blend is
-``line + w * (projection - line)`` with w of about 0.3-0.4 for receiving
-markets. Reading the raw projection through a skewed outcome distribution
-(the old path) produced probabilities with a worse Brier score than a coin.
+Each quote is priced from the projection itself, not from a market base
+rate:
 
-So a quote is priced in two numbers:
+1. ``raw`` = P(stat > line) under the outcome distribution fitted on the
+   projection layer's own errors (`prop_distributions`), centred on the
+   matrix projection.
+2. ``p_over`` = 0.5 + s * (raw - c). The raw distribution is honest about the
+   player's spread of outcomes, but it ignores what the line knows. Against
+   DraftKings closing lines a raw 70% hit 57%, so it is shrunk toward even
+   by a factor s fitted leave-one-week-out. c is the raw value that
+   corresponds to an even line.
+3. ``fair`` = line + w * (projection - line): how far toward the projection
+   the number should move, by market family (reports/PROPS_MODEL.md, C1).
 
-* ``fair``: the line moved toward the projection by the fitted weight w.
-* ``p_over``: a logistic on the gap scaled by the line's size,
-  ``sigmoid(a + b * (projection - line) / sqrt(line))``, fitted per market
-  family. The intercept carries the families' measured over/under lean.
-
-Coefficients are refit by ``scripts/fit_prop_pricing.py`` (leave-one-week-out)
-and pasted here. ``EVIDENCE`` holds that script's held-out record of the
-probability >= 55% plays. Until it clears the -110 break-even (52.4%) on
-enough plays, every prop pick is labelled research only.
+Evidence (EVIDENCE): matrix projections rebuilt point-in-time for 2026 weeks
+1-3 and priced against 1,920 DraftKings closing lines. Leave-one-week-out,
+the plays priced at >= 53% went 450-388 (53.7%; -110 break-even 52.4%) with
+a held-out Brier of 0.2499 against a coin's 0.2500. Ranking players within
+each week and market, top third over and bottom third under, went 688-568
+(54.8%), with no fitting beyond the projection. The fair-number blend weight
+on these projections is 0.59 for receiving (0.37 on the previous version):
+the line wants to move further toward them. ``research_only`` holds until
+the held-out record clears the -110 break-even on enough plays with a
+one-sided 90% lower bound above a coin.
 """
 
 from __future__ import annotations
 
 import math
+
+from . import prop_distributions
 
 FAMILY = {
     "receiving_yards": "receiving", "receptions": "receiving", "targets": "receiving",
@@ -31,40 +38,50 @@ FAMILY = {
     "passing_yards": "passing", "passing_tds": "passing", "completions": "passing",
     "pass_attempts": "passing", "interceptions": "passing",
 }
-# family -> blend weight w, logistic intercept a, logistic slope b.
-# Fitted 2026-10-03 on 2,003 lines (2026 weeks 1-4) by scripts/fit_prop_pricing.py.
-COEFFICIENTS = {
-    "passing": {"w": 0.374, "a": 0.0, "b": 0.239},
-    "receiving": {"w": 0.374, "a": -0.178, "b": 0.036},
-    "rushing": {"w": 0.203, "a": -0.128, "b": 0.028},
+BLEND_WEIGHT = {"passing": 0.422, "receiving": 0.586, "rushing": 0.167}
+# scripts/fit_prop_pricing.py --rows <2026 weeks 1-3 point-in-time replay lines>.
+CALIBRATION = {"s": 0.30, "c": 0.505}
+EVIDENCE = {
+    "source": "2026 weeks 1-3, point-in-time matrix replay vs DraftKings closing lines",
+    "lines": 1920, "plays": 838, "wins": 450, "hit_rate": 0.537,
+    "ranked_wins": 688, "ranked_plays": 1256,
 }
-# Held-out (leave-one-week-out) record of plays priced >= MIN_PROBABILITY.
-EVIDENCE = {"weeks": ["2026-1", "2026-2", "2026-3", "2026-4"], "plays": 489, "wins": 238,
-            "hit_rate": 0.487}
-MIN_PROBABILITY = 0.55
+MIN_PROBABILITY = 0.53
 BREAK_EVEN = 0.524      # -110 both ways
 MIN_EVIDENCE_PLAYS = 300
 
 
+def _lower_bound(wins: int, plays: int) -> float:
+    if not plays:
+        return 0.0
+    rate = wins / plays
+    return rate - 1.2816 * math.sqrt(rate * (1 - rate) / plays)
+
+
 def research_only() -> bool:
-    """True until the held-out record clears break-even on enough plays."""
+    """True until the held-out record clears break-even on enough plays and
+    its one-sided 90% lower bound beats a coin."""
     return not (EVIDENCE["plays"] >= MIN_EVIDENCE_PLAYS
-                and EVIDENCE["hit_rate"] > BREAK_EVEN)
+                and EVIDENCE["hit_rate"] > BREAK_EVEN
+                and _lower_bound(EVIDENCE["wins"], EVIDENCE["plays"]) > 0.5)
 
 
-def gap_feature(projection: float, line: float) -> float:
-    return (float(projection) - float(line)) / math.sqrt(max(float(line), 0.5))
+def calibrate(raw: float) -> float:
+    return min(max(0.5 + CALIBRATION["s"] * (raw - CALIBRATION["c"]), 0.01), 0.99)
 
 
 def price(metric: str, projection: float | None, line: float | None) -> dict | None:
-    """{'fair', 'p_over', 'family'} for one quote, or None if unpriceable."""
+    """{'family', 'fair', 'raw', 'p_over'} for one quote, or None if unpriceable."""
     family = FAMILY.get(metric)
-    if family is None or projection is None or line is None:
+    if family is None or projection is None or line is None or projection <= 0:
         return None
-    coef = COEFFICIENTS[family]
-    z = coef["a"] + coef["b"] * gap_feature(projection, line)
+    dist = prop_distributions.distribution(metric, projection)
+    raw = prop_distributions.over_probability(dist, float(line)) if dist else None
+    if raw is None:
+        return None
     return {
         "family": family,
-        "fair": round(float(line) + coef["w"] * (float(projection) - float(line)), 2),
-        "p_over": round(1.0 / (1.0 + math.exp(-z)), 4),
+        "fair": round(float(line) + BLEND_WEIGHT[family] * (float(projection) - float(line)), 2),
+        "raw": round(raw, 4),
+        "p_over": round(calibrate(raw), 4),
     }

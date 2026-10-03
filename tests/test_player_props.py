@@ -36,7 +36,7 @@ def _history(player_id, name, position, team, week, **stats):
     return row
 
 
-def _build(*, book_margin=3.0, book_total=45.0, snap_rows=None):
+def _build(*, book_margin=3.0, book_total=45.0, snap_rows=None, box_rates=None):
     roster = [
         _roster("qb", "Current QB", "QB"),
         _roster("rb", "Current RB", "RB"),
@@ -112,6 +112,7 @@ def _build(*, book_margin=3.0, book_total=45.0, snap_rows=None):
         history_rows=history,
         scheme_matchups={("NE", "SEA"): scheme_matchup},
         snap_rows=snap_rows,
+        box_rates=box_rates,
     )
 
 
@@ -228,3 +229,25 @@ def test_deep_depth_slots_are_scaled_by_their_active_rate(player_build):
             continue
         assert 0.0 < rate <= 1.0
         assert 0.0 <= row.metrics["anytime_td_probability"] <= 0.82
+
+
+def test_a_stacked_box_cuts_rb_carries_and_yards_per_carry():
+    def rb(rates):
+        build = _build(box_rates=rates)
+        return next(r for r in build.projections if r.player_name == "Current RB").metrics
+
+    neutral, stacked = rb({}), rb({"SEA": 0.05})   # SEA stacks 8+ five points more often
+    assert stacked["carries"] < neutral["carries"]
+    assert (stacked["rushing_yards"] / stacked["carries"]
+            < neutral["rushing_yards"] / neutral["carries"])
+
+
+def test_the_next_man_on_the_chart_fills_a_slot_vacated_by_an_out_starter():
+    roster = [_roster(pid, pid, "WR", team="PHI") for pid in ("wr1", "wr2", "wr3")]
+    depth = [_depth("wr1", "wr1", "WR", 1, team="PHI"), _depth("wr2", "wr2", "WR", 2, team="PHI"),
+             _depth("wr3", "wr3", "WR", 5, team="PHI")]
+    injuries = [{"team": "PHI", "gsis_id": "wr1", "report_status": "Out"}]
+    chosen = player_props._active_depth(roster, depth, injuries)
+    assert [(row["player_id"], row["depth_rank"]) for row in chosen] == [
+        ("wr2", 2), ("wr3", player_props.DEPTH_LIMITS["WR"])]
+

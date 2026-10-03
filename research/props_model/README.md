@@ -32,6 +32,11 @@ the files (`play_by_play_` -> `pbp_`, `snap_counts_` -> `snaps_`).
 | `b3_redistribution.py` | where an absent regular's volume goes |
 | `b4_eff_td.py` | efficiency pseudo-counts; red-zone share for TDs |
 | `b5_qb.py` | QB rate pseudo-counts |
+| `m0_features.py` | point-in-time player-game features incl. coverage (participation), blitz/box (FTN), pressure |
+| `m1_matrix.py` | the prop matrix: log-link fits, factor-family add/drop on 2024 and 2025 |
+
+Also download `pbp_participation_{2022..2025}.parquet` (as `part_{season}.parquet`) and
+`ftn_charting_{2022..2026}.parquet` (as `ftn_{season}.parquet`).
 
 ## Projection replay and market test (parts C and D)
 
@@ -43,6 +48,8 @@ python join.py                                   # join lines to the published l
 python c1_vs_line.py                             # line vs projection, blend weight
 python c2_blend_calibration.py                   # bootstrap CIs, P(over) calibration
 python c3_matchup_vs_line.py                     # matchup metrics vs (actual - line)
+python dist_fit.py                               # outcome distributions on the model's own errors
+python line_test.py                              # matrix prices vs 2026 DraftKings lines
 ```
 
 `replay.py` honours `NFLMODEL_SRC` (which package to replay) and `PATCH`

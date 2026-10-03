@@ -6,7 +6,10 @@ def test_yardage_has_an_ordered_band_and_prices_a_line():
     assert dist["p10"] < dist["p50"] < dist["p90"]
     assert len(dist["q"]) == len(dist["q_levels"]) == 5
     assert pdist.over_probability(dist, dist["p50"]) == 0.5
-    assert pdist.over_probability(dist, 0.0) == 0.9
+    # Tails: certain to clear zero, and thinning (not flat) past the 90th.
+    assert pdist.over_probability(dist, 0.0) == 1.0
+    beyond = [pdist.over_probability(dist, dist["p90"] + gap) for gap in (0.0, 20.0, 40.0)]
+    assert 0.1 >= beyond[0] > beyond[1] > beyond[2] > 0.0
 
 
 def test_counts_carry_a_pmf_that_sums_to_one():

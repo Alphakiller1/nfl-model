@@ -34,8 +34,8 @@ TOTAL_SIGMA = 12.9
 MIN_SPREAD_GAP = 2.0
 MIN_TOTAL_GAP = 3.0
 MAX_GAP = 14.0            # beyond this the "gap" is a data problem, not a pick
-MIN_PROP_PROBABILITY = 0.55
-MIN_PROP_EDGE = 0.04
+MIN_PROP_PROBABILITY = 0.53   # prop_pricing.MIN_PROBABILITY: below it a pick is a "lean"
+MIN_PROP_EDGE = 0.0
 LIMITS = {"spread": 5, "total": 3, "prop": 6}
 DEFAULT_PRICE = -110
 
@@ -248,6 +248,7 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
     by_name = {normalise(pl.player_name): pl for pl in available}
     games = {(g.home, g.away): g for g in slate.projections}
     research = prop_pricing.research_only()
+    record = prop_pricing.EVIDENCE
     out: list[Pick] = []
     for quote in slate.player_prop_quotes:
         spec = PROP_MARKETS.get(quote.market)
@@ -270,23 +271,23 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
         elif over_imp and under_imp:
             total = over_imp + under_imp
             over_imp, under_imp = over_imp / total, under_imp / total
-        for side, prob, implied, price in (("over", p_over, over_imp, quote.over_price),
-                                           ("under", 1.0 - p_over, under_imp, quote.under_price)):
-            if implied is None or prob < MIN_PROP_PROBABILITY or prob - implied < MIN_PROP_EDGE:
+        # One lean per line, always published: the side the calibrated matrix
+        # price prefers. Below MIN_PROP_PROBABILITY it is tagged a lean.
+        sides = (("over", p_over, over_imp, quote.over_price),
+                 ("under", 1.0 - p_over, under_imp, quote.under_price))
+        for side, prob, implied, price in sides:
+            if implied is None or prob - implied <= MIN_PROP_EDGE or prob < 0.5:
                 continue
             home = player.team if player.home else player.opponent
             away = player.opponent if player.home else player.team
             game = games.get((home, away))
             band = (f" (middle 80%: {dist['p10']:g}-{dist['p90']:g})" if dist else "")
+            raw = priced["raw"] if side == "over" else 1.0 - priced["raw"]
             sentences = [
-                f"Projects {float(mean):.1f} {label}{band} against {quote.line:g}; the "
-                f"line-anchored fair number is {priced['fair']:g}, {prob:.0%} to go {side} "
-                f"versus {implied:.0%} priced in."]
-            if research:
-                sentences.append(
-                    "Research only: priced props have not yet beaten -110 out of sample "
-                    f"({prop_pricing.EVIDENCE['wins']}-"
-                    f"{prop_pricing.EVIDENCE['plays'] - prop_pricing.EVIDENCE['wins']}).")
+                f"Matrix projects {float(mean):.1f} {label}{band} against {quote.line:g}; "
+                f"{prob:.0%} to go {side} after calibrating to the line (the projection's own "
+                f"distribution says {raw:.0%}), versus {implied:.0%} priced in. Fair number "
+                f"{priced['fair']:g}."]
             sentences.append(f"Role: {player.depth_slot or player.position}, "
                              f"{player.role_continuity}; {player.role_reason}.")
             context = player.scheme_context or {}
@@ -309,6 +310,10 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 sentences.append(f"Same-position teammates out: {', '.join(teammates[:3])}.")
             if player.injury_status:
                 sentences.append(f"Note: {player.player_name} is listed {player.injury_status}.")
+            sentences.append(
+                f"Held-out record of these leans: {record['wins']}-"
+                f"{record['plays'] - record['wins']} ({record['hit_rate']:.1%}; break-even "
+                f"{prop_pricing.BREAK_EVEN:.1%}).")
             out.append(Pick(
                 "prop", player.season, player.week, home, away,
                 player.kickoff_utc or (game.kickoff_utc if game else None),
@@ -316,6 +321,7 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 int(price), round(float(mean), 1), quote.line, round(prob - implied, 3),
                 round(prob, 3), " ".join(sentences),
                 (["questionable"] if player.injury_status else [])
+                + (["lean"] if prob < MIN_PROP_PROBABILITY else [])
                 + (["research-only"] if research else []),
                 player=player.player_name, player_id=player.player_id, team=player.team,
                 metric=metric))

@@ -1,53 +1,26 @@
 {
-  "lines": 2003,
-  "coefficients": {
-    "passing": {
-      "w": 0.374,
-      "a": 0.0,
-      "b": 0.239
-    },
-    "receiving": {
-      "w": 0.374,
-      "a": -0.178,
-      "b": 0.036
-    },
-    "rushing": {
-      "w": 0.203,
-      "a": -0.128,
-      "b": 0.028
-    }
+  "calibration": {
+    "s": 0.3,
+    "c": 0.505
+  },
+  "blend_weight": {
+    "passing": 0.422,
+    "receiving": 0.586,
+    "rushing": 0.167
   },
   "evidence": {
-    "weeks": [
-      "2026-1",
-      "2026-2",
-      "2026-3",
-      "2026-4"
-    ],
-    "plays": 489,
-    "wins": 238,
-    "hit_rate": 0.487
+    "lines": 1920,
+    "plays": 838,
+    "wins": 450,
+    "hit_rate": 0.537,
+    "ranked_wins": 688,
+    "ranked_plays": 1256
   },
-  "held_out_brier": 0.2512,
+  "held_out_brier": 0.2499,
   "coin_brier": 0.25,
-  "by_family": {
-    "passing": {
-      "lines": 372,
-      "plays": 67,
-      "hit_rate": 0.522,
-      "brier": 0.25
-    },
-    "receiving": {
-      "lines": 1169,
-      "plays": 292,
-      "hit_rate": 0.503,
-      "brier": 0.2493
-    },
-    "rushing": {
-      "lines": 462,
-      "plays": 130,
-      "hit_rate": 0.431,
-      "brier": 0.257
-    }
-  }
+  "weeks": [
+    "1",
+    "2",
+    "3"
+  ]
 }
