@@ -222,6 +222,10 @@ def role_changes(player_results: list[dict], player_projections: list, *, season
 
 
 def _blocked_by_role(leg_side: str, position: str, metric: str, team_flags: set[str]) -> bool:
+    # A quarterback who is not his team's recent starter, either side: his own
+    # numbers come from a backup's sample (Mariota for Jayden Daniels, week 4).
+    if position == "QB" and "quarterback" in team_flags:
+        return True
     if leg_side != "under":
         return False
     receiving = metric in ("receptions", "receiving_yards", "targets")

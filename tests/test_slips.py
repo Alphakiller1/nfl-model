@@ -46,7 +46,8 @@ def test_a_missing_regular_or_a_new_quarterback_flags_role_expansion():
     assert slips._blocked_by_role("under", "TE", "receptions", flags)
     assert slips._blocked_by_role("under", "RB", "receptions", {"quarterback"})
     assert not slips._blocked_by_role("over", "TE", "receptions", flags)
-    assert not slips._blocked_by_role("under", "QB", "passing_tds", flags)
+    assert slips._blocked_by_role("over", "QB", "passing_tds", flags)    # new starter
+    assert not slips._blocked_by_role("under", "QB", "passing_tds", {"receiver"})
     assert slips._blocked_by_role("under", "QB", "rush_attempts", flags)
 
 
