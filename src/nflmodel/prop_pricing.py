@@ -18,7 +18,8 @@ So a quote is priced in two numbers:
 Coefficients are refit by ``scripts/fit_prop_pricing.py`` (leave-one-week-out)
 and pasted here. ``EVIDENCE`` holds that script's held-out record of the
 probability >= 55% plays. Until it clears the -110 break-even (52.4%) on
-enough plays, every prop pick is labelled research only.
+enough plays, no prop pick is published; lines and prices are still recorded
+in the ledger and graded, so the evidence accumulates.
 """
 
 from __future__ import annotations
@@ -33,14 +34,18 @@ FAMILY = {
 }
 # family -> blend weight w, logistic intercept a, logistic slope b.
 # Fitted 2026-10-03 on 2,003 lines (2026 weeks 1-4) by scripts/fit_prop_pricing.py.
+# The intercept is held at 0. Fitted freely it carried the season's over/under
+# base rate (receiving overs hit 46%) and priced 269 receiving unders and 0
+# overs in week 1: a constant, not a read on any player. Through 50%, the
+# receiving and rushing slopes are ~0, so those families price no plays.
 COEFFICIENTS = {
     "passing": {"w": 0.374, "a": 0.0, "b": 0.239},
-    "receiving": {"w": 0.374, "a": -0.178, "b": 0.036},
-    "rushing": {"w": 0.203, "a": -0.128, "b": 0.028},
+    "receiving": {"w": 0.374, "a": 0.0, "b": -0.008},
+    "rushing": {"w": 0.203, "a": 0.0, "b": 0.016},
 }
 # Held-out (leave-one-week-out) record of plays priced >= MIN_PROBABILITY.
-EVIDENCE = {"weeks": ["2026-1", "2026-2", "2026-3", "2026-4"], "plays": 489, "wins": 238,
-            "hit_rate": 0.487}
+EVIDENCE = {"weeks": ["2026-1", "2026-2", "2026-3", "2026-4"], "plays": 69, "wins": 32,
+            "hit_rate": 0.464}
 MIN_PROBABILITY = 0.55
 BREAK_EVEN = 0.524      # -110 both ways
 MIN_EVIDENCE_PLAYS = 300

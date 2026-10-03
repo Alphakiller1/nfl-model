@@ -248,6 +248,11 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
     by_name = {normalise(pl.player_name): pl for pl in available}
     games = {(g.home, g.away): g for g in slate.projections}
     research = prop_pricing.research_only()
+    if research:
+        # Until a held-out record shows the gap to the line predicts the
+        # result, a published prop pick would be a guess presented as a read.
+        # The ledger still records and grades every line (ledger._prop_lines).
+        return []
     out: list[Pick] = []
     for quote in slate.player_prop_quotes:
         spec = PROP_MARKETS.get(quote.market)
@@ -282,11 +287,6 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 f"Projects {float(mean):.1f} {label}{band} against {quote.line:g}; the "
                 f"line-anchored fair number is {priced['fair']:g}, {prob:.0%} to go {side} "
                 f"versus {implied:.0%} priced in."]
-            if research:
-                sentences.append(
-                    "Research only: priced props have not yet beaten -110 out of sample "
-                    f"({prop_pricing.EVIDENCE['wins']}-"
-                    f"{prop_pricing.EVIDENCE['plays'] - prop_pricing.EVIDENCE['wins']}).")
             sentences.append(f"Role: {player.depth_slot or player.position}, "
                              f"{player.role_continuity}; {player.role_reason}.")
             context = player.scheme_context or {}
@@ -315,8 +315,7 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 f"{player.player_name} {side} {quote.line:g} {label}", side, quote.line,
                 int(price), round(float(mean), 1), quote.line, round(prob - implied, 3),
                 round(prob, 3), " ".join(sentences),
-                (["questionable"] if player.injury_status else [])
-                + (["research-only"] if research else []),
+                ["questionable"] if player.injury_status else [],
                 player=player.player_name, player_id=player.player_id, team=player.team,
                 metric=metric))
     return out

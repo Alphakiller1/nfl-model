@@ -8,13 +8,13 @@
     },
     "receiving": {
       "w": 0.374,
-      "a": -0.178,
-      "b": 0.036
+      "a": 0.0,
+      "b": -0.008
     },
     "rushing": {
       "w": 0.203,
-      "a": -0.128,
-      "b": 0.028
+      "a": 0.0,
+      "b": 0.016
     }
   },
   "evidence": {
@@ -24,30 +24,30 @@
       "2026-3",
       "2026-4"
     ],
-    "plays": 489,
-    "wins": 238,
-    "hit_rate": 0.487
+    "plays": 69,
+    "wins": 32,
+    "hit_rate": 0.464
   },
-  "held_out_brier": 0.2512,
+  "held_out_brier": 0.2503,
   "coin_brier": 0.25,
   "by_family": {
     "passing": {
       "lines": 372,
-      "plays": 67,
-      "hit_rate": 0.522,
-      "brier": 0.25
+      "plays": 52,
+      "hit_rate": 0.538,
+      "brier": 0.2482
     },
     "receiving": {
       "lines": 1169,
-      "plays": 292,
-      "hit_rate": 0.503,
-      "brier": 0.2493
+      "plays": 7,
+      "hit_rate": 0.429,
+      "brier": 0.2504
     },
     "rushing": {
       "lines": 462,
-      "plays": 130,
-      "hit_rate": 0.431,
-      "brier": 0.257
+      "plays": 10,
+      "hit_rate": 0.1,
+      "brier": 0.2516
     }
   }
 }
