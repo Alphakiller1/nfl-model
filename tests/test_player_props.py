@@ -10,7 +10,7 @@ def _roster(player_id, name, position, team="NE", status="ACT"):
     return {
         "season": "2026", "week": "1", "team": team, "position": position,
         "status": status, "full_name": name, "gsis_id": player_id,
-        "headshot_url": "",
+        "pfr_id": f"pfr-{player_id}", "headshot_url": "",
     }
 
 
@@ -36,8 +36,7 @@ def _history(player_id, name, position, team, week, **stats):
     return row
 
 
-@pytest.fixture
-def player_build():
+def _build(*, book_margin=3.0, book_total=45.0, snap_rows=None):
     roster = [
         _roster("qb", "Current QB", "QB"),
         _roster("rb", "Current RB", "RB"),
@@ -79,9 +78,17 @@ def player_build():
             _history("k", "Current K", "K", "NE", week, fg_att=2,
                      fg_made=1.7, pat_made=2.2),
         ])
+        # The rest of a league, so league means are not one team's volume.
+        for club in ("PHI", "SEA"):
+            history.extend([
+                _history(f"{club}-qb", "Other QB", "QB", club, week, attempts=33,
+                         completions=21, passing_yards=230, carries=3, rushing_yards=12),
+                _history(f"{club}-rb", "Other RB", "RB", club, week, carries=22,
+                         rushing_yards=95, targets=4, receptions=3, receiving_yards=20),
+            ])
     game = SimpleNamespace(
         home="NE", away="SEA", kickoff="Sun Sep 13", kickoff_utc="2026-09-13T17:00:00Z",
-        book_total=45.0, book_margin=3.0, model_margin=2.0,
+        book_total=book_total, book_margin=book_margin, model_margin=2.0,
         projected_home_score=24.0, projected_away_score=21.0,
     )
     scheme_matchup = SimpleNamespace(
@@ -104,7 +111,13 @@ def player_build():
         injuries=[{"team": "NE", "gsis_id": "out", "report_status": "Out"}],
         history_rows=history,
         scheme_matchups={("NE", "SEA"): scheme_matchup},
+        snap_rows=snap_rows,
     )
+
+
+@pytest.fixture
+def player_build():
+    return _build()
 
 
 def test_only_active_supported_positions_and_non_out_players_are_projected(player_build):
@@ -129,19 +142,58 @@ def test_current_role_changes_discount_history_instead_of_copying_it(player_buil
 def test_player_opportunities_reconcile_to_one_team_pool(player_build):
     players = player_build.projections
     quarterback = next(row for row in players if row.position == "QB")
-    # Shares reconcile before the depth-slot active rate is applied; afterwards
-    # each player's targets are an expectation that includes not recording one.
-    targets = sum(
-        row.metrics.get("targets", 0.0)
-        / player_props.ACTIVE_RATE.get((row.position, row.depth_rank), 1.0)
-        for row in players
-    )
-    # Targetable attempts exclude throwaways while QB attempts include them.
-    assert targets <= quarterback.metrics["pass_attempts"] * 1.04
-    assert targets >= quarterback.metrics["pass_attempts"] * 0.80
+    targets = sum(row.metrics.get("targets", 0.0) for row in players)
+    # Targetable attempts exclude throwaways and the reserve for players off
+    # the projected depth slots; QB attempts include them.
+    assert targets <= quarterback.metrics["pass_attempts"] / player_props.QB_ATTEMPT_SHARE
+    assert targets >= quarterback.metrics["pass_attempts"] * 0.75
     assert all(value >= 0 for row in players for value in row.metrics.values())
     assert all(row.scheme_context["model_version"] == "test-scheme/1" for row in players)
     assert all("scheme matrix" in row.team_environment_source for row in players)
+
+
+def test_an_unlikely_active_slot_hands_its_volume_to_teammates(monkeypatch):
+    def totals(build):
+        rows = build.projections
+        return (sum(r.metrics.get("targets", 0.0) for r in rows),
+                sum(r.metrics.get("carries", 0.0) for r in rows))
+
+    with_rate = totals(_build())
+    monkeypatch.setattr(player_props, "ACTIVE_RATE", {})
+    without = totals(_build())
+    # ACTIVE_RATE moves volume between players; it no longer deletes it.
+    assert with_rate == pytest.approx(without, abs=0.05)  # metrics round to 0.01
+
+
+def test_the_spread_moves_carries_and_the_total_moves_passes():
+    def volume(build):
+        rows = build.projections
+        qb = next(r for r in rows if r.position == "QB")
+        return qb.metrics["pass_attempts"], sum(r.metrics.get("carries", 0.0) for r in rows)
+
+    base_pass, base_carries = volume(_build(book_margin=0.0))
+    fav_pass, fav_carries = volume(_build(book_margin=10.0))
+    assert fav_carries > base_carries + 0.5
+    assert abs(fav_pass - base_pass) < 0.3
+    high_pass, _ = volume(_build(book_margin=0.0, book_total=55.0))
+    assert high_pass > base_pass + 1.0
+
+
+def test_a_rising_snap_share_raises_a_players_share():
+    def snaps(last_pct):
+        rows = []
+        for week in range(10, 18):
+            pct = last_pct if week == 17 else 0.6
+            rows.append({"season": "2025", "week": str(week), "game_type": "REG",
+                         "team": "NE", "pfr_player_id": "pfr-te", "offense_pct": str(pct)})
+        return rows
+
+    def te_targets(build):
+        te = next(r for r in build.projections if r.player_name == "Current TE")
+        return te.metrics["targets"]
+
+    assert te_targets(_build(snap_rows=snaps(0.95))) > te_targets(_build(snap_rows=snaps(0.6)))
+    assert te_targets(_build(snap_rows=snaps(0.3))) < te_targets(_build(snap_rows=snaps(0.6)))
 
 
 def test_projection_contract_never_invents_a_player_line_or_edge(slate, player_build):

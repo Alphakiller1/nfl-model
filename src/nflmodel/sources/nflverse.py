@@ -67,6 +67,10 @@ PARTICIPATION_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "pbp_participation/pbp_participation_{season}.csv"
 )
+SNAP_COUNTS_URL = (
+    "https://github.com/nflverse/nflverse-data/releases/download/"
+    "snap_counts/snap_counts_{season}.csv"
+)
 FTN_CHARTING_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
     "ftn_charting/ftn_charting_{season}.csv"
@@ -564,6 +568,23 @@ def team_week(season: int, *, completed_season: bool | None = None) -> list[dict
         return fetch_csv(
             TEAM_WEEK_URL.format(season=season),
             f"stats_team_week_{season}.csv",
+            ttl=None if completed_season else VOLATILE_TTL,
+        )
+    except NflverseError:
+        return []
+
+
+def snap_counts(season: int, *, completed_season: bool | None = None) -> list[dict]:
+    """Offensive snap counts per player-game (PFR ids; join via roster pfr_id).
+
+    Optional context for the projection layer: an absent file is an empty list.
+    """
+    if completed_season is None:
+        completed_season = season < current_season()
+    try:
+        return fetch_csv(
+            SNAP_COUNTS_URL.format(season=season),
+            f"snap_counts_{season}.csv",
             ttl=None if completed_season else VOLATILE_TTL,
         )
     except NflverseError:

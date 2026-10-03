@@ -23,21 +23,65 @@ from dataclasses import dataclass, field
 from . import teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/1.2.0"
+MODEL_VERSION = "nfl-player-projections/2.0.0"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 # Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
 # target or catch: nflverse 2025 depth charts snapped before each week's first
-# kickoff, joined to weekly stats (~550 player-weeks per slot). Applied to the
-# 2026 shadow ledger out of sample it cut MAE 6.6% on receiving yards, 6.4% on
-# receptions, 6.3% on targets, 8.5% on rushing yards and 5.8% on carries; the
-# anytime-TD Brier was unchanged, so it is not applied there.
+# kickoff, joined to weekly stats (~550 player-weeks per slot). It now scales a
+# player's claim on the pool *before* the pool is divided, so the volume a
+# likely inactive slot gives up goes to his teammates instead of vanishing
+# (applied after the split it removed ~3 carries a game from every backfield).
 ACTIVE_RATE = {
     ("RB", 1): 0.923, ("RB", 2): 0.872, ("RB", 3): 0.468,
     ("WR", 1): 0.901, ("WR", 2): 0.884, ("WR", 3): 0.829, ("WR", 4): 0.638,
     ("TE", 1): 0.891, ("TE", 2): 0.686,
 }
+# Efficiency rates (yards per target, TD rate, ...) keep a long memory; they are
+# mostly noise and are shrunk hard (RATE_PRIORS). Usage shares move faster:
+# a 6-week half-life minimised next-game share error on 2023-2025 pbp.
 HALF_LIFE_WEEKS = 12.0
+USAGE_HALF_LIFE_WEEKS = 6.0
+# Weighted same-team games at which observed usage and the depth-slot prior
+# carry equal weight. Fitted on the 2025 point-in-time replay.
+USAGE_PSEUDO_GAMES = 1.0
+
+# Team volume (reports/PROPS_MODEL.md, part A). Team tendencies shift quickly: a
+# 4-week half-life with a prior of last season's deviation regressed toward the
+# league beat every longer memory on 2022-2025. Defensive "allowed" volume is
+# 3-4x noisier than offensive volume, hence its heavier prior.
+TEAM_HALF_LIFE_WEEKS = 4.0
+TEAM_PRIOR = {  # (pseudo games, share of last season's deviation carried over)
+    ("offense", "attempts"): (4.0, 0.5),
+    ("offense", "carries"): (6.0, 0.3),
+    ("defense", "attempts"): (10.0, 0.3),
+    ("defense", "carries"): (10.0, 0.3),
+}
+# Deviation-form OLS on 2022-2025 team-games (pass attempts excl. sacks;
+# designed runs). Favourites run more plays at a lower dropback rate and the two
+# cancel, so the spread moves runs, not passes; the total moves passes.
+VOLUME_MODEL = {
+    "attempts": {"offense": 0.905, "defense": 0.585, "spread": 0.021, "total": 0.175},
+    "carries": {"offense": 0.924, "defense": 0.738, "spread": 0.103, "total": -0.102},
+}
+LEAGUE_TOTAL = 44.5
+# Team targets go to position groups first, then to players inside the group,
+# so an absent WR's targets go mostly to the other WRs (part B3). Each group
+# also keeps a reserve for players outside the projected depth slots (WR5,
+# TE3, FB, gadget), measured on the 2025 replay.
+GROUP_TARGET_SHARE = {"WR": 0.576, "TE": 0.240, "RB": 0.180}
+GROUP_PSEUDO_GAMES = 6.0
+GROUP_RESERVE = {"WR": 0.076, "TE": 0.128, "RB": 0.045}
+CARRY_RESERVE = 0.035
+# Snap trend: observed share x (last game snap % / weighted snap %) ** beta.
+# Fitted on 2021-2024, scored on 2025: share MAE -0.5% to -1.7% (part B2).
+SNAP_TREND_BETA = {"targets": 0.3, "carries": 0.4}
+# WR and TE compete for one pool (on the 2025 replay a separate pool for each
+# lost to a shared one); backs keep their own, which won for RB targets and TDs.
+TARGET_GROUPS = (("WR", "TE"), ("RB",))
+# The depth-chart starter's share of team pass attempts (2025 replay: 0.954);
+# injuries, benchings and garbage-time backups take the rest.
+QB_ATTEMPT_SHARE = 0.954
 
 # Forward role priors by present-day depth rank.  These are starting points,
 # not fixed allocations: established same-team usage can move them materially,
@@ -49,18 +93,25 @@ TARGET_PRIORS = {
 }
 CARRY_PRIORS = {"RB": (0.540, 0.270, 0.120)}
 
+# (league mean, pseudo-count in opportunities). Quarterback pseudo-counts come
+# from split-half reliability on 2021-2025 pbp, k = n_half * (1 - r) / r: the
+# attempts at which a passer's own rate earns half weight. Interception rate has
+# no repeatable signal (r = -0.03). The same estimate for receivers and backs
+# (k ~ 120-570) lost to these lighter priors on the 2025 replay, because a
+# multi-season weighted history carries more talent signal than one season's
+# split halves, so the skill-position values stay where they were.
 RATE_PRIORS = {
-    "completion": (0.645, 75.0),
-    "pass_yards": (7.10, 75.0),
-    "pass_td": (0.046, 90.0),
-    "interception": (0.023, 100.0),
+    "completion": (0.645, 440.0),
+    "pass_yards": (6.95, 190.0),
+    "pass_td": (0.044, 540.0),
+    "interception": (0.023, 5000.0),
     "rush_yards_qb": (4.80, 24.0),
     "rush_yards_rb": (4.30, 45.0),
     "catch_rb": (0.735, 28.0),
-    "catch_wr": (0.645, 34.0),
+    "catch_wr": (0.625, 34.0),
     "catch_te": (0.675, 30.0),
     "receive_yards_rb": (6.20, 30.0),
-    "receive_yards_wr": (8.10, 38.0),
+    "receive_yards_wr": (7.90, 38.0),
     "receive_yards_te": (7.40, 34.0),
     "rush_td_qb": (0.012, 45.0),
     "rush_td_rb": (0.026, 55.0),
@@ -68,6 +119,15 @@ RATE_PRIORS = {
     "receive_td_wr": (0.028, 55.0),
     "receive_td_te": (0.031, 50.0),
 }
+# A receiver's depth of target (aDOT) is far more stable than his yards per
+# target (split-half k = 22 targets vs ~120), so the prior his efficiency is
+# shrunk toward is read off his aDOT: weighted fits on 2021-2025 seasons.
+ADOT_PRIOR = {  # position: (league aDOT, ypt intercept, ypt slope, catch intercept, catch slope)
+    "WR": (10.66, 6.08, 0.170, 0.807, -0.0172),
+    "TE": (6.80, 5.633, 0.273, 0.810, -0.0145),
+    "RB": (0.10, 5.824, 0.228, 0.787, -0.0163),
+}
+ADOT_PSEUDO_TARGETS = 22.0
 
 
 @dataclass(frozen=True)
@@ -111,7 +171,8 @@ class BuildResult:
 
 @dataclass
 class _History:
-    rows: list[tuple[dict, float]] = field(default_factory=list)
+    # (stat row, efficiency weight, usage weight)
+    rows: list[tuple[dict, float, float]] = field(default_factory=list)
     games: set[tuple[int, int]] = field(default_factory=set)
     last_team: str | None = None
     last_order: int = -1
@@ -124,6 +185,13 @@ def _value(row: dict, field: str) -> float:
 def _position(value: str) -> str:
     pos = str(value or "").strip().upper()
     return "K" if pos in {"K", "PK"} else pos
+
+
+def _target_group(value: str) -> str | None:
+    pos = str(value or "").strip().upper()
+    if pos == "FB":
+        return "RB"
+    return pos if pos in GROUP_TARGET_SHARE else None
 
 
 def _name_key(value: str) -> str:
@@ -166,6 +234,9 @@ def _history_index(
             "rush_yards": 0.0,
             "targets": 0.0,
             "receive_yards": 0.0,
+            "targets_WR": 0.0,
+            "targets_TE": 0.0,
+            "targets_RB": 0.0,
         }
     )
     for row in rows:
@@ -185,14 +256,18 @@ def _history_index(
         team_games[game_key]["rush_yards"] += _value(row, "rushing_yards")
         team_games[game_key]["targets"] += _value(row, "targets")
         team_games[game_key]["receive_yards"] += _value(row, "receiving_yards")
+        group = _target_group(row.get("position") or "")
+        if group:
+            team_games[game_key][f"targets_{group}"] += _value(row, "targets")
 
         player_id = str(row.get("player_id") or "").strip()
         if not player_id or _position(row.get("position") or "") not in POSITIONS:
             continue
         age = target - _order(row_season, row_week)
-        weight = 0.5 ** (age / HALF_LIFE_WEEKS)
         item = history.setdefault(player_id, _History())
-        item.rows.append((row, weight))
+        item.rows.append((
+            row, 0.5 ** (age / HALF_LIFE_WEEKS), 0.5 ** (age / USAGE_HALF_LIFE_WEEKS)
+        ))
         item.games.add((row_season, row_week))
         row_order = _order(row_season, row_week)
         if row_order > item.last_order:
@@ -263,9 +338,8 @@ def _team_environment(
         return (acc[metric] + pseudo * league_mean[metric]) / (weight + pseudo)
 
     team_mean = {metric: shrunk(offense, offense_weight, metric, 6.0) for metric in fallback}
-    allowed = {metric: shrunk(defense, defense_weight, metric, 8.0) for metric in fallback}
-    attempts = 0.58 * team_mean["attempts"] + 0.42 * allowed["attempts"]
-    carries = 0.58 * team_mean["carries"] + 0.42 * allowed["carries"]
+    # Efficiency allowed by a defence is mostly noise (split-half k ~ 35 games).
+    allowed = {metric: shrunk(defense, defense_weight, metric, 20.0) for metric in fallback}
     target_rate = _clamp(
         (0.6 * team_mean["targets"] + 0.4 * allowed["targets"])
         / max(1.0, 0.6 * team_mean["attempts"] + 0.4 * allowed["attempts"]),
@@ -289,24 +363,53 @@ def _team_environment(
     book_margin = getattr(game, "book_margin", None)
     if book_total is not None and book_margin is not None:
         team_margin = float(book_margin if home else -book_margin)
-        implied = (float(book_total) + team_margin) / 2.0
+        game_total = float(book_total)
+        implied = (game_total + team_margin) / 2.0
         source = "DraftKings game total and spread"
     else:
         team_margin = float(getattr(game, "model_margin", 0.0) or 0.0)
         if not home:
             team_margin = -team_margin
+        game_total = getattr(game, "projected_total", None)
+        game_total = LEAGUE_TOTAL if game_total is None else float(game_total)
         implied = (getattr(game, "projected_home_score", None) if home
                    else getattr(game, "projected_away_score", None))
         source = "independent team model"
 
-    # Leading teams run more and throw less.  The adjustment is deliberately
-    # modest; point spread is a game-script prior, not permission to erase a
-    # team's established identity.
-    attempts = _clamp(attempts - 0.16 * team_margin, 25.0, 44.0)
-    carries = _clamp(carries + 0.13 * team_margin, 19.0, 35.0)
+    # Game script. Measured on 2022-2025, a favourite runs ~0.14 more plays per
+    # point of spread at a lower dropback rate; the two cancel for passes, so
+    # the spread moves carries and the total moves pass attempts.
+    volume = {}
+    for metric in ("attempts", "carries"):
+        coef = VOLUME_MODEL[metric]
+        base = league_mean[metric]
+        volume[metric] = (
+            base
+            + coef["offense"] * (_team_prior(team_games, season, week, team, metric,
+                                             "offense", base, opponent_by_game) - base)
+            + coef["defense"] * (_team_prior(team_games, season, week, opponent, metric,
+                                             "defense", base, opponent_by_game) - base)
+            + coef["spread"] * team_margin
+            + coef["total"] * (game_total - LEAGUE_TOTAL)
+        )
+    attempts = _clamp(volume["attempts"], 25.0, 44.0)
+    carries = _clamp(volume["carries"], 19.0, 35.0)
+    groups = {}
+    for group, league_share in GROUP_TARGET_SHARE.items():
+        observed = weight = 0.0
+        for (row_season, row_week, row_team), totals in team_games.items():
+            if row_team != team or totals["targets"] <= 0:
+                continue
+            w = 0.5 ** ((target - _order(row_season, row_week)) / USAGE_HALF_LIFE_WEEKS)
+            observed += w * totals[f"targets_{group}"] / totals["targets"]
+            weight += w
+        groups[group] = (observed + GROUP_PSEUDO_GAMES * league_share) / (
+            weight + GROUP_PSEUDO_GAMES)
+    group_total = sum(groups.values()) or 1.0
     return {
         "attempts": attempts,
         "carries": carries,
+        "group_target_share": {g: v / group_total for g, v in groups.items()},
         "targets": attempts * target_rate,
         "pass_yards_per_attempt_delta": _clamp(pass_delta, -1.2, 1.2),
         "rush_yards_per_carry_delta": _clamp(rush_delta, -0.8, 0.8),
@@ -314,6 +417,41 @@ def _team_environment(
         "implied_points": float(implied) if implied is not None else None,
         "source": source,
     }
+
+
+def _team_prior(
+    team_games: dict[tuple[int, int, str], dict[str, float]],
+    season: int,
+    week: int,
+    team: str,
+    metric: str,
+    side: str,
+    league: float,
+    opponent_by_game: dict[tuple[int, int, str], str],
+) -> float:
+    """A team's per-game volume (offense) or volume allowed (defense).
+
+    This season's games, weighted with a TEAM_HALF_LIFE_WEEKS half-life, are
+    shrunk toward a prior of last season's deviation from the league, of which
+    only TEAM_PRIOR's carry-over share survives the offseason.
+    """
+    pseudo, carry = TEAM_PRIOR[(side, metric)]
+    current = weight = 0.0
+    last_total = last_games = 0.0
+    for key, totals in team_games.items():
+        row_season, row_week, row_team = key
+        owner = row_team if side == "offense" else opponent_by_game.get(key)
+        if owner != team:
+            continue
+        if row_season == season and row_week < week:
+            w = 0.5 ** ((week - row_week) / TEAM_HALF_LIFE_WEEKS)
+            current += w * totals[metric]
+            weight += w
+        elif row_season == season - 1:
+            last_total += totals[metric]
+            last_games += 1
+    prior = league if not last_games else league + carry * (last_total / last_games - league)
+    return (current + pseudo * prior) / (weight + pseudo)
 
 
 def _continuity(item: _History | None, current_team: str) -> tuple[str, float, str]:
@@ -334,11 +472,95 @@ def _continuity(item: _History | None, current_team: str) -> tuple[str, float, s
 
 
 def _weighted_sum(item: _History | None, field: str) -> float:
-    return 0.0 if item is None else sum(_value(row, field) * weight for row, weight in item.rows)
+    return 0.0 if item is None else sum(_value(row, field) * weight for row, weight, _ in item.rows)
 
 
 def _weighted_games(item: _History | None) -> float:
-    return 0.0 if item is None else sum(weight for _, weight in item.rows)
+    return 0.0 if item is None else sum(weight for _, weight, _ in item.rows)
+
+
+def _usage_games(item: _History | None, team: str) -> float:
+    """Usage-weighted games played for ``team`` (the evidence behind a share)."""
+    if item is None:
+        return 0.0
+    return sum(w for row, _, w in item.rows if teams.canonical(row.get("team") or "") == team)
+
+
+def _league_passing(histories: dict[str, _History]) -> dict[str, tuple[float, float]]:
+    """QB rate priors centred on the recency-weighted league, not a constant.
+
+    The pseudo-counts are large (a passer's own rate needs ~190-540 attempts
+    to earn half weight), so the centre matters: a fixed 6.95 yards per
+    attempt sat 0.1-0.2 below every season since 2023 and cost a starter ~5
+    yards a game.
+    """
+    sums = defaultdict(float)
+    for item in histories.values():
+        for row, weight, _ in item.rows:
+            if _position(row.get("position") or "") != "QB":
+                continue
+            for stat in ("attempts", "completions", "passing_yards", "passing_tds",
+                          "passing_interceptions"):
+                sums[stat] += weight * _value(row, stat)
+    attempts = sums["attempts"]
+    if attempts < 500:
+        return {key: RATE_PRIORS[key] for key in
+                ("completion", "pass_yards", "pass_td", "interception")}
+    return {
+        "completion": (sums["completions"] / attempts, RATE_PRIORS["completion"][1]),
+        "pass_yards": (sums["passing_yards"] / attempts, RATE_PRIORS["pass_yards"][1]),
+        "pass_td": (sums["passing_tds"] / attempts, RATE_PRIORS["pass_td"][1]),
+        "interception": (sums["passing_interceptions"] / attempts,
+                         RATE_PRIORS["interception"][1]),
+    }
+
+
+def _receiver_rates(item: _History | None, position: str) -> tuple[float, float]:
+    """(catch rate, yards per target), each shrunk toward a prior read off the
+    player's own shrunk aDOT rather than toward a flat positional mean."""
+    league_adot, ypt_a, ypt_b, catch_a, catch_b = ADOT_PRIOR[position]
+    targets = _weighted_sum(item, "targets")
+    adot = (_weighted_sum(item, "receiving_air_yards") + ADOT_PSEUDO_TARGETS * league_adot) / (
+        targets + ADOT_PSEUDO_TARGETS)
+    key = position.lower()
+    catch = _bayes(_weighted_sum(item, "receptions"), targets,
+                   (_clamp(catch_a + catch_b * adot, 0.45, 0.90), RATE_PRIORS[f"catch_{key}"][1]))
+    ypt = _bayes(_weighted_sum(item, "receiving_yards"), targets,
+                 (_clamp(ypt_a + ypt_b * adot, 4.0, 12.0), RATE_PRIORS[f"receive_yards_{key}"][1]))
+    return catch, ypt
+
+
+def _snap_trends(
+    snap_rows: list[dict], roster: list[dict], *, season: int, week: int
+) -> dict[tuple[str, str], float]:
+    """(team, gsis id) -> last same-team game snap % over its usage-weighted mean.
+
+    A player whose snaps just rose (role change, teammate hurt) is about to see
+    more volume than his trailing share says; one whose snaps fell, less.
+    """
+    pfr_to_gsis = {
+        str(row.get("pfr_id") or "").strip(): str(row.get("gsis_id") or "").strip()
+        for row in roster if row.get("pfr_id") and row.get("gsis_id")
+    }
+    target = _order(season, week)
+    games: dict[tuple[str, str], list[tuple[int, float]]] = defaultdict(list)
+    for row in snap_rows:
+        if str(row.get("game_type") or "REG").upper() != "REG":
+            continue
+        gsis = pfr_to_gsis.get(str(row.get("pfr_player_id") or "").strip())
+        order = _order(int(number(row.get("season")) or 0), int(number(row.get("week")) or 0))
+        pct = number(row.get("offense_pct"))
+        if not gsis or pct is None or order >= target:
+            continue
+        games[(teams.canonical(row.get("team") or ""), gsis)].append((order, float(pct)))
+    trends = {}
+    for key, rows in games.items():
+        rows.sort()
+        weights = [0.5 ** ((target - order) / USAGE_HALF_LIFE_WEEKS) for order, _ in rows]
+        mean = sum(w * pct for w, (_, pct) in zip(weights, rows)) / sum(weights)
+        if mean > 0.05:
+            trends[key] = _clamp(max(rows[-1][1], 0.02) / mean, 0.25, 4.0)
+    return trends
 
 
 def _share(
@@ -351,7 +573,7 @@ def _share(
         return None
     weighted = 0.0
     weight_sum = 0.0
-    for row, weight in item.rows:
+    for row, _, weight in item.rows:
         key = (
             int(number(row.get("season")) or 0),
             int(number(row.get("week")) or 0),
@@ -455,9 +677,12 @@ def project(
     injuries: list[dict] | None = None,
     history_rows: list[dict],
     scheme_matchups: dict[tuple[str, str], object] | None = None,
+    snap_rows: list[dict] | None = None,
 ) -> BuildResult:
     """Project QB/RB/WR/TE/K output for one slate."""
+    snap_trend = _snap_trends(snap_rows or [], roster, season=season, week=week)
     histories, team_games = _history_index(history_rows, season=season, week=week)
+    passing_priors = _league_passing(histories)
     current = _active_depth(roster, depth, injuries or [])
     active_teams = {teams.canonical(row.get("home_team") or "") for row in games}
     active_teams |= {teams.canonical(row.get("away_team") or "") for row in games}
@@ -539,36 +764,64 @@ def project(
                 role_rows.append(player)
 
             # Target allocation is one constrained pool across RB/WR/TE.
-            receivers = [row for row in role_rows if row["position"] in TARGET_PRIORS]
-            target_scores: dict[str, float] = {}
-            for player in receivers:
-                prior = _prior(TARGET_PRIORS[player["position"]], player["depth_rank"])
-                observed = _share(player["history"], "targets", "targets", team_games)
-                persistence = player["persistence"]
-                target_scores[player["player_id"]] = (
-                    prior
-                    if observed is None
-                    else persistence * observed + (1 - persistence) * prior
-                )
-                if scheme_matchup is not None:
-                    target_scores[player["player_id"]] *= float(
-                        scheme_matchup.target_multipliers.get(player["position"], 1.0)
-                    )
-            target_scale = float(environment["targets"]) / max(
-                sum(target_scores.values()), 0.01
-            )
+            # Observed usage earns weight with same-team evidence; usage from
+            # another team keeps the fixed transfer discount.
+            for player in role_rows:
+                if player["continuity"] == "same team":
+                    evidence = _usage_games(player["history"], team)
+                    player["usage_weight"] = evidence / (evidence + USAGE_PSEUDO_GAMES)
+                else:
+                    player["usage_weight"] = player["persistence"]
+
+            def claim(player: dict, priors: dict, field: str) -> float:
+                prior = _prior(priors[player["position"]], player["depth_rank"])
+                observed = _share(player["history"], field, field, team_games)
+                trend = snap_trend.get((team, player["player_id"]))
+                if observed is not None and trend is not None:
+                    observed *= trend ** SNAP_TREND_BETA[field]
+                weight = player["usage_weight"]
+                score = prior if observed is None else weight * observed + (1 - weight) * prior
+                # A slot that often records nothing gives up its claim to
+                # teammates rather than to nobody (see ACTIVE_RATE).
+                return score * ACTIVE_RATE.get(
+                    (player["position"], int(player["depth_rank"])), 1.0)
+
+            # Targets: team -> pool (WR+TE, RB) -> player, so an absent back's
+            # targets stay with the backfield (reports/PROPS_MODEL.md, B3).
+            target_counts: dict[str, float] = {}
+            group_share = dict(environment["group_target_share"])
+            if scheme_matchup is not None:
+                # The scheme matrix's position-level response sizes the pools
+                # here and splits WR from TE inside the shared pool below.
+                for group in group_share:
+                    group_share[group] *= float(
+                        scheme_matchup.target_multipliers.get(group, 1.0))
+                scale = sum(group_share.values()) or 1.0
+                group_share = {g: v / scale for g, v in group_share.items()}
+            pools = []
+            for positions in TARGET_GROUPS:
+                share = sum(group_share[pos] for pos in positions)
+                reserve = sum(group_share[pos] * GROUP_RESERVE[pos] for pos in positions)
+                pools.append((
+                    [row for row in role_rows if row["position"] in positions],
+                    float(environment["targets"]) * (share - reserve),
+                    scheme_matchup.target_multipliers if scheme_matchup else {},
+                ))
+            for members, pool, multipliers in pools:
+                scores = {
+                    player["player_id"]: claim(player, TARGET_PRIORS, "targets")
+                    * float(multipliers.get(player["position"], 1.0))
+                    for player in members
+                }
+                total_score = sum(scores.values())
+                for player_id, score in scores.items():
+                    target_counts[player_id] = pool * score / max(total_score, 0.01)
 
             backs = [row for row in role_rows if row["position"] == "RB"]
-            carry_scores: dict[str, float] = {}
-            for player in backs:
-                prior = _prior(CARRY_PRIORS["RB"], player["depth_rank"])
-                observed = _share(player["history"], "carries", "carries", team_games)
-                persistence = player["persistence"]
-                carry_scores[player["player_id"]] = (
-                    prior
-                    if observed is None
-                    else persistence * observed + (1 - persistence) * prior
-                )
+            carry_scores: dict[str, float] = {
+                player["player_id"]: claim(player, CARRY_PRIORS, "carries")
+                for player in backs
+            }
             quarterback = next(
                 (row for row in role_rows if row["position"] == "QB"), None
             )
@@ -584,7 +837,7 @@ def project(
             team_carries = float(environment["carries"])
             backfield_pool = max(
                 team_carries * 0.55,
-                team_carries - quarterback_carries - team_carries * 0.04,
+                team_carries - quarterback_carries - team_carries * CARRY_RESERVE,
             )
             carry_scale = backfield_pool / max(sum(carry_scores.values()), 0.01)
 
@@ -594,15 +847,15 @@ def project(
                 weighted_games = _weighted_games(item)
                 metrics: dict[str, float] = {}
                 if position == "QB":
-                    attempts = float(environment["attempts"]) * 0.97
+                    attempts = float(environment["attempts"]) * QB_ATTEMPT_SHARE
                     hist_attempts = _weighted_sum(item, "attempts")
                     completions = _bayes(
                         _weighted_sum(item, "completions"), hist_attempts,
-                        RATE_PRIORS["completion"],
+                        passing_priors["completion"],
                     ) * attempts
                     passing_yards = _bayes(
                         _weighted_sum(item, "passing_yards"), hist_attempts,
-                        RATE_PRIORS["pass_yards"],
+                        passing_priors["pass_yards"],
                     )
                     passing_yards += 0.45 * float(
                         environment["pass_yards_per_attempt_delta"]
@@ -610,7 +863,7 @@ def project(
                     passing_yards *= attempts
                     passing_tds = _bayes(
                         _weighted_sum(item, "passing_tds"), hist_attempts,
-                        RATE_PRIORS["pass_td"],
+                        passing_priors["pass_td"],
                     ) * attempts
                     passing_tds *= _clamp(
                         float(environment["implied_points"] or 22.5) / 22.5,
@@ -619,7 +872,7 @@ def project(
                     )
                     interceptions = _bayes(
                         _weighted_sum(item, "passing_interceptions"), hist_attempts,
-                        RATE_PRIORS["interception"],
+                        passing_priors["interception"],
                     ) * attempts
                     rush_attempts = quarterback_carries
                     rush_yards = _bayes(
@@ -641,17 +894,8 @@ def project(
                         "rushing_yards": rush_yards,
                     }
                 elif position in {"RB", "WR", "TE"}:
-                    targets = target_scores[player["player_id"]] * target_scale
-                    catch = _bayes(
-                        _weighted_sum(item, "receptions"),
-                        _weighted_sum(item, "targets"),
-                        RATE_PRIORS[f"catch_{position.lower()}"],
-                    )
-                    ypt = _bayes(
-                        _weighted_sum(item, "receiving_yards"),
-                        _weighted_sum(item, "targets"),
-                        RATE_PRIORS[f"receive_yards_{position.lower()}"],
-                    )
+                    targets = target_counts[player["player_id"]]
+                    catch, ypt = _receiver_rates(item, position)
                     ypt += 0.40 * float(environment["receive_yards_per_target_delta"])
                     metrics = {
                         "targets": targets,
@@ -688,15 +932,6 @@ def project(
                     metrics["anytime_td_probability"] = _clamp(
                         1.0 - math.exp(-touchdown_lambda), 0.01, 0.82
                     )
-                    # Usage shares describe the games a player plays in; deep
-                    # depth slots often record nothing. Scale volume (not the TD
-                    # probability, which already held calibration) by the slot's
-                    # measured chance of recording a stat. See ACTIVE_RATE.
-                    rate = ACTIVE_RATE.get((position, int(player["depth_rank"])), 1.0)
-                    for volume in ("targets", "receptions", "receiving_yards",
-                                   "carries", "rushing_yards"):
-                        if volume in metrics:
-                            metrics[volume] *= rate
                 else:  # K
                     implied = float(environment["implied_points"] or 22.5)
                     observed_fg_attempts = (
