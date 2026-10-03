@@ -226,3 +226,30 @@ def test_old_duplicate_rows_are_compacted_to_the_latest(tmp_path):
     payload = ledger.update(season=2026, projections=[], schedule=[], path=path,
                             recorded_at=now + timedelta(hours=1))
     assert [r["snapshot_id"] for r in payload["player_snapshots"]] == ["x4"]
+
+
+def test_player_rows_store_the_line_and_grade_against_it(tmp_path):
+    from nflmodel.sources.oddsapi import PlayerPropQuote
+
+    now = datetime(2026, 9, 2, 13, tzinfo=timezone.utc)
+    player = _test_player(now)
+    quote = PlayerPropQuote("e1", "KC", "BUF", "player_pass_yds", "T. QB", 240.5, -110, -110,
+                            "draftkings", "DraftKings (via ESPN)", None, player_id="qb-1",
+                            open_line=236.5, priced=False)
+    path = tmp_path / "ledger.json"
+    first = ledger.update(season=2026, projections=[], player_projections=[player],
+                          prop_quotes=[quote], schedule=[], path=path, recorded_at=now)
+    stored = first["player_snapshots"][0]["prop_lines"]["passing_yards"]
+    assert stored["line"] == 240.5 and stored["open"] == 236.5
+    assert stored["over_price"] is None                       # ESPN: line, no price
+    assert stored["priced"]["p_over"] > 0.5                   # projects 250 vs 240.5
+    stats = [{"season": 2026, "week": 1, "team": "KC", "player_id": "qb-1",
+              "attempts": 36, "passing_yards": 270}]
+    second = ledger.update(season=2026, projections=[], player_projections=[],
+                           player_results=stats, schedule=FINAL, path=path,
+                           recorded_at=now + timedelta(days=3))
+    graded = second["player_snapshots"][0]["line_results"]["passing_yards"]
+    assert graded["result"] == "over" and graded["model_side"] == "over"
+    vs_line = second["summary"]["players"]["vs_line"]["passing"]
+    assert vs_line["lines"] == 1 and vs_line["model_side_hit_rate"] == 1.0
+

@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass, field
 
-from . import prop_distributions, teams
+from . import prop_distributions, prop_pricing, teams
 
 # Market error around the outcome: margin MAE ~10.5, total MAE ~10.3 on the
 # 2016-2025 baseline -> Normal SD = MAE * sqrt(pi/2).
@@ -42,6 +42,8 @@ DEFAULT_PRICE = -110
 PROP_MARKETS = {
     "player_pass_yds": ("passing_yards", "passing yards"),
     "player_pass_tds": ("passing_tds", "passing TDs"),
+    "player_pass_completions": ("completions", "completions"),
+    "player_pass_interceptions": ("interceptions", "interceptions"),
     "player_pass_attempts": ("pass_attempts", "pass attempts"),
     "player_rush_yds": ("rushing_yards", "rushing yards"),
     "player_rush_attempts": ("rush_attempts", "rush attempts"),
@@ -240,27 +242,32 @@ def total_pick(projection, slate, injuries: dict) -> Pick | None:
 def prop_picks(slate, injuries: dict) -> list[Pick]:
     from .sources.oddsapi import normalise
 
-    players = {normalise(pl.player_name): pl for pl in slate.player_projections
-               if str(pl.injury_status or "").lower() not in _UNAVAILABLE}
+    available = [pl for pl in slate.player_projections
+                 if str(pl.injury_status or "").lower() not in _UNAVAILABLE]
+    by_id = {pl.player_id: pl for pl in available}
+    by_name = {normalise(pl.player_name): pl for pl in available}
     games = {(g.home, g.away): g for g in slate.projections}
+    research = prop_pricing.research_only()
     out: list[Pick] = []
     for quote in slate.player_prop_quotes:
         spec = PROP_MARKETS.get(quote.market)
-        player = players.get(normalise(quote.player_name))
+        player = (by_id.get(quote.player_id) if getattr(quote, "player_id", None)
+                  else by_name.get(normalise(quote.player_name)))
         if spec is None or player is None:
             continue
         metric, label = spec
         mean = player.metrics.get(metric)
         if metric == "rush_attempts" and mean is None:
             mean = player.metrics.get("carries")
+        priced = prop_pricing.price(metric, mean, quote.line)
+        if priced is None:
+            continue
+        p_over = priced["p_over"]
         dist = prop_distributions.distribution(metric, mean)
-        if not dist:
-            continue
-        p_over = prop_distributions.over_probability(dist, quote.line)
-        if p_over is None:
-            continue
         over_imp, under_imp = _implied(quote.over_price), _implied(quote.under_price)
-        if over_imp and under_imp:
+        if not getattr(quote, "priced", True):
+            over_imp = under_imp = 0.5   # ESPN publishes the line, not the price
+        elif over_imp and under_imp:
             total = over_imp + under_imp
             over_imp, under_imp = over_imp / total, under_imp / total
         for side, prob, implied, price in (("over", p_over, over_imp, quote.over_price),
@@ -270,10 +277,16 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
             home = player.team if player.home else player.opponent
             away = player.opponent if player.home else player.team
             game = games.get((home, away))
+            band = (f" (middle 80%: {dist['p10']:g}-{dist['p90']:g})" if dist else "")
             sentences = [
-                f"Projects {dist['mean']:.1f} {label} (middle 80%: {dist['p10']:g}-"
-                f"{dist['p90']:g}) against {quote.line:g}; {prob:.0%} to go {side} versus "
-                f"{implied:.0%} priced in."]
+                f"Projects {float(mean):.1f} {label}{band} against {quote.line:g}; the "
+                f"line-anchored fair number is {priced['fair']:g}, {prob:.0%} to go {side} "
+                f"versus {implied:.0%} priced in."]
+            if research:
+                sentences.append(
+                    "Research only: priced props have not yet beaten -110 out of sample "
+                    f"({prop_pricing.EVIDENCE['wins']}-"
+                    f"{prop_pricing.EVIDENCE['plays'] - prop_pricing.EVIDENCE['wins']}).")
             sentences.append(f"Role: {player.depth_slot or player.position}, "
                              f"{player.role_continuity}; {player.role_reason}.")
             context = player.scheme_context or {}
@@ -300,9 +313,10 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 "prop", player.season, player.week, home, away,
                 player.kickoff_utc or (game.kickoff_utc if game else None),
                 f"{player.player_name} {side} {quote.line:g} {label}", side, quote.line,
-                int(price), round(dist["mean"], 1), quote.line, round(prob - implied, 3),
+                int(price), round(float(mean), 1), quote.line, round(prob - implied, 3),
                 round(prob, 3), " ".join(sentences),
-                ["questionable"] if player.injury_status else [],
+                (["questionable"] if player.injury_status else [])
+                + (["research-only"] if research else []),
                 player=player.player_name, player_id=player.player_id, team=player.team,
                 metric=metric))
     return out

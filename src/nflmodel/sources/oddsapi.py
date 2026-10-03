@@ -110,6 +110,13 @@ class PlayerPropQuote:
     book: str
     book_title: str
     last_update: str | None
+    # Set by sources that identify the player directly (ESPN athlete id ->
+    # gsis); the Odds API names players only, and is matched by name.
+    player_id: str | None = None
+    open_line: float | None = None
+    # False when the source publishes the line but not the prices (ESPN); the
+    # prices above are then a nominal -110 each way.
+    priced: bool = True
 
 
 _LAST_STATUS = OddsStatus("not_run", DEFAULT_BOOK, None, None, 0, 0, 0)

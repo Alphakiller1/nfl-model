@@ -30,7 +30,7 @@ from . import (
     scheme,
     teams,
 )
-from .sources import nflverse, oddsapi
+from .sources import espn_props, nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
 # `preseason.FORM_SEASON_WEIGHTS` asks for; loading fewer silently degrades the
@@ -258,6 +258,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         odds_error = f"{type(exc).__name__}: {exc}"
     prop_quotes: list[oddsapi.PlayerPropQuote] = []
     prop_error = None
+    prop_source = "oddsapi"
     if book_lines:
         try:
             prop_quotes = oddsapi.fetch_player_props(book_lines)
@@ -281,6 +282,18 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         ]
         player_history.extend(current_player_rows)
     roster = nflverse.weekly_roster(season, week=week)
+    if not prop_quotes and open_games:
+        # The Odds API allowance runs dry mid-season; ESPN carries DraftKings'
+        # prop lines (not prices) for free and identifies players by id.
+        try:
+            prop_quotes = espn_props.fetch(open_games, roster)
+            prop_source = "espn" if prop_quotes else prop_source
+        except Exception as exc:
+            espn_error = f"ESPN: {type(exc).__name__}: {exc}"
+            prop_error = f"{prop_error}; {espn_error}" if prop_error else espn_error
+    snap_rows: list[dict] = []
+    for snap_season in (season - 1, season):
+        snap_rows.extend(nflverse.snap_counts(snap_season))
     first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
     depth = nflverse.depth_charts(season, before=first_kickoff)
     injury_rows = nflverse.injuries(season, week=week)
@@ -348,6 +361,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         injuries=injury_rows,
         history_rows=player_history,
         scheme_matchups=scheme_result.matchups,
+        snap_rows=snap_rows,
     )
     odds_status = oddsapi.status_report()
     # Book coverage is measured over games still to be played: a book quotes
@@ -377,6 +391,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             for p in open_projections
         ),
         "player_prop_quotes": len(prop_quotes),
+        "player_prop_source": prop_source if prop_quotes else None,
     })
     issues: list[str] = []
     stale = [status for status in nflverse.status_report() if status.get("stale")]

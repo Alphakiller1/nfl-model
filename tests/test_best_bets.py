@@ -1,6 +1,8 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from nflmodel import best_bets as bb
 from nflmodel import ledger
 from nflmodel.player_props import PlayerProjection
@@ -84,21 +86,40 @@ def _quote(line, over=-115, under=-105):
                            "draftkings", "DraftKings", None)
 
 
-def test_prop_pick_uses_the_fitted_distribution(slate):
+@pytest.fixture
+def pricing(monkeypatch):
+    """Deterministic pricing: a 0.1 logit per unit of scaled gap, no lean."""
+    from nflmodel import prop_pricing
+
+    monkeypatch.setitem(prop_pricing.COEFFICIENTS, "rushing", {"w": 0.3, "a": 0.0, "b": 0.1})
+    return prop_pricing
+
+
+def test_prop_pick_is_priced_from_the_line(slate, pricing):
     s = replace(slate, week=1, player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5)])
     picks = bb.prop_picks(s, {})
     assert len(picks) == 1 and picks[0].side == "over"
     assert "Role: RB1" in picks[0].angle and "+2.5 team carries" in picks[0].angle
-    # Yardage is right-skewed, so a line at the *median* (not the mean) is fair.
-    from nflmodel import prop_distributions
-
-    median = prop_distributions.distribution("rushing_yards", 92.0)["p50"]
-    fair = replace(s, player_prop_quotes=[_quote(median, -110, -110)])
+    # The fair number moves the line only part of the way to the projection.
+    assert "fair number is 75.55" in picks[0].angle
+    # Until the held-out record beats -110 the pick says so.
+    assert pricing.research_only() and "research-only" in picks[0].tags
+    # A line equal to the projection prices at 50%: no pick either way.
+    fair = replace(s, player_prop_quotes=[_quote(92.0, -110, -110)])
     assert bb.prop_picks(fair, {}) == []
 
 
-def test_best_bets_are_logged_and_graded(slate, tmp_path):
+def test_an_id_matched_line_without_prices_reads_as_fifty_fifty(slate, pricing):
+    quote = PlayerPropQuote("e1", "KC", "BUF", "player_rush_yds", "L. Back", 68.5, -110, -110,
+                            "draftkings", "DraftKings (via ESPN)", None, player_id="rb-1",
+                            priced=False)
+    picks = bb.prop_picks(replace(slate, week=1, player_projections=[_player()],
+                                  player_prop_quotes=[quote]), {})
+    assert len(picks) == 1 and "versus 50% priced in" in picks[0].angle
+
+
+def test_best_bets_are_logged_and_graded(slate, tmp_path, pricing):
     game = _game(slate)
     s = replace(slate, week=1, projections=[game], player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5)], injuries=[])

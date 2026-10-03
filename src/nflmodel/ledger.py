@@ -246,11 +246,60 @@ def _grade_player(snapshot: dict, result: dict | None) -> None:
         "actual_metrics": actual,
         "absolute_errors": errors,
     })
+    lines = {}
+    for metric, quote in (snapshot.get("prop_lines") or {}).items():
+        if metric not in actual:
+            continue
+        value, line = actual[metric], float(quote["line"])
+        result = "push" if value == line else ("over" if value > line else "under")
+        graded = {"actual": value, "result": result}
+        p_over = (quote.get("priced") or {}).get("p_over")
+        if p_over is not None and result != "push":
+            graded["model_side"] = "over" if float(p_over) >= 0.5 else "under"
+            graded["brier"] = round((float(p_over) - float(result == "over")) ** 2, 4)
+        lines[metric] = graded
+    if lines:
+        snapshot["line_results"] = lines
     if "anytime_td_probability" in projected:
         snapshot["anytime_td_brier"] = (
             float(projected["anytime_td_probability"])
             - actual["anytime_td_probability"]
         ) ** 2
+
+
+def _prop_lines(player_projections: list, quotes: list) -> dict[str, dict]:
+    """player id -> {metric: line, open line, book, line-anchored price}.
+
+    Stored with each projection so the shadow ledger grades the model against
+    the line it would have been bet into, not only against the box score.
+    """
+    from .best_bets import PROP_MARKETS
+    from .prop_pricing import price
+    from .sources.oddsapi import normalise
+
+    by_id = {p.player_id: p for p in player_projections}
+    by_name = {normalise(p.player_name): p for p in player_projections}
+    out: dict[str, dict] = {}
+    for quote in quotes:
+        spec = PROP_MARKETS.get(quote.market)
+        player = (by_id.get(quote.player_id) if getattr(quote, "player_id", None)
+                  else by_name.get(normalise(quote.player_name)))
+        if spec is None or player is None:
+            continue
+        metric = spec[0]
+        mean = player.metrics.get(metric)
+        if metric == "rush_attempts" and mean is None:
+            metric, mean = "carries", player.metrics.get("carries")
+        out.setdefault(player.player_id, {})[metric] = {
+            "line": quote.line,
+            "open": getattr(quote, "open_line", None),
+            "book": quote.book_title,
+            "over_price": quote.over_price if getattr(quote, "priced", True) else None,
+            "under_price": quote.under_price if getattr(quote, "priced", True) else None,
+            "last_update": quote.last_update,
+            "priced": price(metric, mean, quote.line),
+        }
+    return out
 
 
 def _player_key(row: dict) -> tuple:
@@ -303,7 +352,48 @@ def _player_summary(payload: dict, season: int) -> dict:
             for metric, values in sorted(errors.items()) if values
         },
         "anytime_td_brier": _mean(rows, "anytime_td_brier"),
+        "vs_line": _line_summary(rows),
     }
+
+
+def _line_summary(rows: list[dict]) -> dict:
+    """How the line-anchored prop prices graded against the DraftKings line."""
+    from .prop_pricing import FAMILY, MIN_PROBABILITY
+
+    families: dict[str, dict] = {}
+    for row in rows:
+        quotes = row.get("prop_lines") or {}
+        for metric, graded in (row.get("line_results") or {}).items():
+            family = families.setdefault(FAMILY.get(metric, "other"), {
+                "lines": 0, "overs": 0, "pushes": 0, "model_side_wins": 0, "model_side_n": 0,
+                "plays": 0, "play_wins": 0, "brier": [], })
+            family["lines"] += 1
+            if graded["result"] == "push":
+                family["pushes"] += 1
+                continue
+            family["overs"] += graded["result"] == "over"
+            if "model_side" in graded:
+                family["model_side_n"] += 1
+                family["model_side_wins"] += graded["model_side"] == graded["result"]
+                family["brier"].append(graded["brier"])
+                p_over = float(quotes[metric]["priced"]["p_over"])
+                if max(p_over, 1 - p_over) >= MIN_PROBABILITY:
+                    family["plays"] += 1
+                    family["play_wins"] += graded["model_side"] == graded["result"]
+    out = {}
+    for name, f in sorted(families.items()):
+        decided = f["lines"] - f["pushes"]
+        out[name] = {
+            "lines": f["lines"],
+            "over_rate": round(f["overs"] / decided, 4) if decided else None,
+            "model_side_hit_rate": (round(f["model_side_wins"] / f["model_side_n"], 4)
+                                    if f["model_side_n"] else None),
+            "plays": f["plays"],
+            "play_hit_rate": round(f["play_wins"] / f["plays"], 4) if f["plays"] else None,
+            "brier": round(statistics.fmean(f["brier"]), 4) if f["brier"] else None,
+            "coin_brier": 0.25,
+        }
+    return out
 
 
 def _units(result: str, price) -> float:
@@ -508,6 +598,7 @@ def update(
     projections: list["GameProjection"],
     player_projections: list["PlayerProjection"] | None = None,
     player_results: list[dict] | None = None,
+    prop_quotes: list | None = None,
     schedule: list[dict],
     best_bets: list[dict] | None = None,
     sharp_spots: list[dict] | None = None,
@@ -606,6 +697,7 @@ def update(
         _player_key(row): i for i, row in enumerate(payload["player_snapshots"])
         if row.get("status") == "pending"
     }
+    lines_by_player = _prop_lines(player_projections or [], prop_quotes or [])
     for projection in player_projections or []:
         kickoff = _parse(projection.kickoff_utc)
         if kickoff is None or kickoff <= now:
@@ -642,6 +734,7 @@ def update(
             "model_version": projection.model_version,
             "scheme_context": projection.scheme_context,
             "metrics": projection.metrics,
+            "prop_lines": lines_by_player.get(projection.player_id, {}),
             "status": "pending",
             "authority": "shadow_only",
         }
