@@ -7,7 +7,7 @@ family:
 
 * w - the blend weight minimising squared error of ``line + w * (proj - line)``
   (least squares through the line, floored at 0);
-* a, b - a ridge-penalised logistic of P(over) on the scaled gap.
+* b - a ridge-penalised logistic of P(over) on the scaled gap, through 50%.
 
 Every week is scored by a model fitted on the other weeks, and the record of
 the plays priced at >= 55% is the evidence that `prop_pricing.research_only`
@@ -114,7 +114,9 @@ def fit_logistic(rows: list[dict], l2: float = 1.0) -> tuple[float, float]:
             gb += (p - y) * x
             ha += p * (1 - p)
             hb += p * (1 - p) * x * x
-        a -= ga / (ha + l2)
+        # No intercept: a market's base over/under rate is not a reason to back
+        # any particular player (fitted freely it priced 269 receiving unders
+        # and 0 overs in week 1), and without prices it may only be vig shading.
         b -= (gb + l2 * b) / (hb + l2)
     return a, b
 

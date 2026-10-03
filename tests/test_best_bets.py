@@ -92,7 +92,19 @@ def pricing(monkeypatch):
     from nflmodel import prop_pricing
 
     monkeypatch.setitem(prop_pricing.COEFFICIENTS, "rushing", {"w": 0.3, "a": 0.0, "b": 0.1})
+    monkeypatch.setattr(prop_pricing, "EVIDENCE", {"weeks": [], "plays": 400, "wins": 220,
+                                                   "hit_rate": 0.55})
     return prop_pricing
+
+
+def test_no_prop_pick_is_published_until_the_gap_has_a_held_out_record(slate, pricing,
+                                                                        monkeypatch):
+    s = replace(slate, week=1, player_projections=[_player()],
+                player_prop_quotes=[_quote(68.5)])
+    assert bb.prop_picks(s, {})
+    monkeypatch.setattr(pricing, "EVIDENCE", {"weeks": [], "plays": 69, "wins": 32,
+                                              "hit_rate": 0.464})
+    assert bb.prop_picks(s, {}) == []
 
 
 def test_prop_pick_is_priced_from_the_line(slate, pricing):
@@ -103,8 +115,6 @@ def test_prop_pick_is_priced_from_the_line(slate, pricing):
     assert "Role: RB1" in picks[0].angle and "+2.5 team carries" in picks[0].angle
     # The fair number moves the line only part of the way to the projection.
     assert "fair number is 75.55" in picks[0].angle
-    # Until the held-out record beats -110 the pick says so.
-    assert pricing.research_only() and "research-only" in picks[0].tags
     # A line equal to the projection prices at 50%: no pick either way.
     fair = replace(s, player_prop_quotes=[_quote(92.0, -110, -110)])
     assert bb.prop_picks(fair, {}) == []

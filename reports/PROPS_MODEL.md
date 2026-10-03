@@ -238,10 +238,23 @@ P(over) = sigmoid(a_family + b_family × (projection - line) / sqrt(line))
 ```
 
 Refitted with `scripts/fit_prop_pricing.py` (leave-one-week-out) on 2,003
-lines from 2026 weeks 1-4. Held out, the ≥55% plays went **238-251
-(48.7%)**, Brier 0.251 against a coin's 0.250. `prop_pricing.research_only()`
-stays true until the held-out record clears 52.4% on at least 300 plays, and
-every prop pick carries a `research-only` tag and a sentence saying so.
+lines from 2026 weeks 1-4.
+
+**Correction, same day.** The first fit had a free intercept a. Held out it
+went 238-251 (48.7%), and most of those plays were the intercept, not the
+gap: receiving overs hit 46% early in the season, so the model priced 269
+receiving unders and 0 overs in week 1. That is a constant applied to every
+player, not a read on any of them, and without prices it may only be the
+book's vig shading. With a fixed at 0 (pricing through 50%), the slopes are
+receiving -0.008, rushing 0.016 and passing 0.239. Held out, 69 plays went
+32-37, and passing alone went 28-24. **Only passing shows a per-player
+signal, and on far too few plays to trust.**
+
+So `best_bets.prop_picks` publishes **no prop picks** until the held-out
+record clears 52.4% on at least 300 plays (`prop_pricing.research_only()`).
+The ledger still stores every line, open line and price and grades them, so
+the record builds every week and the gate opens itself only if the gap earns
+it.
 
 ## D. What shipped (v2.0.0) and what it did
 
@@ -275,7 +288,8 @@ Changes:
 6. Snap-share trend (B2), fail-soft when snap counts are missing.
 7. DraftKings player lines from ESPN when the Odds API returns none, matched
    by ESPN athlete id -> gsis. The board now publishes `player_prop_source`.
-8. Line-anchored pricing (C4), with the research-only gate.
+8. Line-anchored pricing (C4) through 50% (no base-rate intercept). No prop
+   picks are published until the held-out record clears break-even.
 9. The ledger stores the line, open line and price on every player
    projection, grades each against the line, and summarises `vs_line` by
    family.
