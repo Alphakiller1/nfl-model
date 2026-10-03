@@ -31,17 +31,20 @@ def test_espn_prop_lines_are_identified_by_athlete_id_and_deduplicated():
     assert quotes[0].player_name == "Wide Out"
 
 
-def test_price_moves_the_line_part_way_and_is_even_at_the_line():
+def test_price_reads_the_projection_distribution_then_calibrates_toward_even():
+    from nflmodel import prop_distributions
+
     priced = prop_pricing.price("passing_yards", 260.0, 230.5)
-    coef = prop_pricing.COEFFICIENTS["passing"]
-    assert priced["fair"] == round(230.5 + coef["w"] * 29.5, 2)
-    assert priced["p_over"] > 0.5
-    even = prop_pricing.price("passing_yards", 230.5, 230.5)
-    assert abs(even["p_over"] - 0.5) < 1e-9          # passing has no lean
+    assert priced["fair"] == round(230.5 + prop_pricing.BLEND_WEIGHT["passing"] * 29.5, 2)
+    assert priced["raw"] > priced["p_over"] > 0.5          # shrunk toward even, same side
+    median = prop_distributions.distribution("passing_yards", 260.0)["p50"]
+    at_median = prop_pricing.price("passing_yards", 260.0, median)
+    assert at_median["raw"] == 0.5
+    assert at_median["p_over"] == prop_pricing.calibrate(0.5)
     assert prop_pricing.price("kicking_points", 8.0, 7.5) is None
 
 
-def test_props_stay_research_only_until_the_held_out_record_clears_break_even(monkeypatch):
+def test_research_only_until_the_held_out_record_clears_break_even(monkeypatch):
     monkeypatch.setattr(prop_pricing, "EVIDENCE", {"weeks": [], "plays": 500, "wins": 250,
                                                    "hit_rate": 0.50})
     assert prop_pricing.research_only()

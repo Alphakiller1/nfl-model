@@ -250,11 +250,8 @@ receiving -0.008, rushing 0.016 and passing 0.239. Held out, 69 plays went
 32-37, and passing alone went 28-24. **Only passing shows a per-player
 signal, and on far too few plays to trust.**
 
-So `best_bets.prop_picks` publishes **no prop picks** until the held-out
-record clears 52.4% on at least 300 plays (`prop_pricing.research_only()`).
-The ledger still stores every line, open line and price and grades them, so
-the record builds every week and the gate opens itself only if the gap earns
-it.
+This pricing was replaced by pricing from the matrix's own outcome distribution
+(section E), which publishes leans every week with their measured record.
 
 ## D. What shipped (v2.0.0) and what it did
 
@@ -294,16 +291,88 @@ Changes:
    projection, grades each against the line, and summarises `vs_line` by
    family.
 
-## E. What did not work, kept so nobody re-runs it blind
+## E. The prop matrix (v2.1.0)
+
+The projection is a fitted matrix: for each stat, a log-link (Poisson)
+regression of the outcome on a structural baseline plus schematic factors,
+
+```
+log E[stat] = log(team volume x usage share  [x efficiency prior]) + sum_k beta_k x_k
+```
+
+fitted 2022-23 and 2022-24 and scored on 2024 and 2025 (players who played,
+point-in-time features: `research/props_model/m0_features.py`,
+`m1_matrix.py`). Factor families and their held-out effect:
+
+| family | factors | held-out deviance |
+|---|---|---|
+| usage | share regression to position mean, snap trend, games on team | **-5 to -10%** (every stat) |
+| box | opponent heavy-box (8+) rate on runs, FTN | carries and rush yards better in 2024 and 2025 |
+| script | spread, total, team pass EPA | small, mixed |
+| opponent | position-group target share, YPT, catch rate allowed, pass EPA allowed | ~0; dropping it is often better |
+| pressure | sack+hit rate matchup, x aDOT, x RB | ~0 |
+| coverage | player man/zone target-rate tilt x opponent man rate (prior season) | ~0 |
+| blitz | opponent blitz rate x RB / TE | ~0 or worse |
+
+The schematic coefficients have sensible signs (a man-beater against a
+man-heavy defense gains targets, pressure shortens deep roles, a defense that
+funnels targets to tight ends feeds them), but against out-of-sample noise
+they do not predict, so they are not applied. Shipped: usage shrinkage for
+carries (`USAGE_SHRINK`), the box factor (`BOX_EFFECT`: per 10 points of
+heavy-box rate, carries x0.90, yards x0.87).
+
+**Depth slots are filled after injuries.** The largest single gain in this
+round was not a factor at all: the depth reader dropped Out players without
+promoting the next man, so a team with three receivers out projected two
+receivers to split the whole WR+TE pool (12.7 targets for a 5-target
+player). Filling vacated slots in chart order: WR targets -1.9% RMSE, TE
+-2.3%, RB carries -2.0%, WR yards bias +1.8 -> +0.7, and 361 more
+player-weeks projected in 2025.
+
+### Pricing from the matrix
+
+`prop_distributions` is now fitted on the projection layer's own errors
+(2025 replay, players who played; `dist_fit.py`). Held-out second half of
+2025: 10-90 coverage 0.82-0.86 for receiving and rushing, 0.73-0.78 for QBs.
+
+`prop_pricing.price`: raw = P(over) from that distribution at the matrix
+projection; p_over = 0.5 + s (raw - c), s = 0.30, c = 0.505 (raw 70% hit 57%
+against the line, so it is shrunk toward even). Tested on 2026 weeks 1-3,
+the matrix rebuilt point-in-time and priced against 1,920 DraftKings closing
+lines (`scripts/fit_prop_pricing.py --rows`):
+
+| test | record |
+|---|---|
+| plays >= 53%, calibration fitted leave-one-week-out | **450-388 (53.7%)**, Brier 0.2499 vs coin 0.2500 |
+| fit-free ranking: top third over, bottom third under, per week x market | **688-568 (54.8%)** |
+| over plays vs the over base rate (receiving) | 53.8% vs 48.7% |
+| under plays vs the under base rate (receiving) | 54.8% vs 51.3% |
+| by week | 51.0%, 55.2%, 55.5% |
+
+That beats the -110 break-even and a coin at a one-sided 90% bound, but
+only just, on three weeks. Leans are published every week (one side per
+line, `lean` below 53%), each with this record in its text, and every line
+and price is graded in the ledger so the record updates itself.
+
+**Why the earlier pricing was withdrawn.** C4's logistic carried a free
+intercept: the season's over/under base rate (receiving overs 46%). It
+priced 269 receiving unders and 0 overs in week 1. That was a constant, not
+a read on any player; through 50% its slopes were ~0. Pricing now starts
+from the projection's own distribution, with no base-rate term.
+
+## F. What did not work, kept so nobody re-runs it blind
 
 * Matchup metrics (defensive EPA, coverage, scheme) against the line: r ≈ 0.
 * Pace and PROE on top of the volume priors: no gain.
 * Red-zone share for anytime TDs: no gain once volume is known.
 * Split-half efficiency priors for skill positions: lost to lighter priors.
 * Separate WR and TE target pools: lost to one shared pool.
+* Opponent, pressure, coverage and blitz factors in the prop matrix (E).
+* A free intercept in prop pricing (a base rate, not a prediction).
+* Centring each week's gaps per market: no change (49.3% either way).
 * Fully proportional injury redistribution: overshoots.
 
-## F. Next
+## G. Next
 
 * Let the ledger accumulate v2 projections with their lines, and refit
   pricing weekly (`scripts/fit_prop_pricing.py`). The gate opens itself if

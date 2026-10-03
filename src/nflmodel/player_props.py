@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from . import teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/2.0.0"
+MODEL_VERSION = "nfl-player-projections/2.1.0"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 # Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
@@ -76,6 +76,25 @@ CARRY_RESERVE = 0.035
 # Snap trend: observed share x (last game snap % / weighted snap %) ** beta.
 # Fitted on 2021-2024, scored on 2025: share MAE -0.5% to -1.7% (part B2).
 SNAP_TREND_BETA = {"targets": 0.3, "carries": 0.4}
+# The prop matrix (reports/PROPS_MODEL.md, part E): log-link regressions of
+# each stat on its structural baseline plus schematic factors, fitted 2022-23
+# and 2022-24, scored on 2024 and 2025. Only factor families that lowered
+# held-out deviance in both seasons are applied here.
+#
+# Usage shrinkage: log E[share] moves -0.18 to -0.20 per unit log(observed /
+# position mean), so a player at twice his position's average share is
+# projected ~13% below a straight carry-forward of it. Applied to carries only:
+# for targets the depth-slot blend already shrinks usage, and adding the
+# matrix term on top cost 0.3-0.6% RMSE for backs and tight ends in the replay.
+USAGE_SHRINK = {"targets": 0.0, "carries": 0.18}
+POSITION_SHARE_MEAN = {
+    "targets": {"WR": 0.121, "TE": 0.073, "RB": 0.064},
+    "carries": {"RB": 0.318},
+}
+# Box rate: per 10 points of the opponent's heavy-box (8+) rate on runs above
+# the league (FTN charting, 4-week half-life), log carries -0.109 and log
+# rushing yards -0.142.
+BOX_EFFECT = {"carries": -0.109, "rushing_yards": -0.142}
 # WR and TE compete for one pool (on the 2025 replay a separate pool for each
 # lost to a shared one); backs keep their own, which won for RB targets and TDs.
 TARGET_GROUPS = (("WR", "TE"), ("RB",))
@@ -563,6 +582,64 @@ def _snap_trends(
     return trends
 
 
+def defense_box_rates(
+    pbp_rows: list[dict], charting_rows: list[dict], *, season: int, week: int
+) -> dict[str, float]:
+    """Defence -> heavy-box (8+) rate on designed runs, minus the league.
+
+    Point-in-time: this season's games before ``week`` with a
+    TEAM_HALF_LIFE_WEEKS half-life, shrunk 10 games toward 30% of last
+    season's deviation, the same prior shape as the team-volume model.
+    """
+    boxes = {}
+    for row in charting_rows:
+        play = str(row.get("nflverse_play_id") or "").split(".")[0]
+        key = (str(row.get("nflverse_game_id") or ""), play)
+        count = number(row.get("n_defense_box"))
+        if count is not None:
+            boxes[key] = float(count)
+    games: dict[tuple[int, str], dict[tuple[str, int], list[float]]] = defaultdict(
+        lambda: defaultdict(lambda: [0.0, 0.0]))
+    for row in pbp_rows:
+        if (str(row.get("play_type") or "") != "run"
+                or str(row.get("season_type") or "REG") != "REG"):
+            continue
+        key = (str(row.get("game_id") or ""), str(row.get("play_id") or "").split(".")[0])
+        if key not in boxes:
+            continue
+        row_season = int(number(row.get("season")) or 0)
+        row_week = int(number(row.get("week")) or 0)
+        if row_season > season or (row_season == season and row_week >= week):
+            continue
+        cell = games[(row_season, teams.canonical(row.get("defteam") or ""))][(key[0], row_week)]
+        cell[0] += boxes[key] >= 8
+        cell[1] += 1
+    def rate(cells) -> float | None:
+        heavy = sum(c[0] for c in cells)
+        runs = sum(c[1] for c in cells)
+        return heavy / runs if runs else None
+    def league(year: int) -> float | None:
+        return rate([c for (s, _), g in games.items() if s == year for c in g.values()])
+
+    base = league(season - 1)
+    base = league(season) if base is None else base
+    if base is None:
+        return {}
+    out = {}
+    for team in {t for (_, t) in games}:
+        last = rate(list(games.get((season - 1, team), {}).values()))
+        prior = base + (0.3 * (last - base) if last is not None else 0.0)
+        value = weight = 0.0
+        for (game_id, row_week), (heavy, runs) in games.get((season, team), {}).items():
+            if not runs:
+                continue
+            w = 0.5 ** ((week - row_week) / TEAM_HALF_LIFE_WEEKS)
+            value += w * heavy / runs
+            weight += w
+        out[team] = (value + 10.0 * prior) / (weight + 10.0) - base
+    return out
+
+
 def _share(
     item: _History | None,
     field: str,
@@ -614,11 +691,24 @@ def _active_depth(
             active_by_name[(team, position, _name_key(row.get("full_name") or ""))] = row
 
     selected: dict[tuple[str, str], dict] = {}
+    # Depth slots a team normally fills, counted before availability: when a
+    # starter is Out the next man on the chart takes the slot. Without this,
+    # three Eagles receivers listed Out left two projected receivers to split
+    # the whole WR+TE target pool (12.7 targets for a 5-target player).
+    expected: dict[tuple[str, str], set] = defaultdict(set)
+    reserves: dict[tuple[str, str], dict] = {}
     for row in depth:
         team = teams.canonical(row.get("team") or "")
         position = _position(row.get("pos_abb") or row.get("pos_grp") or "")
         rank = int(number(row.get("pos_rank")) or 999)
-        if position not in POSITIONS or rank > DEPTH_LIMITS[position]:
+        if position in POSITIONS and rank <= DEPTH_LIMITS[position]:
+            expected[(team, position)].add(
+                str(row.get("gsis_id") or "").strip() or _name_key(row.get("player_name") or ""))
+    for row in depth:
+        team = teams.canonical(row.get("team") or "")
+        position = _position(row.get("pos_abb") or row.get("pos_grp") or "")
+        rank = int(number(row.get("pos_rank")) or 999)
+        if position not in POSITIONS:
             continue
         player_id = str(row.get("gsis_id") or "").strip()
         roster_row = active_by_id.get((team, player_id)) if player_id else None
@@ -648,9 +738,24 @@ def _active_depth(
             "injury_status": injury_status or None,
             "headshot_url": str(roster_row.get("headshot_url") or ""),
         }
+        if rank > DEPTH_LIMITS[position]:
+            held = reserves.get(key)
+            if held is None or rank < held["depth_rank"]:
+                reserves[key] = candidate
+            continue
         previous = selected.get(key)
         if previous is None or rank < previous["depth_rank"]:
             selected[key] = candidate
+    for (team, position), wanted in expected.items():
+        have = sum(1 for row in selected.values()
+                   if row["team"] == team and row["position"] == position)
+        bench = sorted((row for key, row in reserves.items()
+                        if row["team"] == team and row["position"] == position
+                        and key not in selected), key=lambda row: row["depth_rank"])
+        for row in bench[:max(0, len(wanted) - have)]:
+            # The promoted player takes the deepest regular slot's priors.
+            selected[(team, row["player_id"] or _name_key(row["player_name"]))] = {
+                **row, "depth_rank": DEPTH_LIMITS[position]}
     return sorted(
         selected.values(),
         key=lambda row: (row["team"], POSITIONS.index(row["position"]), row["depth_rank"]),
@@ -678,6 +783,7 @@ def project(
     history_rows: list[dict],
     scheme_matchups: dict[tuple[str, str], object] | None = None,
     snap_rows: list[dict] | None = None,
+    box_rates: dict[str, float] | None = None,
 ) -> BuildResult:
     """Project QB/RB/WR/TE/K output for one slate."""
     snap_trend = _snap_trends(snap_rows or [], roster, season=season, week=week)
@@ -779,6 +885,10 @@ def project(
                 trend = snap_trend.get((team, player["player_id"]))
                 if observed is not None and trend is not None:
                     observed *= trend ** SNAP_TREND_BETA[field]
+                mean_share = POSITION_SHARE_MEAN[field].get(player["position"])
+                if observed is not None and observed > 0 and mean_share:
+                    shrink = USAGE_SHRINK[field]
+                    observed = observed ** (1 - shrink) * mean_share ** shrink
                 weight = player["usage_weight"]
                 score = prior if observed is None else weight * observed + (1 - weight) * prior
                 # A slot that often records nothing gives up its claim to
@@ -910,6 +1020,9 @@ def project(
                             RATE_PRIORS["rush_yards_rb"],
                         )
                         ypc += 0.45 * float(environment["rush_yards_per_carry_delta"])
+                        box = 10.0 * (box_rates or {}).get(opponent, 0.0)
+                        carries *= math.exp(BOX_EFFECT["carries"] * box)
+                        ypc *= math.exp((BOX_EFFECT["rushing_yards"] - BOX_EFFECT["carries"]) * box)
                         metrics.update({"carries": carries, "rushing_yards": carries * ypc})
 
                     implied = float(environment["implied_points"] or 22.5)

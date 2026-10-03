@@ -12,10 +12,13 @@ turns a mean into that distribution.
 * Small counts (TDs, interceptions, receptions) use a negative binomial whose
   size was chosen for calibration at the lines books post (x.5).
 
-Fitted by `scripts/fit_prop_distributions.py` (fit 2023-2024, scored on 2025,
-shipped on all three). The expectation in that fit is each player's
-recency-weighted in-season average, which is a weaker predictor than this
-model's projection, so the bands are, if anything, slightly wide.
+Fitted on the projection layer's OWN errors: actual / projected for players
+who played, from the 2025 point-in-time replay (research/props_model/
+dist_fit.py). On the held-out second half of 2025 the 10-90 bands covered
+81-84% for receiving and rushing (target 80%) and 70-77% for quarterbacks;
+medians sat at 45-51% of outcomes. (The first version was fitted against each
+player's trailing average, a weaker predictor than the projection, and was
+far too wide for some quarterbacks: 20-512 passing yards around a 170 mean.)
 """
 
 from __future__ import annotations
@@ -26,54 +29,60 @@ QUANTILE_LEVELS = (0.10, 0.25, 0.50, 0.75, 0.90)
 
 # metric -> [(bucket upper bound on the mean, ratio quantiles), ...]
 RATIO_QUANTILES: dict[str, list[tuple[float, tuple[float, ...]]]] = {
+    "passing_yards": [
+        (208.23, (0.481, 0.739, 1.019, 1.242, 1.404)),
+        (220.42, (0.647, 0.776, 0.967, 1.209, 1.398)),
+        (234.28, (0.621, 0.771, 0.997, 1.182, 1.405)),
+        (1e09, (0.614, 0.773, 1.035, 1.181, 1.348)),
+    ],
     "pass_attempts": [
-        (28, (0.202, 0.891, 1.199, 1.637, 3.118)),
-        (34, (0.655, 0.813, 0.994, 1.179, 1.33)),
-        (1e+09, (0.631, 0.774, 0.896, 1.066, 1.188)),
+        (29.7, (0.667, 0.798, 0.955, 1.16, 1.381)),
+        (31.12, (0.657, 0.812, 0.984, 1.155, 1.28)),
+        (32.47, (0.7, 0.855, 0.994, 1.192, 1.321)),
+        (1e09, (0.707, 0.837, 1.003, 1.137, 1.355)),
     ],
     "completions": [
-        (18, (0.129, 0.837, 1.204, 1.75, 3.137)),
-        (22, (0.6, 0.793, 1.006, 1.181, 1.337)),
-        (1e+09, (0.606, 0.748, 0.92, 1.088, 1.259)),
-    ],
-    "passing_yards": [
-        (200, (0.12, 0.744, 1.187, 1.668, 3.009)),
-        (240, (0.573, 0.777, 1.025, 1.245, 1.447)),
-        (1e+09, (0.561, 0.719, 0.926, 1.12, 1.298)),
-    ],
-    "rush_attempts": [
-        (2.5, (0.0, 0.517, 1.077, 1.911, 3.03)),
-        (4.5, (0.257, 0.56, 0.884, 1.331, 1.963)),
-        (1e+09, (0.353, 0.584, 0.878, 1.204, 1.623)),
-    ],
-    "carries": [
-        (6, (0.0, 0.198, 0.843, 1.892, 3.367)),
-        (11, (0.279, 0.558, 0.933, 1.404, 1.924)),
-        (16, (0.509, 0.715, 0.971, 1.248, 1.504)),
-        (1e+09, (0.503, 0.708, 0.94, 1.165, 1.403)),
+        (19.29, (0.578, 0.779, 0.968, 1.146, 1.297)),
+        (20.22, (0.631, 0.796, 0.98, 1.178, 1.338)),
+        (21.14, (0.686, 0.821, 0.978, 1.166, 1.378)),
+        (1e09, (0.643, 0.758, 0.98, 1.174, 1.312)),
     ],
     "rushing_yards": [
-        (10, (0.0, 0.0, 0.609, 2.673, 6.667)),
-        (30, (0.0, 0.241, 0.781, 1.644, 2.685)),
-        (55, (0.215, 0.49, 0.9, 1.42, 1.985)),
-        (1e+09, (0.325, 0.551, 0.862, 1.22, 1.603)),
+        (12.52, (0.0, 0.0, 0.0, 0.991, 2.834)),
+        (24.5, (0.0, 0.161, 0.628, 1.39, 2.275)),
+        (48.77, (0.162, 0.422, 0.837, 1.357, 2.13)),
+        (1e09, (0.369, 0.588, 0.923, 1.309, 1.713)),
+    ],
+    "carries": [
+        (2.62, (0.0, 0.0, 0.4, 1.773, 3.77)),
+        (7.35, (0.176, 0.339, 0.781, 1.32, 1.957)),
+        (13.65, (0.415, 0.7, 0.939, 1.31, 1.607)),
+        (1e09, (0.574, 0.768, 0.956, 1.21, 1.443)),
+    ],
+    "rush_attempts": [
+        (3.05, (0.0, 0.354, 0.672, 1.069, 1.549)),
+        (3.63, (0.276, 0.556, 0.867, 1.167, 1.63)),
+        (4.69, (0.255, 0.508, 0.905, 1.546, 2.035)),
+        (1e09, (0.412, 0.632, 0.951, 1.149, 1.523)),
     ],
     "targets": [
-        (3, (0.0, 0.0, 0.891, 1.742, 2.923)),
-        (5, (0.28, 0.543, 0.912, 1.379, 1.829)),
-        (7, (0.36, 0.615, 0.926, 1.321, 1.685)),
-        (1e+09, (0.424, 0.655, 0.893, 1.157, 1.477)),
+        (1.51, (0.0, 0.0, 0.833, 2.083, 3.368)),
+        (2.9, (0.0, 0.51, 1.038, 1.613, 2.415)),
+        (5.0, (0.299, 0.595, 0.962, 1.356, 1.805)),
+        (1e09, (0.428, 0.663, 0.943, 1.286, 1.586)),
     ],
     "receiving_yards": [
-        (20, (0.0, 0.0, 0.629, 1.992, 4.275)),
-        (35, (0.0, 0.289, 0.781, 1.471, 2.273)),
-        (55, (0.162, 0.43, 0.833, 1.377, 2.022)),
-        (1e+09, (0.244, 0.495, 0.824, 1.228, 1.723)),
+        (10.22, (0.0, 0.0, 0.0, 1.612, 3.684)),
+        (20.03, (0.0, 0.108, 0.8, 1.675, 2.879)),
+        (37.45, (0.0, 0.323, 0.795, 1.458, 2.18)),
+        (1e09, (0.263, 0.533, 0.89, 1.381, 1.872)),
     ],
 }
 
 # metric -> negative binomial size (None = Poisson).
-COUNT_SIZE: dict[str, float | None] = {"passing_tds": None, "interceptions": 2.0, "receptions": 8.0}
+COUNT_SIZE: dict[str, float | None] = {
+    "passing_tds": None, "interceptions": None, "receptions": 12.0,
+}
 
 
 def _ladder(metric: str, mean: float) -> tuple[float, ...] | None:
@@ -135,16 +144,22 @@ def distribution(metric: str, mean: float | None) -> dict | None:
 
 
 def over_probability(dist: dict, line: float) -> float | None:
-    """P(stat > line): summed from the pmf, else read off the ladder."""
+    """P(stat > line): summed from the pmf, else read off the ladder.
+
+    Inside the ladder it interpolates between quantiles. Below the 10th
+    percentile it runs linearly to 1.0 at zero; above the 90th it decays
+    exponentially, at the rate set by the gap from the median to the 90th.
+    """
     if dist.get("pmf"):
         return sum(v for k, v in dist["pmf"].items() if float(k) > line)
     ladder, levels = dist.get("q"), dist.get("q_levels")
     if not ladder or not levels:
         return None
     if line < ladder[0]:
-        return 1.0 - levels[0]
+        return 1.0 - levels[0] * line / ladder[0] if ladder[0] > 0 else 1.0 - levels[0]
     if line >= ladder[-1]:
-        return 1.0 - levels[-1]
+        spread = max(ladder[-1] - ladder[2], 1.0)
+        return (1.0 - levels[-1]) * math.exp(-(line - ladder[-1]) / spread)
     for (x0, p0), (x1, p1) in zip(zip(ladder, levels), zip(ladder[1:], levels[1:])):
         if x0 <= line < x1:
             return 1.0 - (p0 if x1 == x0 else p0 + (p1 - p0) * (line - x0) / (x1 - x0))

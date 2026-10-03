@@ -362,6 +362,8 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         history_rows=player_history,
         scheme_matchups=scheme_result.matchups,
         snap_rows=snap_rows,
+        box_rates=player_props.defense_box_rates(
+            scheme_pbp, scheme_charting, season=season, week=week),
     )
     odds_status = oddsapi.status_report()
     # Book coverage is measured over games still to be played: a book quotes
