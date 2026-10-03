@@ -374,7 +374,7 @@ reason on the board.
 | (position, market, side) record >= 56% on >= 15 replay plays | RB catch unders 33-16, TE catch unders 36-25, TE yardage unders 25-14, QB rush and passing-TD unders; RB carries unders (24-26) and WR catch unders (43-38) never qualify |
 | calibrated lean >= 53% | |
 | starter (depth 1-2), not Questionable/Doubtful, >= 2 games this season | backup unders 44-39 in the replay; no read on players without history |
-| no role expansion: a recent regular (>= 15% target share, or >= 8% at the same position, or >= 30% carry share) missing from this week's projections, or a new starting QB (also blocks QB rushing unders when a target earner or lead back is missing) | the week-4 audit's misses: Keenan Allen out (Downs), Jefferson out (Aaron Jones), Caleb Williams out (Swift) |
+| no role expansion: a recent regular (>= 15% target share, or >= 8% at the same position, or >= 30% carry share) missing from this week's projections, or a new starting QB (also blocks QB rushing unders when a target earner or lead back is missing, and any leg on a quarterback who is not his team's recent starter) | the week-4 audit's misses: Keenan Allen out (Downs), Jefferson out (Aaron Jones), Caleb Williams out (Swift) |
 | no line moved against the pick by a unit (or 10%) | |
 | no 0.5 lines | juiced and non-standard on pick'em |
 | no recent form against the pick (cleared the line in 2 of the last 3) | judgment guard; measured by the ledger |
