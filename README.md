@@ -60,6 +60,7 @@ or locked prospective trial. The forward ledger is the prospective evidence.
 | Board | verified DraftKings spread/total/paired moneylines first, then independent projections and a factor-by-factor breakdown |
 | Weekly report | top spread/total gaps, paired DraftKings player-prop gaps, and scheme-ranked team/player matchups |
 | Players | role-aware QB, RB, WR, TE and kicker projections from the current active roster and dated depth chart |
+| Weekly Props | separate top 10 RB, QB, WR and kicking thresholds, ranked by scenario likelihood with player-specific offensive/opponent scouting dossiers |
 | Scheme | point-in-time personnel, formation, coverage, pressure, play-call and matchup-response distributions |
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
 | Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
@@ -120,6 +121,14 @@ Data via nflverse under CC-BY-SA 4.0; nflverse documents that participation is
 published after the postseason, so every profile carries its source season.
 The complete field, bound and update contract is in
 [`reports/SCHEME_DATA_CONTRACT.md`](reports/SCHEME_DATA_CONTRACT.md).
+
+Weekly Props connects those projections to the dated MLBMA evidence powering
+Chase Analytics: individual look responses, run-point matchups, line play and
+drive finishing. Every entry explains its opportunity hurdle, schematic support,
+opposing evidence and failure paths. Posted lines and research milestones carry
+different labels; kicker assumptions and combined-stat dependence bounds are
+explicit. The full ranking and data contract is in
+[`reports/WEEKLY_SCHEMATIC_PROPS.md`](reports/WEEKLY_SCHEMATIC_PROPS.md).
 
 ## The model
 

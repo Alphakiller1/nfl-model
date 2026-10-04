@@ -30,7 +30,7 @@ from . import (
     scheme,
     teams,
 )
-from .sources import espn_injuries, espn_props, nflverse, oddsapi
+from .sources import chase_context, espn_injuries, espn_props, nflverse, oddsapi
 
 # How many completed seasons of history the priors need. Three is what
 # `preseason.FORM_SEASON_WEIGHTS` asks for; loading fewer silently degrades the
@@ -126,6 +126,9 @@ class Slate:
     source_status: list[dict] = field(default_factory=list)
     odds_status: dict = field(default_factory=dict)
     issues: list[str] = field(default_factory=list)
+    assembled_at_utc: str | None = None
+    prop_context: dict = field(default_factory=dict)
+    weekly_prop_report: dict = field(default_factory=dict)
 
     def record_for(self, team: str) -> "Record | None":
         """This season's record once it exists, otherwise last season's."""
@@ -433,6 +436,8 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             f"{len(open_projections) - odds_status['slate_complete']} game(s)"
         )
     prior = [g for g in history if g.season == season - 1]
+    assembled_at = datetime.now(timezone.utc)
+    scouting_context = chase_context.load(season=season, week=week, now=assembled_at)
     return Slate(season=season, week=week, table=table, forms=forms, games=games,
                  current_forms=current_forms, live_share=live_share,
                  schedule=schedule, games_played=played, authority=authority,
@@ -447,7 +452,8 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                  scheme_status=scheme_result.status,
                  prior_records=build_records(prior),
                  source_status=nflverse.status_report(), odds_status=odds_status,
-                 issues=issues)
+                 issues=issues, assembled_at_utc=assembled_at.isoformat(),
+                 prop_context=scouting_context)
 
 
 # ── kickoff formatting ───────────────────────────────────────────────────────

@@ -37,7 +37,7 @@ CACHE_DIR = Path(
 CACHE_TTL_SECONDS = 15 * 60
 TIMEOUT = 45
 DEFAULT_BOOK = "draftkings"
-# Props cost markets x regions credits per game - 7 here, ~112 for a full slate.
+# Props cost markets x regions credits per game - 12 here, ~192 for a full slate.
 # Pull only inside this window before kickoff and reuse a pull this long, so a
 # week costs one or two slate pulls rather than one per build.
 PROP_LEAD_HOURS = 30
@@ -50,6 +50,11 @@ PLAYER_PROP_MARKETS = (
     "player_rush_yds",
     "player_receptions",
     "player_reception_yds",
+    "player_rush_reception_yds",
+    "player_pass_rush_yds",
+    "player_field_goals",
+    "player_pats",
+    "player_kicking_points",
 )
 
 

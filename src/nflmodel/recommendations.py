@@ -321,6 +321,8 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
 
 
 def build_report(slate, *, limit: int = 10) -> dict:
+    from . import weekly_props
+
     spreads, totals = _game_lists(slate)
     props, player_matchups = _player_lists(slate)
     team_matchups = []
@@ -367,4 +369,5 @@ def build_report(slate, *, limit: int = 10) -> dict:
         "best_team_matchups": team_matchups[:limit],
         "best_player_matchups": player_matchups[:limit],
         "best_bet_report": best[:limit],
+        "weekly_position_props": weekly_props.for_slate(slate),
     }
