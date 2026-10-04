@@ -31,11 +31,17 @@ MARKETS = {
     "total passing touchdowns (incl. overtime)": "player_pass_tds",
     "total pass completions (incl. overtime)": "player_pass_completions",
     "total pass attempts (incl. overtime)": "player_pass_attempts",
+    "total passing attempts (incl. overtime)": "player_pass_attempts",
     "total passing interceptions (incl. overtime)": "player_pass_interceptions",
     "total rushing yards (incl. overtime)": "player_rush_yds",
     "total carries (incl. overtime)": "player_rush_attempts",
     "total receiving yards (incl. overtime)": "player_reception_yds",
     "total receptions (incl. overtime)": "player_receptions",
+    "total rushing plus receiving yards (incl. overtime)": "player_rush_reception_yds",
+    "total passing plus rushing yards (incl. overtime)": "player_pass_rush_yds",
+    "total field goals made (incl. overtime)": "player_field_goals",
+    "total kicking points (incl. overtime)": "player_kicking_points",
+    "total extra points made (incl. overtime)": "player_pats",
 }
 
 

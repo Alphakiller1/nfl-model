@@ -274,6 +274,18 @@ def _cmd_best_bets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_weekly_props(args: argparse.Namespace) -> int:
+    from . import weekly_props
+
+    slate = _slate(args)
+    report = weekly_props.for_slate(slate)
+    if args.out:
+        print(weekly_props.write(report, args.out))
+    else:
+        print(json.dumps(report, indent=2, allow_nan=False))
+    return 0
+
+
 def _add_slate_args(parser: argparse.ArgumentParser, *, simulations: int | None = None
                     ) -> argparse.ArgumentParser:
     parser.add_argument("--season", type=int, help="default: current season")
@@ -323,6 +335,10 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--limit", type=int, default=10)
     b.add_argument("--out", help="write JSON report here instead of stdout")
 
+    w = _add_slate_args(sub.add_parser(
+        "weekly-props", help="weekly top 10 RB/QB/WR/kicking thresholds with scouting evidence"))
+    w.add_argument("--out", help="write JSON report here instead of stdout")
+
     args = parser.parse_args(argv)
     return {
         "status": _cmd_status,
@@ -335,6 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         "export": _cmd_export,
         "build-site": _cmd_build_site,
         "best-bets": _cmd_best_bets,
+        "weekly-props": _cmd_weekly_props,
     }[args.cmd](args)
 
 

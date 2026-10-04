@@ -33,10 +33,12 @@ from . import (
     forecast,
     matrix,
     player_props,
+    prop_report_view,
     ratings,
     recommendations,
     teams,
     totals,
+    weekly_props,
 )
 from . import divisions as divisions_mod
 from . import season as season_mod
@@ -156,6 +158,7 @@ def _nav(slate) -> str:
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#best-bets">Best Bets</a>
+      <a class="nav-link" href="#weekly-props">Weekly Props</a>
       <a class="nav-link" href="#sharp">Sharp Money</a>
       <a class="nav-link" href="#players">Players</a>
       <a class="nav-link" href="#scheme">Scheme</a>
@@ -495,26 +498,6 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
             )
         return "".join(output)
 
-    quoted = report["top_player_props"]
-    props = quoted or report["projection_only_player_props"]
-    prop_rows = []
-    for rank, row in enumerate(props[:10], start=1):
-        if row["line"] is None:
-            call = "projection only"
-            line = "&ndash;"
-        else:
-            call = (f'{row["selection"]} {row["line"]:g} ({row["probability"]:.0%})'
-                    + ("" if row.get("playable") else " · watch only"))
-            line = f'{row["line"]:g}'
-        prop_rows.append(
-            f'<tr><td class="rank">{rank}</td><td><b>{e(row["player"])}</b> '
-            f'<span class="dim">{e(row["team"])} {e(row["position"])}</span></td>'
-            f'<td>{e(row["market"])}</td><td>{e(call)}</td><td class="num">{line}</td>'
-            f'<td class="num score">{row["model"]:.1f}</td>'
-            f'<td class="num">{row["scheme_score"]:+.3f}</td>'
-            f'<td class="report-reason">{e(row["reason"])}</td></tr>'
-        )
-
     matchup_rows = []
     for rank, row in enumerate(report["best_team_matchups"][:8], start=1):
         matchup_rows.append(
@@ -526,11 +509,10 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
             f'<td class="report-reason">{e(row["reason"])}</td></tr>'
         )
 
-    prop_note = (
-        f'{len(quoted)} paired DraftKings prop lines matched to model projections.'
-        if quoted else
-        'No paired DraftKings prop lines were available; showing projection-only matchup '
-        'standouts, with no over/under call.'
+    position_report = report["weekly_position_props"]
+    prop_note = ", ".join(
+        f"{group['published']} {group['label']} props"
+        for group in position_report["groups"].values()
     )
     return f"""
 <section id="best-bets">
@@ -562,19 +544,13 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
     </tr></thead><tbody>
     {game_rows(report['top_totals'], total=True)}</tbody>
     </table></div></details>
-  <details class="prop-group" open><summary>Top player props &amp; projection standouts
-    <span>{len(props)} ranked &middot; {e(prop_note)}</span></summary><div class="tablewrap">
-    <table class="pr prop-table"><thead><tr><th>#</th><th>Player</th><th>Market</th>
-    <th>Call</th><th class="num">Line</th><th class="num">Model</th>
-    <th class="num">Scheme score</th><th>Why the matchup fits</th></tr></thead>
-    <tbody>{''.join(prop_rows)}</tbody></table></div></details>
   <details class="prop-group"><summary>Best team scheme matchups
     <span>{len(report['best_team_matchups'])} ranked</span></summary><div class="tablewrap">
     <table class="pr prop-table"><thead><tr><th>#</th><th>Offense</th>
     <th class="num">Pass att Δ</th><th class="num">Carry Δ</th>
     <th class="num">Pass eff Δ</th><th class="num">Rush eff Δ</th><th>Explanation</th></tr></thead>
     <tbody>{''.join(matchup_rows)}</tbody></table></div></details>
-</section>"""
+</section>{prop_report_view.render(position_report)}"""
 
 
 def _prop_value(player, key: str, *, places: int = 1, percent: bool = False) -> str:
@@ -1306,7 +1282,7 @@ def render(slate, outlooks, *, health: dict | None = None,
         '<meta name="description" content="NFL research dashboard: opponent-adjusted power '
         'ratings, projected scores and totals, offensive and defensive unit rankings, '
         'simulated division races, and an explicit authority gate.">\n'
-        f"<style>{brand_css()}{_PAGE_CSS}</style>\n</head>\n<body>\n{body}\n"
+        f"<style>{brand_css()}{_PAGE_CSS}{prop_report_view.CSS}</style>\n</head>\n<body>\n{body}\n"
         f"<script>{BOARD_JS}</script>\n</body>\n</html>\n"
     )
 
@@ -1391,6 +1367,11 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         "odds": odds,
         "players": slate.player_status,
         "scheme": slate.scheme_status,
+        "weekly_props": {
+            "counts": {position: group["published"] for position, group in
+                       weekly_props.for_slate(slate)["groups"].items()},
+            "context": weekly_props.for_slate(slate)["context_status"],
+        },
         "splits": dk_splits.status(),
         "sharp_spots": len(spots),
         "issues": list(dict.fromkeys(issues)),
@@ -1408,6 +1389,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         encoding="utf-8",
     )
     export.write(slate, out.parent / "board.json", outlooks, prop_slips=slip_plan)
+    weekly_props.write(weekly_props.for_slate(slate), out.parent / "weekly-props.json")
     (out.parent / "build.json").write_text(
         json.dumps(health, indent=2) + "\n", encoding="utf-8"
     )
