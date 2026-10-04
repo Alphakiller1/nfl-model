@@ -38,7 +38,8 @@ INJURIES = [
 ]
 
 
-def test_spread_pick_names_paths_injuries_and_qb_adjustment(slate):
+def test_spread_pick_names_paths_injuries_and_qb_adjustment(slate, monkeypatch):
+    _skilled(monkeypatch)
     game = _game(slate, qb_out=("BUF QB Backup Starter",))
     away = game.away
     injuries = bb.injury_index([dict(r, team=away) for r in INJURIES], 1)
@@ -61,7 +62,7 @@ def test_small_gaps_are_not_picks(slate):
 
 
 def test_total_pick(slate, monkeypatch):
-    monkeypatch.setattr(bb, "TOTAL_MODEL_WEIGHT", 1.0)
+    _skilled(monkeypatch)
     pick = bb.total_pick(_game(slate), slate, {})
     assert pick.selection == "Over 46.5" and pick.edge == 4.5
     assert "Scoreline:" in pick.angle and "not inputs to the total" in pick.angle
@@ -69,6 +70,21 @@ def test_total_pick(slate, monkeypatch):
 
 def test_a_total_pick_needs_the_model_total_to_earn_its_weight(slate):
     # Measured weight 0.02: even a 9-point disagreement prices near even.
+    assert bb.total_pick(_game(slate, total=47.8, book_total=38.5), slate, {}) is None
+
+
+def _skilled(monkeypatch):
+    """Give spreads and totals full skill, to test pick mechanics (not live pricing)."""
+    from nflmodel import calibration
+
+    for market in ("spread", "total"):
+        old = calibration.SKILL[market]
+        monkeypatch.setitem(calibration.SKILL, market,
+                            calibration.MarketSkill(1.0, old.sigma, "test"))
+
+
+def test_no_spread_or_total_pick_publishes_at_measured_skill(slate):
+    assert bb.spread_pick(_game(slate, model=12.0, book=2.5), slate, {}) is None
     assert bb.total_pick(_game(slate, total=47.8, book_total=38.5), slate, {}) is None
 
 
@@ -92,11 +108,23 @@ def _quote(line, over=-115, under=-105):
                            "draftkings", "DraftKings", None)
 
 
+def _open_gate(monkeypatch):
+    """Let the fixture player's line through the slip evidence rules, to test
+    pick mechanics; the rules themselves are tested in test_slips.py."""
+    from types import SimpleNamespace
+
+    from nflmodel import slips
+
+    monkeypatch.setattr(slips, "candidate_legs", lambda slate, now=None: (
+        [SimpleNamespace(player_id="rb-1", metric="rushing_yards")], {}, []))
+
+
 @pytest.fixture
 def pricing(monkeypatch):
     """Calibration off (p_over = the distribution's own probability)."""
     from nflmodel import prop_pricing
 
+    _open_gate(monkeypatch)
     monkeypatch.setattr(prop_pricing, "CALIBRATION", {"s": 1.0, "c": 0.5})
     return prop_pricing
 
@@ -119,6 +147,7 @@ def test_prop_pick_is_priced_from_the_matrix_distribution(slate, pricing):
 def test_leans_publish_every_week_and_say_how_strong_they_are(slate, monkeypatch):
     from nflmodel import prop_pricing
 
+    _open_gate(monkeypatch)
     monkeypatch.setattr(prop_pricing, "CALIBRATION", {"s": 0.1, "c": 0.5})
     s = replace(slate, week=1, player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5, -110, -110)])
@@ -132,6 +161,14 @@ def test_leans_publish_every_week_and_say_how_strong_they_are(slate, monkeypatch
     assert "research-only" in pick.tags   # still published, labelled
 
 
+def test_a_prop_outside_the_evidence_rules_never_publishes(slate):
+    # Same line, real gate: an RB rushing-yards over has no record (17-18) and the
+    # fixture player has no games this season, so best bets and slips agree: no.
+    s = replace(slate, week=1, player_projections=[_player()],
+                player_prop_quotes=[_quote(68.5)], player_results=[])
+    assert bb.prop_picks(s, {}) == []
+
+
 def test_an_id_matched_line_without_prices_reads_as_fifty_fifty(slate, pricing):
     quote = PlayerPropQuote("e1", "KC", "BUF", "player_rush_yds", "L. Back", 68.5, -110, -110,
                             "draftkings", "DraftKings (via ESPN)", None, player_id="rb-1",
@@ -142,7 +179,7 @@ def test_an_id_matched_line_without_prices_reads_as_fifty_fifty(slate, pricing):
 
 
 def test_best_bets_are_logged_and_graded(slate, tmp_path, pricing, monkeypatch):
-    monkeypatch.setattr(bb, "TOTAL_MODEL_WEIGHT", 1.0)
+    _skilled(monkeypatch)
     game = _game(slate)
     s = replace(slate, week=1, projections=[game], player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5)], injuries=[])
@@ -163,7 +200,8 @@ def test_best_bets_are_logged_and_graded(slate, tmp_path, pricing, monkeypatch):
     assert summary["total"]["units"] == -1.0 and summary["spread"]["win"] == 1
 
 
-def test_a_published_pick_is_locked_at_its_first_line(slate, tmp_path):
+def test_a_published_pick_is_locked_at_its_first_line(slate, tmp_path, monkeypatch):
+    _skilled(monkeypatch)
     s = replace(slate, week=1, projections=[_game(slate)], player_projections=[],
                 player_prop_quotes=[], injuries=[])
     picks = [p.to_json() for p in bb.build(s)]

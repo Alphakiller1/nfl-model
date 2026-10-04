@@ -25,21 +25,15 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass, field
 
-from . import prop_distributions, prop_pricing, teams
+from . import calibration, prop_distributions, prop_pricing, teams
 
-# Market error around the outcome: margin MAE ~10.5, total MAE ~10.3 on the
-# 2016-2025 baseline -> Normal SD = MAE * sqrt(pi/2).
-MARGIN_SIGMA = 13.2
-TOTAL_SIGMA = 12.9
+# Spread and total picks are priced by `calibration` on each market's measured
+# skill against the close; these remain for the record of the outcome spreads.
+MARGIN_SIGMA = calibration.SKILL["spread"].sigma
+TOTAL_SIGMA = calibration.SKILL["total"].sigma
 MIN_SPREAD_GAP = 2.0
 MIN_TOTAL_GAP = 3.0
-# How much of the model-minus-market total gap shows up in the result:
-# time-forward 2021-2025 (1,615 games, QB availability applied) the blend
-# weight is 0.02 (seasons -0.30 to +0.23), and the model's side went 52-52
-# when it disagreed with the closing total by 6+ points. A total pick is priced
-# on that share of the gap, so it only publishes if that weight earns it.
-TOTAL_MODEL_WEIGHT = 0.02
-MIN_TOTAL_PROBABILITY = 0.53
+
 MAX_GAP = 14.0            # beyond this the "gap" is a data problem, not a pick
 MIN_PROP_PROBABILITY = 0.53   # prop_pricing.MIN_PROBABILITY: below it a pick is a "lean"
 MIN_PROP_EDGE = 0.0
@@ -203,7 +197,11 @@ def spread_pick(projection, slate, injuries: dict) -> Pick | None:
     scheme = _scheme(slate, team, opp)
     if scheme:
         sentences.append(f"Matchup: {scheme}")
-    prob = _phi(abs(gap) / MARGIN_SIGMA)
+    # Priced on the spread model's measured skill against the close (none so
+    # far), so a spread pick only publishes once a refit earns it.
+    prob = calibration.probability("spread", gap)
+    if prob < calibration.MIN_PUBLISH_PROBABILITY:
+        return None
     tags = (["qb-out"] if p.qb_out else []) + (["injury-report"] if support else [])
     return Pick("spread", p.season, p.week, p.home, p.away, p.kickoff_utc or None,
                 f"{team} {_line(line)}", "home" if home_side else "away", line,
@@ -242,8 +240,8 @@ def total_pick(projection, slate, injuries: dict) -> Pick | None:
         scheme = _scheme(slate, team, opp)
         if scheme:
             sentences.append(f"{team} offense: {scheme}")
-    prob = _phi(TOTAL_MODEL_WEIGHT * abs(gap) / TOTAL_SIGMA)
-    if prob < MIN_TOTAL_PROBABILITY:
+    prob = calibration.probability("total", gap)
+    if prob < calibration.MIN_PUBLISH_PROBABILITY:
         return None   # the model total has not shown it beats the closing total
     return Pick("total", p.season, p.week, p.home, p.away, p.kickoff_utc or None,
                 f"{'Over' if over else 'Under'} {p.book_total:.1f}", "over" if over else "under",
@@ -260,8 +258,15 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
     by_id = {pl.player_id: pl for pl in available}
     by_name = {normalise(pl.player_name): pl for pl in available}
     games = {(g.home, g.away): g for g in slate.projections}
+    from . import slips
+
     research = prop_pricing.research_only()
     record = prop_pricing.EVIDENCE
+    # One source of truth for which props may be played: the same evidence
+    # rules the weekly slips use (market record, starters, no role expansion,
+    # no 0.5 lines, ...). Before this, best bets published an RB carries under
+    # (24-26 in the replay) and 0.5 lines the slips refuse.
+    allowed = {(leg.player_id, leg.metric) for leg in slips.candidate_legs(slate)[0]}
     out: list[Pick] = []
     for quote in slate.player_prop_quotes:
         spec = PROP_MARKETS.get(quote.market)
@@ -274,7 +279,9 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
         if metric == "rush_attempts" and mean is None:
             mean = player.metrics.get("carries")
         priced = prop_pricing.price(metric, mean, quote.line)
-        if priced is None:
+        leg_metric = ("carries" if metric == "rush_attempts" and "carries" in player.metrics
+                      else metric)
+        if priced is None or (player.player_id, leg_metric) not in allowed:
             continue
         p_over = priced["p_over"]
         dist = prop_distributions.distribution(metric, mean)

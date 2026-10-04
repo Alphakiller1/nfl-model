@@ -91,6 +91,7 @@ jobs:
         run: |
           python scripts/smoke_site.py _site/index.html
           python scripts/verify_build.py _site/build.json
+          python scripts/audit_consistency.py _site/board.json
 
       - name: Save source snapshots and shadow ledger
         if: always()
