@@ -385,11 +385,12 @@ def _picks_block(picks: list, record: dict) -> str:
         groups.append(f'<h3 class="bb-family">{_FAMILY[family]}</h3>'
                       f'<div class="bb-list">{cards}</div>')
     body = "".join(groups) or (
-        '<p class="dim">No game or posted prop clears the minimum disagreement yet.</p>')
+        '<p class="dim">No pick clears its market&rsquo;s measured skill this week.</p>')
     return (f'<div class="bb-wrap"><p class="blurb"><b>Season record of these picks:</b> '
-            f'{e(line)}. &ldquo;Model view&rdquo; is the model&rsquo;s own probability; the '
-            "research harness has not shown it beats the close (ATS on disagreements 49.8%), "
-            f"so treat it as a lean, not a price. {e(_gate_line(record))}</p>{body}</div>")
+            f'{e(line)}. Every probability is priced on its market&rsquo;s measured skill '
+            "against the closing line (calibration.py): spreads and totals have shown none, so "
+            "they publish no picks however large the gap; props publish with their record. "
+            f"{e(_gate_line(record))}</p>{body}</div>")
 
 
 def _slips_section(plan: dict | None, record: dict) -> str:
@@ -542,13 +543,14 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
     <span>{len(report['top_spreads'])} ranked</span></summary><div class="tablewrap">
     <table class="pr prop-table"><thead><tr><th>#</th><th>Side / game</th>
     <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
-    <th>Scheme explanation</th></tr></thead><tbody>{game_rows(report['top_spreads'])}</tbody>
+    <th>Matchup context (not a model input)</th></tr></thead>
+    <tbody>{game_rows(report['top_spreads'])}</tbody>
     </table></div></details>
   <details class="prop-group" open><summary>Top total model gaps
     <span>{len(report['top_totals'])} ranked</span></summary><div class="tablewrap">
     <table class="pr prop-table"><thead><tr><th>#</th><th>Call / game</th>
     <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
-    <th>Scheme explanation</th></tr></thead><tbody>
+    <th>Matchup context (not a model input)</th></tr></thead><tbody>
     {game_rows(report['top_totals'], total=True)}</tbody>
     </table></div></details>
   <details class="prop-group" open><summary>Top player props &amp; projection standouts

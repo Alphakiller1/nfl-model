@@ -217,6 +217,9 @@ class GameProjection:
     # Starting-quarterback availability, already inside `model_margin`
     # (`availability.py`). `qb_out` names each unavailable usual starter.
     availability_margin: float = 0.0
+    # Starting-quarterback availability's effect on the total (already inside
+    # `projected_total`), published so the consistency audit can check it.
+    availability_total: float = 0.0
     qb_out: tuple[str, ...] = ()
     model_margin: float | None = None
     # nflverse consensus/history remains a benchmark input.  The published
@@ -371,6 +374,7 @@ def project_game(
         rating_margin=rating_margin,
         efficiency_margin=projection.efficiency_margin,
         availability_margin=availability_margin if model_margin is not None else 0.0,
+        availability_total=availability_total if projection.modelled else 0.0,
         qb_out=qb_out,
         model_margin=model_margin,
         market_margin=market_margin,
