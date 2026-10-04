@@ -1,9 +1,8 @@
 """Four weekly top tens, ranked by threshold likelihood under football stress.
 
-Use the fitted matrix once, the existing line calibration for supported book
-markets, and explicit distribution assumptions for research extensions. Never
-rank a fabricated sportsbook line or use a generic team scheme bonus. There
-is one entry per player; quoted and research thresholds occupy separate tiers.
+Use the fitted matrix once and observed PrizePicks thresholds only. No
+sportsbook calibration, substituted lines, or invented research milestones.
+Distribution assumptions and source availability remain explicit.
 """
 
 from __future__ import annotations
@@ -14,29 +13,13 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import prop_distributions, prop_pricing, prop_scouting, teams
+from . import prop_distributions, prop_pricing, prop_scouting
+from .sources import prizepicks
 from .sources.chase_context import timestamp
-from .sources.oddsapi import normalise
 
-VERSION = "nfl-weekly-schematic-props/1.0.0"
+VERSION = "nfl-weekly-schematic-props/2.0.0"
 GROUPS = ("RB", "QB", "WR", "K")
 TOP_N = 10
-MARKETS = {
-    "player_pass_yds": ("passing_yards", "Passing yards"),
-    "player_pass_tds": ("passing_tds", "Passing touchdowns"),
-    "player_pass_attempts": ("pass_attempts", "Pass attempts"),
-    "player_pass_completions": ("completions", "Completions"),
-    "player_pass_interceptions": ("interceptions", "Interceptions"),
-    "player_rush_yds": ("rushing_yards", "Rushing yards"),
-    "player_rush_attempts": ("rush_attempts", "Rush attempts"),
-    "player_reception_yds": ("receiving_yards", "Receiving yards"),
-    "player_receptions": ("receptions", "Receptions"),
-    "player_rush_reception_yds": ("rush_receiving_yards", "Rush + receiving yards"),
-    "player_pass_rush_yds": ("pass_rush_yards", "Pass + rushing yards"),
-    "player_field_goals": ("fg_made", "Field goals made"),
-    "player_pats": ("pat_made", "Extra points made"),
-    "player_kicking_points": ("kicking_points", "Kicking points"),
-}
 POSITION_METRICS = {
     "RB": ("rushing_yards", "carries", "receiving_yards", "receptions", "rush_receiving_yards"),
     "QB": (
@@ -51,25 +34,6 @@ POSITION_METRICS = {
     ),
     "WR": ("receiving_yards", "receptions"),
     "K": ("fg_made", "pat_made", "kicking_points"),
-}
-# Standard research milestones, not inferred sportsbook prices. Choose a
-# meaningful hurdle with raw/bounded probability nearest 65%, not an easy
-# arbitrary line that lets every player claim 90% confidence.
-MILESTONES = {
-    "rushing_yards": (20, 30, 40, 50, 60, 70, 80, 90),
-    "receiving_yards": (10, 20, 30, 40, 50, 60, 70, 80, 90),
-    "rush_receiving_yards": (40, 50, 60, 70, 80, 90, 100, 110),
-    "pass_rush_yards": (175, 200, 225, 250, 275, 300),
-    "passing_yards": (150, 175, 200, 225, 250, 275, 300),
-    "pass_attempts": (24.5, 27.5, 30.5, 33.5, 36.5),
-    "completions": (14.5, 17.5, 20.5, 23.5),
-    "carries": (9.5, 12.5, 15.5, 18.5, 21.5),
-    "rush_attempts": (2.5, 3.5, 4.5, 5.5),
-    "receptions": (1.5, 2.5, 3.5, 4.5, 5.5, 6.5),
-    "passing_tds": (0.5, 1.5, 2.5),
-    "fg_made": (0.5, 1.5, 2.5),
-    "pat_made": (1.5, 2.5, 3.5),
-    "kicking_points": (4.5, 5.5, 6.5, 7.5, 8.5, 9.5),
 }
 COMBINED = {
     "rush_receiving_yards": (("rushing_yards", 1), ("receiving_yards", 1)),
@@ -129,7 +93,7 @@ def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False
     """
     if metric in COMBINED:
         if float(line).is_integer():
-            # Research milestones are converted to x-.5 before reaching here.
+            # Combined integer lines have no validated tie mass.
             return None
         (left, ls), (right, rs) = COMBINED[metric]
         if any(key not in metrics for key in (left, right)):
@@ -218,26 +182,35 @@ def _stress(player, scouting: dict, angle: dict) -> tuple[float, list[str]]:
     return min(fraction, 0.40), reasons
 
 
-def _row(
-    player, metric: str, label: str, line: float, scouting: dict, *, quote=None
-) -> dict | None:
+def _row(player, metric: str, label: str, line: float, scouting: dict, *, quote) -> dict | None:
     if player.position == "QB" and metric in {"rushing_yards", "rush_attempts"}:
-        individual = next(s for s in scouting["sections"]
-                          if s["family"] == "individual_look_response")
+        individual = next(
+            s for s in scouting["sections"] if s["family"] == "individual_look_response"
+        )
         if not individual.get("rushing"):
-            # RB front response cannot establish designed-QB runs, scrambles or kneels.
             return None
     metrics = _metrics(player)
-    base = probability(metric, metrics, line, quoted=quote is not None)
+    # The DraftKings line calibration has no PrizePicks validation record.
+    base = probability(metric, metrics, line, quoted=False)
     if base is None:
         return None
-    side = ("OVER" if base["over"] >= base["under"] else "UNDER") if quote else "OVER"
-    direction = side.lower()
-    # The explanation needs derived means but must not mutate the projection.
+    offered = {"MORE": "over", "LESS": "under"}
+    choices = [side for side in quote.published_sides if side in offered]
+    if not choices:
+        return None
+    selection = max(choices, key=lambda side: base[offered[side]])
+    direction = offered[selection]
     from dataclasses import replace
 
     explained_player = replace(player, metrics=metrics)
-    angle = prop_scouting.explain(explained_player, metric, line, side, scouting)
+    angle = prop_scouting.explain(
+        explained_player, metric, line, "OVER" if selection == "MORE" else "UNDER", scouting
+    )
+    if not quote.entry_availability_verified:
+        angle["failure_paths"].append(
+            "Public PrizePicks card: confirm standard/Goblin/Demon status, offered side "
+            "and current line in the app; contest availability is unverified"
+        )
     stress, reasons = _stress(player, scouting, angle)
     scenarios = []
     for scale, name in (
@@ -246,7 +219,7 @@ def _row(
         (1 + stress, "expanded volume/efficiency"),
     ):
         shifted = {key: value * scale for key, value in metrics.items()}
-        view = probability(metric, shifted, line, quoted=quote is not None)
+        view = probability(metric, shifted, line, quoted=False)
         scenarios.append(
             {
                 "scenario": name,
@@ -255,11 +228,6 @@ def _row(
                 "push_probability": round(view["push"], 6),
             }
         )
-    conservative = min(s["hit_probability"] for s in scenarios)
-    quoted = quote is not None
-    # Assumption-based kicker/combined markets stay research even with a book
-    # line. Neither nominal ESPN prices nor a likelihood rank authorizes a bet.
-    tier = 0 if quoted and base["calibrated"] else 1 if quoted else 2
     return {
         "player": player.player_name,
         "player_id": player.player_id,
@@ -272,73 +240,44 @@ def _row(
         "kickoff_utc": player.kickoff_utc,
         "metric": metric,
         "market": label,
-        "selection": side,
+        "selection": selection,
         "threshold": line,
-        "line": line if quoted else None,
-        "threshold_source": "observed_book_line" if quoted else "research_milestone",
+        "line": line,
+        "threshold_source": "prizepicks_published_projection",
+        "line_provider": "PrizePicks",
+        "provider_projection_id": quote.projection_id,
+        "source_stat": quote.source_stat,
+        "source_url": quote.source_url,
+        "line_variant": quote.variant,
+        "published_sides": list(quote.published_sides),
+        "entry_availability_verified": quote.entry_availability_verified,
         "model_mean": metrics[metric],
         "hit_probability": round(base[direction], 6),
         "hit_probability_interval": base.get(f"{direction}_interval"),
         "push_probability": round(base["push"], 6),
-        "conservative_hit_probability": conservative,
+        "conservative_hit_probability": min(s["hit_probability"] for s in scenarios),
         "probability_basis": base["basis"],
         "probability_assumption": base["assumption"],
-        "calibrated": base["calibrated"],
-        "rank_tier": tier,
+        "calibrated": False,
         "stress_fraction": stress,
         "stress_reasons": reasons,
         "scenarios": scenarios,
-        "book": quote.book_title if quoted else None,
-        "quote_updated_at": quote.last_update if quoted else None,
-        "price": (
-            (quote.over_price if side == "OVER" else quote.under_price)
-            if quoted and quote.priced
-            else None
-        ),
-        "priced": bool(quoted and quote.priced),
+        "book": "PrizePicks",
+        "quote_updated_at": quote.observed_at_utc,
+        "price": None,
+        "priced": False,
         "authority": "RESEARCH_ONLY",
         "may_bet": False,
-        "action": "RESEARCH — recheck line, role and inactive lists",
-        "status": "quoted_research" if quoted else "research_threshold",
+        "action": "RESEARCH — recheck PrizePicks line, variant, offered side and inactive lists",
+        "status": "posted_prizepicks_research",
         "external_context_available": scouting["external_context_available"],
         "projection_version": player.model_version,
         **angle,
     }
 
 
-def _research_rows(player, scouting: dict) -> list[dict]:
-    out = []
-    metrics = _metrics(player)
-    for metric in POSITION_METRICS[player.position]:
-        if metric not in MILESTONES or metrics.get(metric, 0) <= 0:
-            continue
-        candidates = []
-        for milestone in MILESTONES[metric]:
-            # An integer milestone is an at-least hurdle, encoded at x-.5.
-            line = milestone - 0.5 if float(milestone).is_integer() else milestone
-            p = probability(metric, metrics, line)
-            if p:
-                candidates.append((abs(p["over"] - 0.65), line, p["over"]))
-        if not candidates:
-            continue
-        _, line, p = min(candidates)
-        # Do not fill the list with an effectively impossible or nearly certain
-        # threshold. This is a research watchlist with standard, meaningful hurdles.
-        if not 0.45 <= p <= 0.85:
-            continue
-        label = next(
-            (label for key, label in MARKETS.values() if key == metric),
-            metric.replace("_", " ").title(),
-        )
-        row = _row(player, metric, label, line, scouting)
-        if row:
-            out.append(row)
-    return out
-
-
 def _sort(row: dict) -> tuple:
     return (
-        row["rank_tier"],
         -row["conservative_hit_probability"],
         -row["hit_probability"],
         len(row["conflicts"]),
@@ -377,29 +316,28 @@ def build(slate, *, now: datetime | None = None) -> dict:
             continue
         players[player.player_id] = player
         dossiers[player.player_id] = scouting
-    names = {}
-    for player in players.values():
-        names.setdefault(normalise(player.player_name), []).append(player)
     candidates = {group: [] for group in GROUPS}
     seen = set()
-    for quote in slate.player_prop_quotes:
-        spec = MARKETS.get(quote.market)
-        if spec is None:
+    # Dedicated PrizePicks list: generic sportsbook quotes cannot reach this path.
+    for quote in getattr(slate, "prizepicks_quotes", []):
+        if not isinstance(quote, prizepicks.PrizePicksLine) or quote.provider != "prizepicks":
+            excluded["non_prizepicks_source"] += 1
             continue
-        player = players.get(quote.player_id) if quote.player_id else None
-        if not quote.player_id:
-            matches = names.get(normalise(quote.player_name), [])
-            player = matches[0] if len(matches) == 1 else None
+        player = players.get(quote.player_id)
         if player is None:
             continue
-        if {teams.canonical(quote.home_team), teams.canonical(quote.away_team)} != {
-            player.team,
-            player.opponent,
-        }:
+        kickoff, observed = timestamp(quote.kickoff_utc), timestamp(quote.observed_at_utc)
+        if (
+            quote.team != player.team
+            or quote.opponent != player.opponent
+            or kickoff is None
+            or (abs((kickoff - timestamp(player.kickoff_utc)).total_seconds()) >= 60)
+        ):
             excluded["quote_fixture_mismatch"] += 1
             continue
-        updated = timestamp(quote.last_update)
-        if updated and (updated > moment or (moment - updated).total_seconds() > 72 * 3600):
+        if observed is None or not 0 <= (moment - observed).total_seconds() <= (
+            prizepicks.MAX_AGE_SECONDS
+        ):
             excluded["stale_or_future_quote"] += 1
             continue
         try:
@@ -410,22 +348,31 @@ def build(slate, *, now: datetime | None = None) -> dict:
         if not math.isfinite(line) or line < 0:
             excluded["invalid_line"] += 1
             continue
-        metric, label = spec
-        if metric == "rush_attempts" and player.position == "RB":
-            metric = "carries"
+        spec = prizepicks.MARKETS.get(quote.source_stat)
+        if (
+            spec != (quote.metric, quote.market)
+            or not isinstance(quote.projection_id, str)
+            or not quote.projection_id
+            or not isinstance(quote.published_sides, (tuple, list))
+            or not isinstance(quote.source_url, str)
+            or not quote.source_url.startswith(prizepicks.BASE)
+        ):
+            excluded["unsupported_or_unattributed_projection"] += 1
+            continue
+        metric = (
+            "carries"
+            if quote.metric == "rush_attempts" and player.position == "RB"
+            else (quote.metric)
+        )
         if metric not in POSITION_METRICS[player.position] or _metrics(player).get(metric, 0) <= 0:
             continue
-        identity = (player.player_id, metric, line, quote.book)
+        identity = quote.projection_id
         if identity in seen:
             continue
         seen.add(identity)
-        row = _row(player, metric, label, line, dossiers[player.player_id], quote=quote)
+        row = _row(player, metric, quote.market, line, dossiers[player.player_id], quote=quote)
         if row:
-            if updated is None:
-                row["failure_paths"].append("Quote timestamp unavailable; verify the current line")
             candidates[player.position].append(row)
-    for player in players.values():
-        candidates[player.position].extend(_research_rows(player, dossiers[player.player_id]))
     groups = {}
     for group in GROUPS:
         ordered, used = [], set()
@@ -436,20 +383,19 @@ def build(slate, *, now: datetime | None = None) -> dict:
             ordered.append({"rank": len(ordered) + 1, **row})
             if len(ordered) == TOP_N:
                 break
-        counts = Counter(row["threshold_source"] for row in ordered)
         groups[group] = {
             "label": "Kicking" if group == "K" else group,
             "requested": TOP_N,
             "published": len(ordered),
             "rows": ordered,
-            "quoted": counts["observed_book_line"],
-            "research_thresholds": counts["research_milestone"],
+            "quoted": len(ordered),
+            "research_thresholds": 0,
             "candidate_players": len({r["player_id"] for r in candidates[group]}),
             "shortfall": max(TOP_N - len(ordered), 0),
             "availability_note": "Ten distinct players, one prop each"
             if len(ordered) == TOP_N
-            else "Fewer than ten eligible pre-kickoff players/meaningful thresholds; "
-                 "no fabricated entries",
+            else "Fewer than ten eligible players with observed PrizePicks lines; "
+            "no fabricated entries",
         }
     return {
         "schema": VERSION,
@@ -458,17 +404,23 @@ def build(slate, *, now: datetime | None = None) -> dict:
         "generated_at_utc": moment.isoformat(),
         "authority": "RESEARCH_ONLY",
         "may_bet": False,
-        "method": "Four top tens, one prop per player. Quoted calibrated lines, then quoted "
-        "research markets, then research milestones; within each tier sort by lowest "
-        "hit probability across disclosed football stress scenarios. Price/EV is not "
-        "the ranking objective. Missing assignments are never scored as observed facts.",
+        "line_provider": "PrizePicks",
+        "line_source_status": getattr(slate, "prizepicks_status", {}) or {},
+        "method": "Four top tens, one actual PrizePicks projection per player. Sort by the "
+        "lowest hit probability across disclosed football stress scenarios. No sportsbook "
+        "or invented-milestone fallback; no PrizePicks calibration or payout/EV claim.",
         "context_status": {
             k: v for k, v in (getattr(slate, "prop_context", {}) or {}).items() if k != "games"
         },
-        "calibration_evidence": prop_pricing.EVIDENCE,
+        "calibration_evidence": {
+            "provider": "PrizePicks",
+            "status": "unvalidated",
+            "note": "DraftKings closing-line calibration is not applied to PrizePicks",
+        },
         "stress_note": "Scenario assumptions are sensitivity tests, not fitted penalties or "
         "statistical confidence intervals. New kicking and combined markets need "
-        "a forward calibration record before any betting promotion.",
+        "a forward calibration record before any betting promotion. Public research cards "
+        "may include alternate lines; variant and contest availability are unverified.",
         "groups": groups,
         "excluded": dict(excluded),
     }

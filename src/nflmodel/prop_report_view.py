@@ -124,14 +124,8 @@ def _items(values: list[str], empty: str) -> str:
 def _card(row: dict) -> str:
     threshold = row["threshold"]
     direction = row["selection"]
-    research = row["threshold_source"] == "research_milestone"
-    if research:
-        hurdle = int(threshold + 0.5)
-        call = f"{hurdle}+ {row['market'].lower()}"
-        source = "Research milestone · no posted book line"
-    else:
-        call = f"{direction} {threshold:g} {row['market'].lower()}"
-        source = row["book"] + (" · prices unavailable" if not row["priced"] else "")
+    call = f"{direction} {threshold:g} {row['market'].lower()}"
+    source = "PrizePicks public projection · variant/contest availability unverified"
     interval = row.get("hit_probability_interval")
     probability = (
         f"{interval[0]:.0%}–{interval[1]:.0%} bound"
@@ -140,7 +134,7 @@ def _card(row: dict) -> str:
     )
     basis = {
         "line_calibrated": "Line-calibrated model",
-        "raw_distribution": "Uncalibrated milestone model",
+        "raw_distribution": "Uncalibrated PrizePicks model",
         "poisson_assumption": "Unvalidated Poisson model",
         "dependence_bound": "Dependence bound",
     }[row["probability_basis"]]
@@ -158,6 +152,8 @@ def _card(row: dict) -> str:
 <span>Stress likelihood</span></div></div>
 <div class="wp-meta">{e(source)} · Mean {row["model_mean"]:.1f} · Base {e(probability)} ·
 {e(basis)} · {e(row["schematic_assessment"])}</div>
+<a class="wp-source" href="{e(row["source_url"], quote=True)}" target="_blank"
+rel="noopener noreferrer">View PrizePicks source · projection {e(row["provider_projection_id"])}</a>
 <details class="wp-analysis"><summary>Scouting case, threshold and failure paths</summary>
 <p>{e(row["thesis"])}</p>
 <div class="wp-two"><div><h4>Supports the threshold</h4>
@@ -168,8 +164,8 @@ def _card(row: dict) -> str:
 <h4>Opportunity stress test</h4>
 <p>{e("; ".join(row["stress_reasons"]))}. These are sensitivity assumptions.</p>
 <div class="tablewrap"><table><thead><tr><th>Scenario</th><th>Mean scale</th>
-<th>Hit likelihood</th><th>Push</th></tr></thead><tbody>{scenarios}</tbody></table></div>
-<p class="dim">{e(row["probability_assumption"])}. Quote timestamp:
+<th>Hit likelihood</th><th>Tie</th></tr></thead><tbody>{scenarios}</tbody></table></div>
+<p class="dim">{e(row["probability_assumption"])}. Line observed:
 {e(row.get("quote_updated_at") or "Unavailable")}. {e(row["action"])}.</p>
 <h4>Complete evidence dossier</h4>{details}</details></article>"""
 
@@ -178,10 +174,7 @@ def render(report: dict) -> str:
     groups = []
     for position, group in report["groups"].items():
         cards = "".join(_card(row) for row in group["rows"])
-        note = (
-            f"{group['quoted']} posted lines · {group['research_thresholds']} research milestones"
-            f" · {group['candidate_players']} eligible players"
-        )
+        note = f"{group['quoted']} PrizePicks lines · {group['candidate_players']} eligible players"
         if group["shortfall"]:
             note += f" · {group['shortfall']} unavailable slots"
         if not cards:
@@ -198,11 +191,14 @@ def render(report: dict) -> str:
     return f"""<section id="weekly-props">
 <div class="sec-head"><span class="kicker">Weekly player scouting</span>
 <h2>Week {report["week"]} · RB, QB, WR &amp; kicking top tens</h2>
-<p class="blurb">Ten distinct players per position when eligible evidence is available.
-Posted line tiers come first; each tier ranks by the lowest model hit likelihood across
+<p class="blurb">PrizePicks lines only. Ten distinct players per position when available.
+Ranked by the lowest model hit likelihood across
 disclosed workload and efficiency scenarios. Expand a player for the offensive plan,
 opponent responses, individual splits, threshold requirements and failure paths.</p>
 <p class="fine">{e(report["stress_note"])}</p><p class="dim">{e(context_note)} · RESEARCH_ONLY</p>
+<p class="dim">PrizePicks feed:
+{e((report.get("line_source_status") or {}).get("state", "unavailable"))}
+· No substitute lines when a PrizePicks projection is unavailable.</p>
 <nav class="wp-jump" aria-label="Weekly prop positions">
 <a href="#weekly-props-rb">RB</a><a href="#weekly-props-qb">QB</a>
 <a href="#weekly-props-wr">WR</a><a href="#weekly-props-k">Kicking</a>
@@ -221,6 +217,7 @@ align-items:start}.wp-card-head b{font-size:1rem}.wp-call{margin:4px 0 0;font-we
 color:var(--v-light)}.wp-likelihood{text-align:right}.wp-likelihood strong{display:block;
 font-size:1.2rem;color:var(--v-light)}.wp-likelihood span{font-size:.68rem;color:var(--text-3)}
 .wp-meta{font-size:.78rem;color:var(--text-3);margin:10px 0;line-height:1.6}
+.wp-source{font-size:.78rem;color:var(--v-light);overflow-wrap:anywhere}
 .wp-analysis>summary,.wp-evidence>summary{cursor:pointer;min-height:44px;display:list-item;
 padding:12px 0;color:var(--text-2);font-size:.82rem}
 .wp-analysis p,.wp-analysis li{font-size:.84rem;color:var(--text-2);line-height:1.65}

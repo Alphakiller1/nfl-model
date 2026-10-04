@@ -8,7 +8,7 @@ import pytest
 
 from nflmodel import prop_matchup_paths, prop_report_view, prop_scouting, teams, weekly_props
 from nflmodel.player_props import PlayerProjection
-from nflmodel.sources import chase_context, espn_props
+from nflmodel.sources import chase_context, espn_props, prizepicks
 from nflmodel.sources.oddsapi import PlayerPropQuote
 
 NOW = datetime(2026, 10, 4, 8, tzinfo=UTC)
@@ -84,20 +84,32 @@ def quote(row, market=None, line=None, **changes):
     line = (
         line if line is not None else {"RB": 59.5, "QB": 209.5, "WR": 49.5, "K": 1.5}[row.position]
     )
-    out = PlayerPropQuote(
-        "event",
+    stats = {
+        "player_rush_yds": "Rush Yards",
+        "player_reception_yds": "Rec Yds",
+        "player_pass_yds": "Pass Yards",
+        "player_field_goals": "FG Made",
+        "player_receptions": "Receptions",
+    }
+    stat = stats[market]
+    metric, label = prizepicks.MARKETS[stat]
+    out = prizepicks.PrizePicksLine(
+        f"{row.player_id}-{metric}-{line}",
+        row.player_id,
+        row.player_name,
         row.team,
         row.opponent,
-        market,
-        row.player_name,
+        row.kickoff_utc,
+        metric,
+        label,
+        stat,
         line,
-        -110,
-        -110,
-        "draftkings",
-        "DraftKings",
         NOW.isoformat(),
-        player_id=row.player_id,
+        prizepicks.BASE + "player",
     )
+    for old, new in (("last_update", "observed_at_utc"), ("home_team", "team")):
+        if old in changes:
+            changes[new] = changes.pop(old)
     return replace(out, **changes)
 
 
@@ -106,7 +118,9 @@ def slate(players, quotes=(), context=None):
         season=2026,
         week=4,
         player_projections=players,
-        player_prop_quotes=list(quotes),
+        player_prop_quotes=[],
+        prizepicks_quotes=list(quotes),
+        prizepicks_status={"provider": "prizepicks", "state": "fresh" if quotes else "unavailable"},
         assembled_at_utc=NOW.isoformat(),
         prop_context=context or {},
         scheme_profiles={},
@@ -138,22 +152,44 @@ def test_four_top_tens_unique_players_and_consistent_sort():
         assert all(not r["may_bet"] for r in rows)
 
 
-def test_unpriced_quotes_never_publish_nominal_prices():
+def test_prizepicks_lines_have_no_nominal_prices_or_sportsbook_calibration():
     p = player()
-    row = weekly_props.build(slate([p], [quote(p, priced=False)]), now=NOW)["groups"]["RB"]["rows"][
-        0
-    ]
+    row = weekly_props.build(slate([p], [quote(p)]), now=NOW)["groups"]["RB"]["rows"][0]
     assert row["line"] == 59.5 and row["price"] is None and not row["priced"]
+    assert not row["calibrated"] and row["selection"] in {"MORE", "LESS"}
+    assert row["line_provider"] == "PrizePicks"
+    assert row["threshold_source"] == "prizepicks_published_projection"
 
 
-def test_missing_lines_are_research_milestones_and_shortfalls_explicit():
+def test_missing_prizepicks_lines_publish_shortfalls_without_milestone_fill():
     report = weekly_props.build(slate([player()]), now=NOW)
     rb = report["groups"]["RB"]
-    assert rb["published"] == 1 and rb["shortfall"] == 9
-    row = rb["rows"][0]
-    assert row["line"] is None and row["book"] is None and row["price"] is None
-    assert row["threshold_source"] == "research_milestone" and not row["calibrated"]
+    assert rb["published"] == 0 and rb["shortfall"] == 10
+    assert rb["research_thresholds"] == 0 and not rb["rows"]
     assert report["groups"]["K"]["published"] == 0
+
+
+def test_sportsbook_sources_never_enter_prizepicks_rankings():
+    p = player()
+    dk = PlayerPropQuote(
+        "e",
+        p.team,
+        p.opponent,
+        "player_rush_yds",
+        p.player_name,
+        1.5,
+        -110,
+        -110,
+        "draftkings",
+        "DraftKings",
+        NOW.isoformat(),
+        player_id=p.player_id,
+    )
+    s = slate([p], [dk, quote(p)])
+    s.player_prop_quotes = [dk]
+    report = weekly_props.build(s, now=NOW)
+    assert report["excluded"]["non_prizepicks_source"] == 1
+    assert report["groups"]["RB"]["rows"][0]["line"] == 59.5
 
 
 @pytest.mark.parametrize("designation", ["Out", "Doubtful", "Inactive", "Injured Reserve"])

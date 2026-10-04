@@ -1,12 +1,14 @@
 # Weekly RB, QB, WR and kicking prop scouting
 
-Contract: `nfl-weekly-schematic-props/1.0.0`
+Contract: `nfl-weekly-schematic-props/2.0.0`
 
 Every scheduled dashboard build produces four separate top tens: RB, QB, WR and
 kicking. Each list contains ten **distinct players**, one selected market per
-player, when at least ten eligible players and meaningful thresholds exist.
+player, when at least ten eligible players have supported PrizePicks projections.
 Started games, undated kickoffs, Out/Doubtful/inactive players and immaterial
 depth roles cannot fill the lists. A real shortfall is published explicitly.
+These four lists use **PrizePicks lines only**. Sportsbook lines and generated
+milestone thresholds cannot fill a missing PrizePicks slot.
 
 The section is **Weekly Props** on the dashboard. The identical report is in
 `board.json` at `weekly_report.weekly_position_props`, and in `weekly-props.json`.
@@ -41,6 +43,32 @@ python -m nflmodel.cli build-site --season 2026 --week 4 --out _site/index.html
 Set `NFL_CHASE_CONTEXT_PATH` to a saved snapshot for deterministic local work.
 Historical replay needs the snapshot that actually existed at its forecast
 cutoff; today's snapshot must not be substituted for it.
+
+## PrizePicks line source
+
+Read the actual projection cards on PrizePicks' public first-party NFL player
+research pages at `https://www.prizepicks.com/research/nfl/players/`. The direct
+API is not required (it returned HTTP 403 during implementation). Every line
+retains its projection ID, original stat label, source URL and observation time.
+The adapter verifies the published player name, club/position, opponent, next-game
+ISO kickoff and each card's Eastern date/time against the model's fixture.
+Missing IDs, other leagues, partial-game periods and unsupported stats fail closed.
+
+Four workers fetch eligible player pages with a 15-minute cache and bounded
+responses/timeouts. HTTP `Age` is retained in the observation time. Lines over
+one hour old, undated or observed after assembly are excluded. Failed pages
+are reported; there is no cross-provider fallback. Set
+`NFL_PRIZEPICKS_SNAPSHOT_PATH` to a saved `nfl-prizepicks-lines/1` snapshot for
+deterministic/offline builds. A saved snapshot receives the same provider,
+identity, fixture, source attribution and freshness gates at ranking.
+
+Public cards show More/Less labels but do **not** identify standard/Goblin/Demon
+status, per-contest availability or payout. Every row labels these as unverified
+and requires checking the current offered side/variant in the app. Alternate
+thresholds remain their actual observed values; none is guessed to be the
+standard line. Rankings measure modeled stat-threshold likelihood, not contest
+return, executable prices or a complete lineup's payout. A source carrying only
+one published side can never produce a pick on the other side.
 
 ## Football evidence for every entry
 
@@ -97,24 +125,25 @@ markets currently stay out of this ranking when that charting is absent.
 
 ## Likelihood and ordering
 
-The report evaluates all supported markets, then chooses one per player.
-Quoted calibrated markets come first, quoted research extensions second,
-research milestones third. Within each tier, descending **worst-case hit
-likelihood across the disclosed stress scenarios** determines rank. Base hit
+The report evaluates supported observed PrizePicks lines, then chooses one per
+player. Descending **worst-case hit likelihood across the disclosed stress
+scenarios** determines rank. Base hit
 likelihood and opposing evidence break ties. It does not rank by dollars of
 yardage, a generic scheme bonus, or expected monetary value.
 
-For ordinary quoted passing/rushing/receiving markets, use the existing
-projection-error distributions and `prop_pricing` line calibration. A discrete
-push is separated from wins/losses, with calibration conditional on no push.
+For ordinary passing/rushing/receiving markets, use the existing fitted
+projection-error distributions. The DraftKings closing-line calibration has no
+PrizePicks validation record and is **not applied** to these selections. All
+PrizePicks probabilities are labeled uncalibrated. A discrete tie is separated
+from wins/losses; injury/DNP/Reboot settlement is not modeled as a stat win.
 Empirical continuous ladders use half-unit boundaries for lattice outcomes.
 
 FG/PAT counts use a **Poisson assumption**, explicitly unvalidated for kicking.
 Combined rush/receiving yards, pass/rushing yards and kicking points use
 Frechet/union bounds on the marginal models. No independent-component or
 correlation fit is invented. The displayed interval is a dependence bound,
-not a confidence interval. Integer combined book lines are withheld because
-their push mass is unmeasured.
+not a confidence interval. Integer combined PrizePicks lines are withheld because
+their tie mass is unmeasured.
 
 The base mean stress is ±15%, or ±25% for kickers. Add five percentage points
 for limited/new-role history, five for missing dated advanced context, five
@@ -123,30 +152,34 @@ cap at ±40%. Price the same selection at reduced, base and expanded means and
 rank on its lowest hit probability. These are disclosed sensitivity assumptions,
 **not learned penalties or statistical confidence intervals**.
 
-If no eligible book line exists, choose from a fixed standard milestone grid
-nearest 65% raw/bounded over probability, restricted to 45–85%. A research
-milestone has `line=null`, no book/price, and no line-calibration claim. It does
-not masquerade as a posted alternate market. Missing prices on ESPN lines are
-also null; nominal -110 values are never published as executable prices here.
+If no eligible PrizePicks projection exists, publish an empty slot. Every row
+has an actual non-null line and PrizePicks attribution. Price is null; no
+bookmaker odds, nominal -110 prices or contest payouts are invented.
 
 All rows retain `RESEARCH_ONLY` and `may_bet=false`. The new rankings, stress
 envelopes, kicking and combined-market extensions need forward validation;
-the existing pricing evidence is reported as its own lineage, not as evidence
-that this new forty-entry selection policy is already profitable.
+the sportsbook pricing evidence is not presented as PrizePicks calibration
+or as evidence that this selection policy is profitable.
 
 ## Provider coverage and validation
 
-ESPN's observed full-game names now include passing attempts, rushing plus
-receiving yards, passing plus rushing yards, field goals, kicking points and
-extra points. Period and milestone markets remain excluded. Identity uses
-the roster's ESPN-to-GSIS join; fixture identity is checked again at ranking.
+The current PrizePicks cards include passing yards/attempts, pass/rush yards,
+rushing yards/attempts, receiving yards, rush/receiving yards, receptions,
+field goals, PATs and kicking points.
+Other allowlisted supported labels are accepted only when present on a real
+card; a model metric alone cannot create a projection. QB standalone rushing
+still requires its separate scheme evidence. WR rush/receiving totals are
+withheld when the model lacks an independently modeled WR rushing component.
 
-The Odds API request adds its documented five combined/kicking markets to
-the prior seven: 12 markets, approximately 192 credits for sixteen games in
-one region when the paid provider is used. Its existing 30-hour lead window,
-20-hour cache and provider fallback remain in effect.
+Existing game-line and legacy sportsbook exports retain their separate source
+paths. The dedicated `prizepicks_quotes` field feeds these four lists, so a
+DraftKings/ESPN/Kalshi quote cannot leak into them. The five additional paid
+Odds API requests originally proposed for this feature were removed; the
+legacy request retains its existing seven-market credit footprint.
 
-Regression coverage verifies four unique-player top tens, explicit shortfalls,
+Regression coverage verifies PrizePicks-only four unique-player top tens, no
+milestone/sportsbook fallback, actual card IDs/fixture dates, observed-side
+restrictions, uncalibrated probabilities, explicit shortfalls,
 source date/range gates, same-season conditional/selected-market responses,
 tracking cutoff/sample lineage, correct reception response, run-point shrinkage,
 opposite FG/PAT conversion implications, quote/fixture identity, injury and
