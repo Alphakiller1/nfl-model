@@ -482,10 +482,14 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
         output = []
         for rank, row in enumerate(rows[:5], start=1):
             market = row["market"] if total else e(str(row["market"]))
+            season = row.get("season_only")
+            flag = (' <span class="pill warn">signals disagree</span>'
+                    if row.get("conflicts") else "")
             output.append(
                 f'<tr><td class="rank">{rank}</td><td><b>{e(row["selection"])}</b> '
-                f'<span class="dim">{e(row["game"])}</span></td>'
+                f'<span class="dim">{e(row["game"])}</span>{flag}</td>'
                 f'<td class="num">{market}</td><td class="num">{e(str(row["model"]))}</td>'
+                f'<td class="num">{"&ndash;" if season is None else e(str(season))}</td>'
                 f'<td class="num score">{row["gap"]:.1f}</td>'
                 f'<td class="report-reason">{e(row["reason"])}</td></tr>'
             )
@@ -499,7 +503,8 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
             call = "projection only"
             line = "&ndash;"
         else:
-            call = f'{row["selection"]} {row["line"]:g} ({row["price"]:+.0f})'
+            call = (f'{row["selection"]} {row["line"]:g} ({row["probability"]:.0%})'
+                    + ("" if row.get("playable") else " · watch only"))
             line = f'{row["line"]:g}'
         prop_rows.append(
             f'<tr><td class="rank">{rank}</td><td><b>{e(row["player"])}</b> '
@@ -539,18 +544,22 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
       <span class="pill">{e(prop_note)}</span></div>
   </div>
   {_picks_block(picks or [], (record or {}).get("best_bets") or {})}
-  <details class="prop-group" open><summary>Top spread model gaps
+  <details class="prop-group" open><summary>Spread gaps (not picks: the spread model
+    has shown no skill against the close)
     <span>{len(report['top_spreads'])} ranked</span></summary><div class="tablewrap">
-    <table class="pr prop-table"><thead><tr><th>#</th><th>Side / game</th>
-    <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
-    <th>Matchup context (not a model input)</th></tr></thead>
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Gap / game</th>
+    <th class="num">Market</th><th class="num">Model</th><th class="num">2026 only</th>
+    <th class="num">Gap</th><th>What produces the gap, and what points the other way</th>
+    </tr></thead>
     <tbody>{game_rows(report['top_spreads'])}</tbody>
     </table></div></details>
-  <details class="prop-group" open><summary>Top total model gaps
+  <details class="prop-group" open><summary>Total gaps (not picks: the total model
+    has shown no skill against the close)
     <span>{len(report['top_totals'])} ranked</span></summary><div class="tablewrap">
-    <table class="pr prop-table"><thead><tr><th>#</th><th>Call / game</th>
-    <th class="num">Market</th><th class="num">Model</th><th class="num">Gap</th>
-    <th>Matchup context (not a model input)</th></tr></thead><tbody>
+    <table class="pr prop-table"><thead><tr><th>#</th><th>Gap / game</th>
+    <th class="num">Market</th><th class="num">Model</th><th class="num">2026 only</th>
+    <th class="num">Gap</th><th>What produces the gap, and what points the other way</th>
+    </tr></thead><tbody>
     {game_rows(report['top_totals'], total=True)}</tbody>
     </table></div></details>
   <details class="prop-group" open><summary>Top player props &amp; projection standouts

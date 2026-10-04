@@ -61,3 +61,19 @@ def test_a_prop_pick_in_a_market_without_a_record_fails():
             "player_id": "rb", "metric": "rush_attempts", "side": "under", "line": 21.5}
     out = audit.audit(_board(player_projections=players, best_bets=[pick]))
     assert any("market without a record" in f for f in out)
+
+
+def _report_row(**changes):
+    row = {"game": "KC @ LV", "selection": "Model lower", "market": 47.5, "model": 41.9,
+           "season_only": 49.0, "gap": 5.6, "conflicts": ["this season's form"]}
+    row.update(changes)
+    return row
+
+
+def test_report_gaps_must_not_be_calls_and_must_name_disagreement():
+    ok = _board(weekly_report={"top_totals": [_report_row()], "top_spreads": []})
+    assert audit.audit(ok) == []
+    call = _board(weekly_report={"top_totals": [_report_row(selection="UNDER")]})
+    assert any("presented as a call" in f for f in audit.audit(call))
+    hidden = _board(weekly_report={"top_totals": [_report_row(conflicts=[])]})
+    assert any("disagrees but is not named" in f for f in audit.audit(hidden))

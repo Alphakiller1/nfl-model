@@ -58,48 +58,145 @@ def _profile_reason(slate, team: str, opponent: str) -> str:
     )
 
 
+# League points per offensive yard (2021-2025, ~22.4 points on ~311 yards): turns
+# the scheme matrix's yardage deltas into the same unit as a total.
+POINTS_PER_YARD = 0.072
+
+
+def _scheme_points(slate, team: str, opponent: str) -> float | None:
+    """The scheme matrix's matchup deltas for `team`'s offense, in points."""
+    m = slate.scheme_matchups.get((team, opponent))
+    fields = ("pass_attempt_delta", "carry_delta", "pass_efficiency_delta",
+              "rush_efficiency_delta")
+    if m is None or any(getattr(m, f, None) is None for f in fields):
+        return None
+    yards = (float(m.pass_attempt_delta) * 6.6 + float(m.carry_delta) * 4.3
+             + float(m.pass_efficiency_delta) * 33.0 + float(m.rush_efficiency_delta) * 26.0)
+    return yards * POINTS_PER_YARD
+
+
+def _season_only(slate, p) -> tuple[float | None, float | None]:
+    """Total and home margin from this season's form alone, through the same matrix,
+    shrink and quarterback adjustments as the model."""
+    from . import matrix, totals
+
+    forms = getattr(slate, "current_forms", None) or {}
+    home, away = forms.get(p.home), forms.get(p.away)
+    if home is None or away is None:
+        return None, None
+    home_pts = matrix.points(home, away, home=not p.neutral)
+    away_pts = matrix.points(away, home, home=False)
+    if home_pts is None or away_pts is None:
+        return None, None
+    total = totals.shrink_total(home_pts + away_pts) + float(p.availability_total or 0.0)
+    return total, home_pts - away_pts + float(p.availability_margin or 0.0)
+
+
+def _sign(value: float | None, tol: float = 0.5) -> int:
+    if value is None or abs(value) < tol:
+        return 0
+    return 1 if value > 0 else -1
+
+
+def reconcile(model_gap: float, signals: dict) -> list[str]:
+    """Names of the signals that point the other way from the model's gap."""
+    side = _sign(model_gap, 0.0)
+    return [name for name, value in signals.items() if _sign(value) == -side]
+
+
+def _live_note(slate, p) -> str:
+    shares = [(getattr(slate, "live_share", None) or {}).get(t) for t in (p.away, p.home)]
+    shares = [x for x in shares if x is not None]
+    if not shares:
+        return ""
+    share = sum(shares) / len(shares)
+    return f"scoring form weights 2026 at {share:.0%} and prior seasons at {1 - share:.0%}"
+
+
+def _closing(conflicts: list[str]) -> str:
+    if conflicts:
+        return f" Points the other way: {', '.join(conflicts)}."
+    return " No signal points the other way."
+
+
 def _game_lists(slate) -> tuple[list[dict], list[dict]]:
-    spreads, totals = [], []
-    for projection in slate.projections:
-        if projection.market_gap is not None and projection.comparison_margin is not None:
-            side = projection.home if projection.market_gap > 0 else projection.away
-            market_line = (
-                -projection.comparison_margin
-                if side == projection.home else projection.comparison_margin
-            )
-            model_line = (
-                -projection.model_margin if side == projection.home else projection.model_margin
-            )
+    """Where the model's game numbers differ from the market, and why.
+
+    These are gaps, not calls: the game model has shown no skill against the
+    closing line (calibration.SKILL). Each row says what produces the model
+    number, what this season's form alone says, what the matchup context
+    implies in points, and names every signal that points the other way.
+    """
+    spreads, totals_rows = [], []
+    for p in slate.projections:
+        season_total, season_margin = _season_only(slate, p)
+        live = _live_note(slate, p)
+        away_ctx = _scheme_points(slate, p.away, p.home)
+        home_ctx = _scheme_points(slate, p.home, p.away)
+        if p.market_gap is not None and p.comparison_margin is not None:
+            side = p.home if p.market_gap > 0 else p.away
+            sign = 1 if side == p.home else -1
+            market_line = -p.comparison_margin if side == p.home else p.comparison_margin
+            model_line = -p.model_margin if side == p.home else p.model_margin
+            context = None if home_ctx is None or away_ctx is None else home_ctx - away_ctx
+            season_gap = None if season_margin is None else season_margin - p.comparison_margin
+            conflicts = reconcile(p.market_gap, {"this season's form": season_gap,
+                                                 "matchup context": context})
+            drivers = [f"Model rates {side} {abs(p.market_gap):.1f} points better than the market"]
+            if p.rating_margin is not None and p.efficiency_margin is not None:
+                drivers[0] += (f" (home margin: power ratings {p.rating_margin:+.1f}, "
+                               f"efficiency {p.efficiency_margin:+.1f}, blended 50/50)")
+            if p.qb_out:
+                drivers.append(f"QB out: {', '.join(p.qb_out)} ({p.availability_margin:+.1f})")
+            if season_margin is not None:
+                drivers.append(f"2026 form alone: home margin {season_margin:+.1f}")
+            if context is not None:
+                drivers.append(f"matchup context {sign * context:+.1f} points toward {side} "
+                               "(scheme description, not a model input)")
             spreads.append({
-                "game": f"{projection.away} @ {projection.home}",
-                "selection": side,
+                "game": f"{p.away} @ {p.home}",
+                "selection": f"Model favours {side}",
                 "market": f"{side} {market_line:+.1f}",
                 "model": f"{side} {model_line:+.1f}",
-                "gap": round(abs(projection.market_gap), 2),
-                "direction": "home" if projection.market_gap > 0 else "away",
-                "book": projection.book_name or "nflverse consensus",
-                "reason": _profile_reason(
-                    slate, side, projection.away if side == projection.home else projection.home
-                ),
+                "season_only": (None if season_margin is None
+                                else f"{side} {-sign * season_margin:+.1f}"),
+                "gap": round(abs(p.market_gap), 2),
+                "direction": "home" if p.market_gap > 0 else "away",
+                "book": p.book_name or "nflverse consensus",
+                "reason": "; ".join(drivers) + "." + _closing(conflicts),
+                "conflicts": conflicts,
                 "status": "model_gap",
             })
-        if projection.total_gap is not None:
-            totals.append({
-                "game": f"{projection.away} @ {projection.home}",
-                "selection": "OVER" if projection.total_gap > 0 else "UNDER",
-                "market": round(projection.comparison_total, 1),
-                "model": round(projection.projected_total, 1),
-                "gap": round(abs(projection.total_gap), 2),
-                "book": projection.book_name or "nflverse consensus",
-                "reason": (
-                    _profile_reason(slate, projection.away, projection.home) + " "
-                    + _profile_reason(slate, projection.home, projection.away)
-                ),
+        if p.total_gap is not None:
+            context = None if home_ctx is None or away_ctx is None else home_ctx + away_ctx
+            season_gap = None if season_total is None else season_total - p.comparison_total
+            conflicts = reconcile(p.total_gap, {"this season's form": season_gap,
+                                                "matchup context": context})
+            word = "higher" if p.total_gap > 0 else "lower"
+            drivers = [f"Model {p.projected_total:.1f} ({p.away} {p.projected_away_score:.1f}, "
+                       f"{p.home} {p.projected_home_score:.1f})" + (f": {live}" if live else "")]
+            if p.qb_out:
+                drivers.append(f"QB out: {', '.join(p.qb_out)} ({p.availability_total:+.1f})")
+            if season_total is not None:
+                drivers.append(f"2026 form alone: {season_total:.1f}")
+            if context is not None:
+                drivers.append(f"matchup context {context:+.1f} points (scheme description, "
+                               "not a model input)")
+            totals_rows.append({
+                "game": f"{p.away} @ {p.home}",
+                "selection": f"Model {word}",
+                "market": round(p.comparison_total, 1),
+                "model": round(p.projected_total, 1),
+                "season_only": None if season_total is None else round(season_total, 1),
+                "gap": round(abs(p.total_gap), 2),
+                "book": p.book_name or "nflverse consensus",
+                "reason": "; ".join(drivers) + "." + _closing(conflicts),
+                "conflicts": conflicts,
                 "status": "model_gap",
             })
     return (
         sorted(spreads, key=lambda row: -row["gap"]),
-        sorted(totals, key=lambda row: -row["gap"]),
+        sorted(totals_rows, key=lambda row: -row["gap"]),
     )
 
 
@@ -139,6 +236,12 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
         if player.position in {"QB", "RB", "WR", "TE"}
         and str(player.injury_status or "").lower() != "out"
     }
+    from . import prop_pricing, slips
+
+    # The same price and the same evidence rules as best bets and slips, so the
+    # list can never call a side the picks do not (it used to compare the raw
+    # projection with the line, ignoring the outcome skew and the rules).
+    allowed = {(leg.player_id, leg.metric) for leg in slips.candidate_legs(slate)[0]}
     quoted = []
     for quote in slate.player_prop_quotes:
         player = projections.get(normalise(quote.player_name))
@@ -150,6 +253,12 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
         if model is None:
             continue
         gap = float(model) - quote.line
+        priced = prop_pricing.price(metric, model, quote.line)
+        if priced is None:
+            continue
+        over = priced["p_over"] >= 0.5
+        leg_metric = "carries" if metric == "rush_attempts" and player.position == "RB" else metric
+        playable = (player.player_id, leg_metric) in allowed
         quoted.append({
             "player": player.player_name,
             "team": player.team,
@@ -157,19 +266,21 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
             "position": player.position,
             "market_key": quote.market,
             "market": label,
-            "selection": "OVER" if gap > 0 else "UNDER",
+            "selection": "OVER" if over else "UNDER",
+            "probability": round(priced["p_over"] if over else 1 - priced["p_over"], 3),
+            "playable": playable,
             "line": quote.line,
-            "price": quote.over_price if gap > 0 else quote.under_price,
+            "price": quote.over_price if over else quote.under_price,
             "model": round(float(model), 2),
             "gap": round(abs(gap), 2),
-            "score": round(abs(gap) / scale, 3),
+            "score": round(abs(priced["p_over"] - 0.5), 3),
             "scheme_score": round(_player_scheme_score(player), 3),
             "reason": _profile_reason(slate, player.team, player.opponent),
             "book": quote.book_title,
             "last_update": quote.last_update,
             "status": "quoted_model_gap",
         })
-    quoted.sort(key=lambda row: (-row["score"], -row["scheme_score"]))
+    quoted.sort(key=lambda row: (-row["playable"], -row["score"], -row["scheme_score"]))
 
     standouts = []
     for player in projections.values():
