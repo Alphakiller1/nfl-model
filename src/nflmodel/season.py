@@ -335,6 +335,9 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
             availability_margin=availability.margin_adjustment(
                 quarterbacks, teams.canonical(row["home_team"]),
                 teams.canonical(row["away_team"])),
+            availability_total=availability.total_adjustment(
+                quarterbacks, teams.canonical(row["home_team"]),
+                teams.canonical(row["away_team"])),
             qb_out=tuple(
                 f"{quarterbacks[t].starter_name} ({quarterbacks[t].reason})"
                 for t in (teams.canonical(row["away_team"]), teams.canonical(row["home_team"]))

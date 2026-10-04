@@ -60,10 +60,16 @@ def test_small_gaps_are_not_picks(slate):
     assert bb.total_pick(_game(slate, total=48.0, book_total=46.5), slate, {}) is None
 
 
-def test_total_pick(slate):
+def test_total_pick(slate, monkeypatch):
+    monkeypatch.setattr(bb, "TOTAL_MODEL_WEIGHT", 1.0)
     pick = bb.total_pick(_game(slate), slate, {})
     assert pick.selection == "Over 46.5" and pick.edge == 4.5
-    assert "Scoreline:" in pick.angle
+    assert "Scoreline:" in pick.angle and "not inputs to the total" in pick.angle
+
+
+def test_a_total_pick_needs_the_model_total_to_earn_its_weight(slate):
+    # Measured weight 0.02: even a 9-point disagreement prices near even.
+    assert bb.total_pick(_game(slate, total=47.8, book_total=38.5), slate, {}) is None
 
 
 def _player(**changes):
@@ -135,7 +141,8 @@ def test_an_id_matched_line_without_prices_reads_as_fifty_fifty(slate, pricing):
     assert len(picks) == 1 and "versus 50% priced in" in picks[0].angle
 
 
-def test_best_bets_are_logged_and_graded(slate, tmp_path, pricing):
+def test_best_bets_are_logged_and_graded(slate, tmp_path, pricing, monkeypatch):
+    monkeypatch.setattr(bb, "TOTAL_MODEL_WEIGHT", 1.0)
     game = _game(slate)
     s = replace(slate, week=1, projections=[game], player_projections=[_player()],
                 player_prop_quotes=[_quote(68.5)], injuries=[])
