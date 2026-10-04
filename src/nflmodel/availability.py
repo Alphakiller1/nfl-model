@@ -32,6 +32,12 @@ from .sources.nflverse import number
 # team's usual starting quarterback is unavailable (and gained when the away
 # team's is). Time-forward evidence is in reports/availability_fit.json.
 QB_OUT_POINTS = 4.185
+# Points of GAME TOTAL lost per team whose usual starter is unavailable. Fitted
+# the same way on totals (2020-2025, 255 flagged games): actual total minus the
+# model total moves -3.13 per missing starter (se 0.82); the closing total
+# moves -2.27. Time-forward on flagged games the total MAE falls 11.37 -> 10.94.
+# Before this, a backup quarterback moved the margin and left the total alone.
+QB_OUT_TOTAL_POINTS = -3.13
 STARTER_WINDOW_GAMES = 4
 UNAVAILABLE_DESIGNATIONS = frozenset({"out", "doubtful"})
 # Anything that removes a player from the active 53 before game day. ACT and INA
@@ -152,6 +158,11 @@ def quarterback_status(starters: dict[str, tuple[str, str, float]],
 def out_flag(status: dict[str, QuarterbackStatus], team: str) -> float:
     entry = status.get(team)
     return 0.0 if entry is None or entry.available else 1.0
+
+
+def total_adjustment(status: dict[str, QuarterbackStatus], home: str, away: str) -> float:
+    """Change to the expected game total from quarterback availability."""
+    return QB_OUT_TOTAL_POINTS * (out_flag(status, home) + out_flag(status, away))
 
 
 def margin_adjustment(status: dict[str, QuarterbackStatus], home: str, away: str, *,

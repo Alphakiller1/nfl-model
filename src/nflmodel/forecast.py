@@ -323,6 +323,7 @@ def project_game(
     kickoff: str = "",
     kickoff_utc: str = "",
     availability_margin: float = 0.0,
+    availability_total: float = 0.0,
     qb_out: tuple[str, ...] = (),
     lam: float = SPREAD_LAMBDA,
     authority: auth.Authority | None = None,
@@ -334,7 +335,8 @@ def project_game(
     a = authority or auth.current()
     rating_margin = ratings_mod.projected_margin(team_ratings, home, away, neutral=neutral)
     projection = totals_mod.project(home_form, away_form, rating_margin=rating_margin,
-                                    neutral=neutral, adjustment=availability_margin)
+                                    neutral=neutral, adjustment=availability_margin,
+                                    total_adjustment=availability_total)
     model_margin = projection.margin
     used_efficiency = projection.modelled
 

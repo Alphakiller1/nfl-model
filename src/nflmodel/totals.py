@@ -94,15 +94,15 @@ def shrink_total(raw: float | None, *, shrink: float = TOTAL_SHRINK) -> float | 
 
 def project(home: matrix.TeamForm | None, away: matrix.TeamForm | None, *,
             rating_margin: float | None = None, neutral: bool = False,
-            adjustment: float = 0.0) -> Projection:
+            adjustment: float = 0.0, total_adjustment: float = 0.0) -> Projection:
     """Turn two forms plus a rating gap into a margin, a total and a scoreline.
 
     With no usable form the total falls back to the league mean rather than
     refusing to produce a scoreline -- a centred guess is more useful than a
     blank, and `modelled` marks which one the caller got.
 
-    `adjustment` is added to the blended margin (quarterback availability, see
-    `availability.py`); the total is left alone because no total effect was fitted.
+    `adjustment` is added to the blended margin and `total_adjustment` to the
+    shrunk total (quarterback availability, see `availability.py`).
     """
     home_points = away_points = None
     if home is not None and away is not None:
@@ -115,6 +115,7 @@ def project(home: matrix.TeamForm | None, away: matrix.TeamForm | None, *,
     if margin is not None:
         margin += adjustment
     total = shrink_total(home_points + away_points) if modelled else LEAGUE_MEAN_TOTAL
+    total += total_adjustment
 
     if margin is None:
         return Projection(total if modelled else None, None, None, None, modelled,

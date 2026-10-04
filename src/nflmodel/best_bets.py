@@ -33,6 +33,13 @@ MARGIN_SIGMA = 13.2
 TOTAL_SIGMA = 12.9
 MIN_SPREAD_GAP = 2.0
 MIN_TOTAL_GAP = 3.0
+# How much of the model-minus-market total gap shows up in the result:
+# time-forward 2021-2025 (1,615 games, QB availability applied) the blend
+# weight is 0.02 (seasons -0.30 to +0.23), and the model's side went 52-52
+# when it disagreed with the closing total by 6+ points. A total pick is priced
+# on that share of the gap, so it only publishes if that weight earns it.
+TOTAL_MODEL_WEIGHT = 0.02
+MIN_TOTAL_PROBABILITY = 0.53
 MAX_GAP = 14.0            # beyond this the "gap" is a data problem, not a pick
 MIN_PROP_PROBABILITY = 0.53   # prop_pricing.MIN_PROBABILITY: below it a pick is a "lean"
 MIN_PROP_EDGE = 0.0
@@ -226,12 +233,18 @@ def total_pick(projection, slate, injuries: dict) -> Pick | None:
     if skill:
         sentences.append("Skill-position injuries: " + "; ".join(skill) + ".")
     if p.qb_out:
-        sentences.append(f"Starting QB out: {', '.join(p.qb_out)}.")
+        sentences.append(
+            f"Starting QB out: {', '.join(p.qb_out)} - the total already takes "
+            "3.1 points per missing starter.")
+    sentences.append("The scheme notes below describe the matchup; they are not inputs "
+                     "to the total, which comes from both teams' scoring form.")
     for team, opp in ((p.away, p.home), (p.home, p.away)):
         scheme = _scheme(slate, team, opp)
         if scheme:
             sentences.append(f"{team} offense: {scheme}")
-    prob = _phi(abs(gap) / TOTAL_SIGMA)
+    prob = _phi(TOTAL_MODEL_WEIGHT * abs(gap) / TOTAL_SIGMA)
+    if prob < MIN_TOTAL_PROBABILITY:
+        return None   # the model total has not shown it beats the closing total
     return Pick("total", p.season, p.week, p.home, p.away, p.kickoff_utc or None,
                 f"{'Over' if over else 'Under'} {p.book_total:.1f}", "over" if over else "under",
                 p.book_total, DEFAULT_PRICE, round(p.projected_total, 1), p.book_total,

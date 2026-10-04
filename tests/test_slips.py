@@ -124,3 +124,14 @@ def test_espn_game_day_status_overrides_the_friday_report():
     merged = espn_injuries.merge(official, fresh)
     allen = next(r for r in merged if r["gsis_id"] == "00-0030279")
     assert allen["report_status"] == "Out" and len(merged) == 2
+
+
+def test_a_missing_starting_quarterback_lowers_the_game_total():
+    from nflmodel import availability, totals
+
+    status = {"TB": availability.QuarterbackStatus("TB", "qb", "Starter", 300, False, "Out"),
+              "GB": availability.QuarterbackStatus("GB", "qb2", "Other", 300, True)}
+    adj = availability.total_adjustment(status, "TB", "GB")
+    assert adj == availability.QB_OUT_TOTAL_POINTS < 0
+    adjusted = totals.project(None, None, rating_margin=0.0, total_adjustment=adj)
+    assert adjusted.total == totals.LEAGUE_MEAN_TOTAL + availability.QB_OUT_TOTAL_POINTS
