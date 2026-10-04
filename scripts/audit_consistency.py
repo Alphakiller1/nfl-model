@@ -12,7 +12,9 @@ mistake the board has actually made (or could make the same way):
   margin or the total (the total used to ignore it);
 * a projected player who is listed Out; a team whose projected targets exceed
   its quarterback's attempts; a negative projection;
-* a prop slip leg outside the slip rules, or two legs from one game in a slip.
+* a prop slip leg outside the slip rules, or two legs from one game in a slip;
+* a weekly-report gap presented as a call, a gap row that does not name a signal
+  pointing the other way, or a prop row calling the side best bets fade.
 
     PYTHONPATH=src python scripts/audit_consistency.py _site/board.json
 """
@@ -131,8 +133,51 @@ def _slips(board: dict) -> list[str]:
     return out
 
 
+def _report(board: dict) -> list[str]:
+    """The weekly report must not call what calibration says it cannot, and must name
+    every signal that disagrees with a gap (KC @ LV: 'UNDER' beside a matchup
+    context that pointed to more offense, with nothing saying they disagreed)."""
+    report = board.get("weekly_report") or {}
+    out = []
+    for key, market in (("top_spreads", "spread"), ("top_totals", "total")):
+        for row in report.get(key) or []:
+            name = f"report {key} {row.get('game')}"
+            words = str(row.get("selection") or "").upper().split()
+            if calibration.SKILL[market].weight <= 0.05 and (
+                    {"OVER", "UNDER"} & set(words) or len(words) == 1):
+                out.append(f"{name}: presented as a call ({row.get('selection')})")
+            if "conflicts" not in row:
+                out.append(f"{name}: no reconciliation of the signals")
+                continue
+            season = row.get("season_only")
+            if key == "top_totals" and season is not None:
+                model, market_total = float(row["model"]), float(row["market"])
+                disagrees = ((model - market_total) * (float(season) - market_total) < 0
+                             and abs(float(season) - market_total) >= 0.5)
+                if disagrees and "this season's form" not in row["conflicts"]:
+                    out.append(f"{name}: 2026-only total {season} disagrees but is not named")
+    picks = {(p.get("player_id"), p.get("metric")): p.get("side")
+             for p in board.get("best_bets") or [] if p.get("family") == "prop"}
+    names = {p.get("player_name"): p.get("player_id")
+             for p in board.get("player_projections") or []}
+    for row in report.get("top_player_props") or []:
+        side = picks.get((names.get(row.get("player")), _metric_key(row.get("market_key"))))
+        if side and side != str(row.get("selection")).lower():
+            out.append(f"report prop {row.get('player')} {row.get('market')}: lists "
+                       f"{row.get('selection')} while best bets play {side}")
+    return out
+
+
+def _metric_key(market_key: str | None) -> str | None:
+    from nflmodel.best_bets import PROP_MARKETS
+
+    spec = PROP_MARKETS.get(market_key or "")
+    return spec[0] if spec else None
+
+
 def audit(board: dict) -> list[str]:
-    return _picks(board) + _games(board) + _players(board) + _slips(board)
+    return (_picks(board) + _games(board) + _players(board) + _slips(board)
+            + _report(board))
 
 
 def main() -> int:
