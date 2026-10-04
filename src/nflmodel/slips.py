@@ -348,12 +348,17 @@ def candidate_legs(slate, now: datetime | None = None) -> tuple[list[Leg], dict,
 
 
 def build_slips(legs: list[Leg], size: int, entries: int) -> list[list[Leg]]:
-    """Snake-draft the strongest legs into slips, one leg per game per slip."""
-    pool = legs[:size * entries]
+    """Snake-draft the strongest legs into slips, one leg per game per slip.
+
+    A leg that fits no open slip (its game is already in each) is skipped and
+    the draft reaches further down the list, until every slip is full.
+    """
     slips: list[list[Leg]] = [[] for _ in range(entries)]
     order = list(range(entries)) + list(range(entries))[::-1]
     turn = 0
-    for leg in pool:
+    for leg in legs:
+        if all(len(slip) == size for slip in slips):
+            break
         for _ in range(2 * entries):
             slip = slips[order[turn % len(order)]]
             turn += 1
