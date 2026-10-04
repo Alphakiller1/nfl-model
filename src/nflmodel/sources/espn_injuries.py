@@ -50,10 +50,29 @@ def parse(payload: dict, *, gsis_by_espn: dict[str, str], season: int, week: int
     return rows
 
 
+def week_events(season: int, week: int) -> list[dict]:
+    """Every game of the week from ESPN's scoreboard, odds posted or not.
+
+    `espn_odds.lines` keeps only games with a DraftKings quote on ESPN, which
+    overnight can be none of them: the first deploy after midnight matched 0
+    games and merged no injuries.
+    """
+    board = espn_odds._get(f"{espn_odds.SCOREBOARD}?seasontype=2&week={week}&dates={season}")
+    out = []
+    for event in board.get("events") or []:
+        comp = (event.get("competitions") or [{}])[0]
+        sides = {c.get("homeAway"): (c.get("team") or {}) for c in comp.get("competitors") or []}
+        if "home" in sides and "away" in sides:
+            out.append({"event_id": str(event.get("id") or ""),
+                        "home_name": sides["home"].get("displayName") or "",
+                        "away_name": sides["away"].get("displayName") or ""})
+    return out
+
+
 def fetch(needed: set[tuple[str, str]], roster: list[dict], *, season: int, week: int,
           events: list[dict] | None = None) -> list[dict]:
     if events is None:
-        events, _ = espn_odds.lines()
+        events = week_events(season, week)
     aliases = team_index()
     gsis_by_espn = {
         str(row.get("espn_id") or "").split(".")[0]: str(row.get("gsis_id") or "")
