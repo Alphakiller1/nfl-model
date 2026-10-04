@@ -305,12 +305,11 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
                 injury_rows,
                 espn_injuries.fetch(open_games, roster, season=season, week=week))
         except Exception as exc:
-            issues_early.append(f"ESPN injury feed failed: {type(exc).__name__}: {exc}")
-        if espn_injuries.LAST.get("state") in ("error", "empty"):
-            issues_early.append(
-                f"ESPN game-day injuries {espn_injuries.LAST['state']}: "
-                f"{espn_injuries.LAST.get('matched_games', 0)} games matched, "
-                f"{(espn_injuries.LAST.get('errors') or ['no error'])[0]}")
+            espn_injuries.LAST.update({"state": "error",
+                                       "errors": [f"{type(exc).__name__}: {exc}"[:160]]})
+        # An empty or failed fetch is reported in sources.odds.injury_feed, not
+        # raised as a publication issue: the nflverse report still applies, and
+        # a supplemental feed must not take the board down.
     quarterbacks = availability.quarterback_status(
         availability.usual_starters(player_history, season, week), injury_rows, roster)
 
