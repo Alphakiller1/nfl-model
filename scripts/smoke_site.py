@@ -12,6 +12,7 @@ REQUIRED = (
     "Production data health",
     "RESEARCH_ONLY",
     "Power Ratings",
+    "Team Volatility Rankings",
     "Offensive player &amp; kicker projections",
     "Tendencies, coverage response &amp; personnel",
     "1-800-GAMBLER",
