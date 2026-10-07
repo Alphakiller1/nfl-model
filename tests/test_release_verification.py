@@ -79,3 +79,25 @@ def test_configured_coverage_floor_allows_one_explicit_missing_book_row(
     path.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setenv("NFL_MIN_BOOK_COVERAGE", "0.90")
     assert verify(path) == []
+
+
+def test_bye_week_requires_only_the_teams_playing(tmp_path) -> None:
+    payload = _manifest()
+    payload["week"] = 5
+    payload["players"]["active_roster_week"] = 5
+    payload["odds"].update({key: 15 for key in (
+        "slate_games", "slate_matched", "slate_spreads", "slate_totals",
+        "slate_moneylines", "slate_complete")})
+    payload["odds"]["slate_total_games"] = 15
+    payload["players"]["teams_covered"] = 30
+    payload["scheme"]["matchup_count"] = 30
+    path = tmp_path / "build.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert verify(path) == []
+    # A team that IS playing but has no projections still fails closed.
+    payload["players"]["teams_covered"] = 29
+    payload["scheme"]["matchup_count"] = 28
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    errors = verify(path)
+    assert any("29/30 teams playing" in error for error in errors)
+    assert any("scheme matchup matrix" in error for error in errors)
