@@ -38,6 +38,7 @@ from . import (
     recommendations,
     teams,
     totals,
+    volatility,
     weekly_props,
 )
 from . import divisions as divisions_mod
@@ -165,6 +166,7 @@ def _nav(slate) -> str:
       <a class="nav-link" href="#disagreements">Gaps</a>
       <a class="nav-link" href="#ratings">Power Ratings</a>
       <a class="nav-link" href="#units">Offense &amp; Defense</a>
+      <a class="nav-link" href="#volatility">Volatility</a>
       <a class="nav-link" href="#divisions">Divisions</a>
       <a class="nav-link" href="#seeds">Playoffs</a>
       <a class="nav-link" href="#methodology">Method</a>
@@ -1252,10 +1254,22 @@ def _footer(built_at: str) -> str:
 
 
 # ── page ─────────────────────────────────────────────────────────────────────
+def _volatility_head(eyebrow: str, title: str, blurb: str) -> str:
+    return (f'<div class="sec-head"><span class="kicker">{eyebrow}</span>'
+            f'<h2>{title}</h2><p class="blurb">{blurb}</p></div>')
+
+
+def _volatility_section(payload: dict | None) -> str:
+    return volatility.render_section(
+        payload, eyebrow="Volatility &middot; 05b", head=_volatility_head,
+        logo=lambda abbr: teams.get(abbr).logo,
+    )
+
+
 def render(slate, outlooks, *, health: dict | None = None,
            record: dict | None = None, generated_at: datetime | None = None,
            picks: list | None = None, spots: list | None = None,
-           slip_plan: dict | None = None) -> str:
+           slip_plan: dict | None = None, volatility_payload: dict | None = None) -> str:
     moment = generated_at or datetime.now(UTC)
     built_at = moment.strftime("%b %d %Y · %H:%M UTC")
     body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
@@ -1271,6 +1285,7 @@ def render(slate, outlooks, *, health: dict | None = None,
             f"{_disagreements_section(slate)}"
             f"{_ratings_section(slate, outlooks)}"
             f"{_units_section(slate)}"
+            f"{_volatility_section(volatility_payload)}"
             f"{_divisions_section(outlooks)}"
             f"{_seeds_section(outlooks)}"
             f"{_method_section()}"
@@ -1282,7 +1297,7 @@ def render(slate, outlooks, *, health: dict | None = None,
         '<meta name="description" content="NFL research dashboard: opponent-adjusted power '
         'ratings, projected scores and totals, offensive and defensive unit rankings, '
         'simulated division races, and an explicit authority gate.">\n'
-        f"<style>{brand_css()}{_PAGE_CSS}{prop_report_view.CSS}</style>\n</head>\n<body>\n{body}\n"
+        f"<style>{brand_css()}{_PAGE_CSS}{prop_report_view.CSS}{volatility.CSS}</style>\n</head>\n<body>\n{body}\n"
         f"<script>{BOARD_JS}</script>\n</body>\n</html>\n"
     )
 
@@ -1355,6 +1370,15 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     except Exception as exc:
         record = {}
         issues.append(f"Shadow ledger unavailable: {type(exc).__name__}: {exc}")
+    # Team volatility, from this season's graded ledger rows plus the fitted
+    # prior season. A failure costs the section, never the board.
+    volatility_payload: dict | None = None
+    try:
+        snapshots = (ledger_payload or ledger._load(ledger.DEFAULT_PATH)).get("snapshots", [])
+        volatility_payload = volatility.build(snapshots, season=slate.season,
+                                              margin_sd=ratings.MARGIN_SD)
+    except Exception as exc:
+        issues.append(f"Team volatility ranking failed: {type(exc).__name__}: {exc}")
 
     odds = dict(slate.odds_status)
     source_rows = slate.source_status
@@ -1385,7 +1409,8 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
         render(slate, outlooks, health=health, record=record, generated_at=generated_at,
-               picks=picks, spots=spots, slip_plan=slip_plan),
+               picks=picks, spots=spots, slip_plan=slip_plan,
+               volatility_payload=volatility_payload),
         encoding="utf-8",
     )
     export.write(slate, out.parent / "board.json", outlooks, prop_slips=slip_plan)
@@ -1399,6 +1424,10 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     (out.parent / "record.json").write_text(
         json.dumps(record, indent=2) + "\n", encoding="utf-8"
     )
+    if volatility_payload is not None:
+        (out.parent / "volatility.json").write_text(
+            json.dumps(volatility_payload, indent=2) + "\n", encoding="utf-8"
+        )
     if ledger_payload is not None:
         # The published copy is the durable one: CI restores from it when the
         # Actions cache has been evicted, so the record never silently restarts.
