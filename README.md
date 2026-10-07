@@ -65,7 +65,7 @@ or locked prospective trial. The forward ledger is the prospective evidence.
 | Disagreements | all sixteen games ranked by how far the model sits from the closing line |
 | Power ratings | opponent-adjusted points vs an average team, split into offence, defence and their sum |
 | Offense & defense | both units ranked, with opponent-adjusted component rates graded by league percentile |
-| Volatility | every team ranked on how reliably its spread, moneyline, over and under outcomes land where the model projects — descriptive in the NFL, because no market's volatility measured as a persistent team trait ([`reports/VOLATILITY_2026-10-07.md`](reports/VOLATILITY_2026-10-07.md)) |
+| Volatility | every team ranked on how reliably its spread, moneyline, over and under outcomes land where the model projects, with a noise-cancelled score that strips turnover luck — descriptive in the NFL, because no market passed the held-out bar even with noise cancellation and a consistency prior ([`reports/VOLATILITY_2026-10-07.md`](reports/VOLATILITY_2026-10-07.md)) |
 | Divisions | 20,000 simulated seasons over the real fixture list — division and playoff odds |
 | Playoffs | the projected seven-team field per conference, with the cut line drawn |
 | Method | every fitted constant, and which sweeps came back flat |

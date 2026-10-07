@@ -1,4 +1,5 @@
 import math
+import statistics
 
 import pytest
 
@@ -146,3 +147,86 @@ def test_shipped_fit_is_loadable():
     params = v.params()
     assert set(params["markets"]) == set(v.MARKETS)
     assert params["prior_season"]["teams"]
+
+
+# -- noise cancellation, consistency prior, and the two-scheme bar ----------------
+def _process_game(week, home, away, rate_h, rate_a, luck=0.0, season=2026):
+    """A game whose margin is exactly 100 * (rate gap) plus `luck`."""
+    margin = 100.0 * (rate_h - rate_a) + luck
+    return v.GradedGame(season=season, week=week, home=home, away=away,
+                        model_margin=0.0, actual_margin=margin,
+                        model_total=50.0, actual_total=50.0 + 50.0 * (rate_h + rate_a - 0.8),
+                        home_process={"sr": rate_h}, away_process={"sr": rate_a})
+
+
+def test_outcome_model_recovers_the_process_relationship():
+    import random
+    rnd = random.Random(3)
+    games = [_process_game(w, "A", "B", rnd.uniform(0.3, 0.5), rnd.uniform(0.3, 0.5),
+                           luck=rnd.gauss(0, 3)) for w in range(60)]
+    model = v.fit_outcome_model(games, ("sr",))
+    assert model.margin_coef[1] == pytest.approx(100.0, rel=0.15)
+    assert model.total_coef[1] == pytest.approx(50.0, rel=0.05)
+    assert model.luck_sd == pytest.approx(3.0, rel=0.3)
+    assert model.margin_r2 > 0.5
+
+
+def test_process_loss_strips_the_luck():
+    model = v.OutcomeModel(("sr",), (0.0, 100.0), (-40.0, 50.0), 5.0, 0.8, 0.8)
+    # Process says a 10-point win; the final was a 3-point loss (a turnover swing).
+    game = _process_game(1, "A", "B", 0.5, 0.4, luck=-13.0)
+    home = v.team_games([game], margin_sd=14.0, outcome=model)[0]
+    assert home.losses["spread"] == pytest.approx(3.0)
+    assert home.process["spread"] == pytest.approx(10.0)
+    assert home.line == {"sr": 0.5} and home.against == {"sr": 0.4}
+
+
+def test_consistency_is_game_to_game_spread_on_both_sides():
+    games = [_process_game(w, "A", "B", r, 0.4) for w, r in enumerate((0.3, 0.5, 0.4))]
+    rows = [r for r in v.team_games(games, margin_sd=14.0) if r.team == "A"]
+    c = v.consistency(rows, ("sr",))
+    assert c["off_sd_sr"] == pytest.approx(statistics.pstdev([0.3, 0.5, 0.4]))
+    assert c["def_sd_sr"] == pytest.approx(0.0)
+    assert v.consistency(rows[:2], ("sr",))["off_sd_sr"] is None
+
+
+def test_consistency_prior_moves_a_team_off_the_pool():
+    games = []
+    for w in range(1, 5):
+        games.append(_process_game(w, "Swingy", "X", 0.3 if w % 2 else 0.6, 0.4))
+        games.append(_process_game(w, "Steady", "Y", 0.45, 0.4))
+    params = {"consistency_stats": ["sr"], "markets": {
+        "spread": {"trait": True, "k": None, "decay": 0.0, "alpha": 0.0,
+                   "beta": {"off_sd_sr": -1.0, "def_sd_sr": 0.0}}}}
+    out = v.rank(games, season=2026, params=params, margin_sd=14.0)
+    by = {t["team"]: t["markets"]["spread"] for t in out["teams"]}
+    # Negative beta on offensive inconsistency: the swingy team is forecast to
+    # miss less, and with k=None its own miss record carries no weight.
+    assert by["Swingy"]["consistency_shift"] < 0 < by["Steady"]["consistency_shift"]
+    assert by["Swingy"]["rank"] < by["Steady"]["rank"]
+    assert by["Swingy"]["reliability"] == 0.0
+    html = v.render_section(out)
+    assert "gives a team&rsquo;s own miss record no weight" in html
+
+
+def test_a_trait_must_pass_both_validation_schemes():
+    import random
+    rnd = random.Random(11)
+    teams = [f"T{i}" for i in range(24)]
+    # Each team has a persistent total-overshoot tendency: a real trait.
+    lean = {t: rnd.uniform(0, 12) for t in teams}
+    games = []
+    for season in range(2019, 2025):
+        for week in range(1, 11):
+            order = teams[:]
+            rnd.shuffle(order)
+            for h, a in zip(order[::2], order[1::2]):
+                over = abs(rnd.gauss(0, 4)) + lean[h] + lean[a]
+                games.append(_game(week, h, a, 0.0, rnd.gauss(0, 10), 50.0, 50.0 + over,
+                                   season=season))
+    fit = v.fit(games, margin_sd=14.0, source="test")
+    under = fit["markets"]["under"]
+    assert under["trait"] and under["variant"] == "plain"
+    assert under["variants"]["plain"]["loso"]["passes"]
+    assert under["variants"]["plain"]["forward"]["passes"]
+    assert not fit["markets"]["spread"]["trait"]

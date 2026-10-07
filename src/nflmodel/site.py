@@ -1375,8 +1375,13 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
     volatility_payload: dict | None = None
     try:
         snapshots = (ledger_payload or ledger._load(ledger.DEFAULT_PATH)).get("snapshots", [])
+        # The same nflverse weekly file the form model was built from (cached).
+        from . import efficiency, volatility_data
+        from .sources import nflverse
+        process = volatility_data.process_index(efficiency.game_lines(
+            nflverse.team_week(slate.season, completed_season=False)))
         volatility_payload = volatility.build(snapshots, season=slate.season,
-                                              margin_sd=ratings.MARGIN_SD)
+                                              margin_sd=ratings.MARGIN_SD, process=process)
     except Exception as exc:
         issues.append(f"Team volatility ranking failed: {type(exc).__name__}: {exc}")
 
