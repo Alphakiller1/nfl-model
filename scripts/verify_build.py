@@ -85,8 +85,11 @@ def verify(path: Path) -> list[str]:
     team_count = int(players.get("teams_covered") or 0)
     if player_count <= 0:
         errors.append("no offensive player or kicker projections were generated")
-    if team_count < 32:
-        errors.append(f"player projections cover {team_count}/32 teams")
+    # Teams on bye have no game to project. Weeks 5-14 schedule 13-15 games, and
+    # demanding all 32 froze the site on week 4 the first time a bye came round.
+    playing = 2 * week_games if week_games > 0 else 32
+    if team_count < playing:
+        errors.append(f"player projections cover {team_count}/{playing} teams playing")
     roster_week = int(players.get("active_roster_week") or 0)
     week = int(payload.get("week") or 0)
     if roster_week < week - 1:
@@ -102,7 +105,8 @@ def verify(path: Path) -> list[str]:
         errors.append(
             f"scheme matrix covers {int(scheme.get('profile_count') or 0)}/32 teams"
         )
-    if int(scheme.get("matchup_count") or 0) < 32:
+    # Profiles exist for every team; matchups only for the two sides of each game.
+    if int(scheme.get("matchup_count") or 0) < playing:
         errors.append("scheme matchup matrix does not cover both teams in every game")
     if not scheme.get("source_seasons"):
         errors.append("scheme source season is unavailable")
