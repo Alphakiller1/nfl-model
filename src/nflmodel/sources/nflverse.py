@@ -467,8 +467,18 @@ def weekly_roster(season: int, *, week: int | None = None) -> list[dict]:
     eligible = [candidate for candidate in available if week is None or candidate <= week]
     if not eligible:
         return []
-    selected = max(eligible)
-    return [row for row in rows if int(number(row.get("week")) or 0) == selected]
+    # Each club's latest week, not the league's: a weekly roster lists only the
+    # clubs that played, so the board that rolls to the next week on Monday
+    # (before that week's roster exists) lost every club coming off a bye -
+    # "player projections cover 24/28 teams playing", 2026-10-19.
+    latest: dict[str, int] = {}
+    for row in rows:
+        row_week = int(number(row.get("week")) or 0)
+        if row_week in eligible:
+            team = str(row.get("team") or "")
+            latest[team] = max(latest.get(team, 0), row_week)
+    return [row for row in rows
+            if int(number(row.get("week")) or 0) == latest.get(str(row.get("team") or ""), -1)]
 
 
 def depth_charts(season: int, *, before: str | None = None) -> list[dict]:
