@@ -1046,7 +1046,9 @@ def render_report(root, manifest, weeks):
         )
         rows = []
         for w in top:
-            selection = (w.get("player_name") + " " if w.get("player_name") else "") + w["side"]
+            selection = (w.get("player_name") + " " if w.get("player_name") else "") + (
+                w[w["side"]] if w["side"] in ("home", "away") else w["side"]
+            )
             line = "—" if w.get("line") is None else f"{w['line']:g}"
             price = "missing" if w.get("price") is None else f"{w['price']:+g}"
             closing = "—" if w.get("clv") is None else f"{w['clv']:+g}"
@@ -1056,7 +1058,7 @@ def render_report(root, manifest, weeks):
                     "<td>" + esc(v) + "</td>"
                     for v in (
                         w["away"] + " at " + w["home"],
-                        w["market"],
+                        w.get("metric", w["market"]).replace("_", " ").title(),
                         selection,
                         line,
                         price,
@@ -1077,7 +1079,9 @@ def render_report(root, manifest, weeks):
         clv_bits = []
         for market, metric in record["clv"].items():
             avg = "missing" if metric["mean"] is None else f"{metric['mean']:+.2f} {metric['unit']}"
-            clv_bits.append(f"{market}: {avg} ({metric['n']} closes)")
+            clv_bits.append(
+                f"{market.replace('prop:', '').replace('_', ' ')}: {avg} ({metric['n']} closes)"
+            )
         sections.append(
             f"<section><h2>{esc(key)}</h2><p>{len(week['observations']):,} projection vintages · "
             f"{sum(len(o['projection'].get('players', [])) for o in week['observations'].values()):,} player projections · "  # noqa: E501 - prose or generated HTML
@@ -1126,7 +1130,7 @@ def render_report(root, manifest, weeks):
         "td,th{text-align:left;padding:12px;border-bottom:1px solid #38383f;white-space:nowrap}.scroll{overflow:auto}"  # noqa: E501 - prose or generated HTML
         'p{max-width:100ch}small{color:#b6b6c2}</style><main><a href="../">Model dashboard</a>'
         "<h1>Projection and wager tracking</h1><p>All projections retained. First observed selections frozen. Results and CLV collected consistently.</p>"  # noqa: E501 - prose or generated HTML
-        f"<p>Updated {esc(manifest['updated_at'])} · {esc(manifest['sport'].upper())}</p><p>{esc(POLICY)}</p>"  # noqa: E501 - prose or generated HTML
+        f"<p>Updated {esc(manifest['updated_at'])} · {esc(manifest['sport'].upper())}</p><details><summary>Tracking rules</summary><p>{esc(POLICY)}</p></details>"  # noqa: E501 - prose or generated HTML
         + "".join(sections)
         + "</main></html>"
     )

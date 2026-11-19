@@ -283,6 +283,13 @@ class TrackingTests(unittest.TestCase):
         prop = next(w for w in self.week()["wagers"].values() if w["market"] == "prop")
         self.assertEqual(prop["result"], "win")
 
+    def test_report_names_the_player_stat_and_selected_team(self):
+        tracker.run(board(players=True), "nba", self.root, now=NOW, provider=Provider(props=True))
+        page = (self.root / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<td>Points</td>", page)
+        self.assertIn("A Player over", page)
+        self.assertIn("<td>H0</td>", page)
+
     def test_changed_results_do_not_rewrite_settled_wager(self):
         w = {"market": "total", "side": "over", "line": 140, "price": -110}
         tracker.settle(w, total=150)
