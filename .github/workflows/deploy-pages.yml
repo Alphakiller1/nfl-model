@@ -83,6 +83,13 @@ jobs:
             ${{ github.event.inputs.season && format('--season {0}', github.event.inputs.season) || '' }} \
             ${{ github.event.inputs.week && format('--week {0}', github.event.inputs.week) || '' }}
 
+      - name: Archive every projection and update the wager record
+        run: >-
+          python scripts/track_projections.py --sport nfl
+          --board _site/board.json --out _site/tracking
+          --producer-revision ${{ github.sha }}
+          --recover-url https://alphakiller1.github.io/nfl-model/tracking/manifest.json
+
       - name: Post-build smoke
         env:
           # Publish a visibly degraded row when one late-posting game is absent
@@ -105,6 +112,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+          retention-days: 31
 
   deploy:
     needs: build

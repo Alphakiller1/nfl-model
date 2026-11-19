@@ -318,3 +318,7 @@ What differs per sport is only the *adapter* (`board_nfl.py`):
   graded from nflverse; a projected player with no stat row is graded as a zero,
   not left pending. The public summary reports metric MAE and anytime-TD Brier
   score without converting either into a betting claim.
+
+## Live projection tracking
+
+The [weekly record and CLV](https://alphakiller1.github.io/nfl-model/tracking/) retains every game and player projection, with an uncapped wager record and a frozen weekly top-20 view. See [the tracking contract](docs/PROJECTION_TRACKING.md).
