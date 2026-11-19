@@ -54,3 +54,5 @@ Changes must be applied and tested together. Run:
 ```
 python -m unittest discover -s tests -p test_projection_tracking.py -v
 ```
+
+The weekly archive also retains every complete published board, including season outlooks, futures probabilities and new forecast fields without a sportsbook quote. These remain in the raw record even when they cannot produce a priced wager or CLV observation.
