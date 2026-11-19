@@ -290,6 +290,24 @@ class TrackingTests(unittest.TestCase):
         self.assertIn("A Player over", page)
         self.assertIn("<td>H0</td>", page)
 
+    def test_complete_board_retains_unpriced_season_and_future_forecasts(self):
+        source = board(sport="nfl")
+        source["division_winners"] = {"AFC East": {"team": "BUF", "probability": 0.4}}
+        source["teams"] = [{"team": "BUF", "projected_wins": 10.2, "make_playoffs": 0.7}]
+        tracker.run(source, "nfl", self.root, now=NOW, provider=Provider())
+        saved = next(iter(self.week()["board_snapshots"].values()))["board"]
+        self.assertEqual(saved["teams"], source["teams"])
+        self.assertEqual(saved["division_winners"], source["division_winners"])
+        tracker.run(
+            source,
+            "nfl",
+            self.root,
+            now=NOW + timedelta(minutes=30),
+            provider=Provider(),
+            collect_only=True,
+        )
+        self.assertEqual(len(self.week()["board_snapshots"]), 1)
+
     def test_changed_results_do_not_rewrite_settled_wager(self):
         w = {"market": "total", "side": "over", "line": 140, "price": -110}
         tracker.settle(w, total=150)

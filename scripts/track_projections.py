@@ -168,7 +168,7 @@ def recover(root, url):
         incoming = json.loads(gzip.decompress(raw))
         if target.exists():
             current = read(target)
-            for field in ("observations", "wagers"):
+            for field in ("observations", "wagers", "board_snapshots"):
                 incoming[field] = {**current.get(field, {}), **incoming.get(field, {})}
         write(target, incoming)
     if local:
@@ -1162,6 +1162,31 @@ def run(board, sport, root, *, recover_url=None, now=None, provider=None, collec
                 "receipts": {},
             },
         )
+    # Keep the complete published board as well as normalized game/player
+    # rows. Season outlooks, futures probabilities and new forecast fields
+    # must not disappear merely because they do not have a quoted wager yet.
+    anchor = week_id(
+        sport,
+        normalized.get("season") or int(generated[:4]),
+        normalized.get("week"),
+        moment(generated),
+    )
+    weeks.setdefault(
+        anchor,
+        {
+            "schema": SCHEMA,
+            "sport": sport,
+            "week_id": anchor,
+            "observations": {},
+            "wagers": {},
+            "receipts": {},
+        },
+    )
+    board_key = digest(normalized)
+    weeks[anchor].setdefault("board_snapshots", {}).setdefault(
+        board_key,
+        {"model_generated_at": generated, "first_observed_at": stamp(now), "board": normalized},
+    )
     provider = provider or Provider(sport, root, now)
     version = (
         normalized.get("model_version")
@@ -1181,6 +1206,7 @@ def run(board, sport, root, *, recover_url=None, now=None, provider=None, collec
             "file": key + ".json.gz",
             "sha256": sha,
             "observations": len(week["observations"]),
+            "complete_boards": len(week.get("board_snapshots", {})),
             "record": stats(week["wagers"].values()),
             "top20_record": stats(w for w in week["wagers"].values() if w.get("top20")),
         }
