@@ -1,0 +1,55 @@
+name: Collect projection results and CLV
+on:
+  schedule:
+    - cron: '7,37 0-5,14-23 * 1,9-12 *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Locate the last successful full model build
+        id: build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          run_id=$(gh run list --workflow deploy-pages.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$run_id" && test "$run_id" != null
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: _published
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ steps.build.outputs.run_id }}
+      - name: Retain the full model site
+        run: |
+          mkdir -p _site
+          tar -xf _published/artifact.tar -C _site
+      - name: Collect outcomes and named-book closing quotes
+        run: >-
+          python scripts/track_projections.py --sport nfl
+          --board _site/board.json --out _site/tracking
+          --recover-url https://alphakiller1.github.io/nfl-model/tracking/manifest.json
+          --collect-only
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+          retention-days: 31
+      - id: deploy
+        uses: actions/deploy-pages@v4
