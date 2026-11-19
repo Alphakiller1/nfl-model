@@ -98,7 +98,9 @@ def _ladder(metric: str, mean: float) -> tuple[float, ...] | None:
 def _pmf(mean: float, size: float | None) -> dict[str, float]:
     out: dict[str, float] = {}
     cumulative = 0.0
-    for k in range(0, 60):
+    variance = mean if size is None else mean + mean * mean / size
+    upper = max(60, int(math.ceil(mean + 14 * math.sqrt(max(variance, 1)) + 30)))
+    for k in range(0, upper):
         if mean <= 0:
             mass = 1.0 if k == 0 else 0.0
         elif size is None:
@@ -108,9 +110,9 @@ def _pmf(mean: float, size: float | None) -> dict[str, float]:
             mass = math.exp(math.lgamma(k + size) - math.lgamma(size) - math.lgamma(k + 1)
                             + size * math.log(p) + k * math.log(1 - p))
         cumulative += mass
-        if mass >= 5e-4:
-            out[str(k)] = round(mass, 4)
-        if cumulative > 0.9995:
+        if mass >= 1e-7:
+            out[str(k)] = round(mass, 7)
+        if cumulative > 0.999999:
             break
     return out
 
@@ -124,13 +126,26 @@ def _pmf_quantile(pmf: dict[str, float], level: float) -> float:
     return float(max(pmf, key=int))
 
 
-def distribution(metric: str, mean: float | None) -> dict | None:
+def distribution(metric: str, mean: float | None, *, position: str | None = None,
+                 evidence: dict | None = None) -> dict | None:
     """Mean, 10th/50th/90th percentiles, and either a ``pmf`` (counts) or the
     quantile ladder ``q`` at ``q_levels`` (everything else). None when the
     metric has no fitted distribution."""
     if mean is None:
         return None
     mean = float(mean)
+    if not math.isfinite(mean) or mean < 0:
+        return None
+    if position and metric == "anytime_td_probability" and mean <= 1:
+        pmf = {"0": round(1 - mean, 7), "1": round(mean, 7)}
+        return {"mean": mean, "p10": _pmf_quantile(pmf, 0.1),
+                "p50": _pmf_quantile(pmf, 0.5), "p90": _pmf_quantile(pmf, 0.9),
+                "pmf": pmf, "basis": "Bernoulli event from the projected anytime-TD probability",
+                "market_calibrated": False}
+    if position:
+        revised = _revised_distribution(metric, mean, position, evidence or {})
+        if revised is not None:
+            return revised
     if metric in COUNT_SIZE:
         pmf = _pmf(mean, COUNT_SIZE[metric])
         return {"mean": round(mean, 2), "p10": _pmf_quantile(pmf, 0.10),
@@ -156,7 +171,10 @@ def over_probability(dist: dict, line: float) -> float | None:
     if not ladder or not levels:
         return None
     if line < ladder[0]:
-        return 1.0 - levels[0] * line / ladder[0] if ladder[0] > 0 else 1.0 - levels[0]
+        if ladder[0] > 0:
+            return max(0.0, min(1.0, 1.0 - levels[0] * line / ladder[0]))
+        spread = max(ladder[2] - ladder[0], 1.0)
+        return 1.0 - levels[0] * math.exp((line - ladder[0]) / spread)
     if line >= ladder[-1]:
         spread = max(ladder[-1] - ladder[2], 1.0)
         return (1.0 - levels[-1]) * math.exp(-(line - ladder[-1]) / spread)
@@ -166,11 +184,50 @@ def over_probability(dist: dict, line: float) -> float | None:
     return None
 
 
-def stats(metrics: dict[str, float]) -> dict[str, dict]:
+def _revised_distribution(metric: str, mean: float, position: str, evidence: dict) -> dict | None:
+    from .prop_intelligence import parameters
+
+    params = parameters()
+    fitted = params.get("uncertainty", {}).get(f"{position}:{metric}")
+    if not fitted:
+        return None
+    uncertain = (evidence.get("recent_opportunity_cv", 1) > 0.5
+                 or evidence.get("current_stint_games", 0) < 4)
+    cohort = "uncertain" if uncertain else "stable"
+    if cohort not in fitted["cohorts"]:
+        cohort = "all"
+    metadata = {"calibration_version": params["version"], "fit_seasons": params["fit_seasons"],
+                "cohort": cohort, "calibration_n": fitted["n"],
+                "basis": fitted["basis"], "market_calibrated": False}
+    if "count_sizes" in fitted:
+        size = fitted["count_sizes"].get(cohort, fitted["count_sizes"].get("all"))
+        pmf = _pmf(mean, size)
+        return {"mean": round(mean, 2), "p10": _pmf_quantile(pmf, 0.1),
+                "p50": _pmf_quantile(pmf, 0.5), "p90": _pmf_quantile(pmf, 0.9),
+                "pmf": pmf, **metadata}
+    buckets = fitted["cohorts"][cohort]
+    bucket = next((b for b in buckets if mean <= b["upper"]), buckets[-1])
+    # Yardage may be negative; the distribution must retain that possibility.
+    floor = -20.0 if metric in {"rushing_yards", "receiving_yards"} else 0.0
+    ladder = [round(max(floor, mean + math.sqrt(max(mean, 1)) * q), 1)
+              for q in bucket["residual_quantiles"]]
+    return {"mean": round(mean, 2), "p10": ladder[0], "p50": ladder[2], "p90": ladder[-1],
+            "q": ladder, "q_levels": list(QUANTILE_LEVELS), **metadata}
+
+
+def for_player(player, metric: str) -> dict | None:
+    key = ("carries" if metric == "rush_attempts" and player.position == "RB" else metric)
+    revised = str(getattr(player, "model_version", "")).startswith("nfl-player-projections/3.")
+    return distribution(key, player.metrics.get(key), position=player.position if revised else None,
+                        evidence=getattr(player, "intelligence", {}))
+
+
+def stats(metrics: dict[str, float], *, position: str | None = None,
+          evidence: dict | None = None) -> dict[str, dict]:
     """Every metric with a fitted distribution, keyed as `metrics` is."""
     out = {}
     for metric, mean in (metrics or {}).items():
-        dist = distribution(metric, mean)
+        dist = distribution(metric, mean, position=position, evidence=evidence)
         if dist:
             out[metric] = dist
     return out

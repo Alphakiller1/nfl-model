@@ -27,6 +27,7 @@ from . import (
     forecast,
     matrix,
     prop_distributions,
+    prop_intelligence,
     ratings,
     recommendations,
     scheme,
@@ -130,10 +131,15 @@ def _player_projection(p) -> dict:
         "team_environment_source": p.team_environment_source,
         "implied_team_points": _round(p.implied_team_points, 2),
         "scheme_context": p.scheme_context,
+        "current_role_weight": _round(getattr(p, "current_role_weight", 0), 3),
+        "intelligence": getattr(p, "intelligence", {}),
+        "predictability": getattr(p, "predictability", {}),
+        "forecast_components": getattr(p, "forecast_components", {}),
         "metrics": {key: _round(value, 2) for key, value in p.metrics.items()},
         # Mean, 10th-90th band and a pmf or quantile ladder per stat, so a
         # reader can price any line (prop_distributions; fitted 2023-2025).
-        "stats": prop_distributions.stats(p.metrics),
+        "stats": prop_distributions.stats(p.metrics, position=p.position,
+                                          evidence=getattr(p, "intelligence", {})),
         "model_version": p.model_version,
         "sportsbook_line": None,
         "edge": None,
@@ -207,6 +213,7 @@ def payload(slate, outlooks: list | None = None, prop_slips: dict | None = None)
         "games": [_projection(p) for p in slate.projections],
         "player_model": slate.player_status,
         "player_projections": [_player_projection(p) for p in slate.player_projections],
+        "player_prop_comparisons": prop_intelligence.quote_comparisons(slate),
         "scheme_model": slate.scheme_status,
         "scheme_profiles": [
             scheme.profile_payload(profile)

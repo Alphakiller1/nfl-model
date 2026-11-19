@@ -10,6 +10,7 @@ permissions:
   id-token: write
 concurrency:
   group: github-pages
+  queue: max
   cancel-in-progress: false
 jobs:
   collect:

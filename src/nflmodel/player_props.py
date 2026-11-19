@@ -20,10 +20,10 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from . import teams
+from . import prop_intelligence, teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/2.1.0"
+MODEL_VERSION = "nfl-player-projections/3.0.0"
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 # Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
@@ -177,6 +177,10 @@ class PlayerProjection:
     implied_team_points: float | None
     scheme_context: dict[str, object] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
+    intelligence: dict = field(default_factory=dict)
+    predictability: dict = field(default_factory=dict)
+    forecast_components: dict = field(default_factory=dict)
+    current_role_weight: float = 0.0
     model_version: str = MODEL_VERSION
     authority: str = "RESEARCH_ONLY"
     action: str = "NO BET - projections only"
@@ -502,7 +506,16 @@ def _usage_games(item: _History | None, team: str) -> float:
     """Usage-weighted games played for ``team`` (the evidence behind a share)."""
     if item is None:
         return 0.0
-    return sum(w for row, _, w in item.rows if teams.canonical(row.get("team") or "") == team)
+    return sum(weight for _, weight in _stint_rows(item, team))
+
+
+def _stint_rows(item: _History, team: str) -> list[tuple[dict, float]]:
+    last_other = max((_order(int(_value(row, "season")), int(_value(row, "week")))
+                      for row, _, _ in item.rows
+                      if teams.canonical(row.get("team") or "") != team), default=-1)
+    return [(row, weight) for row, _, weight in item.rows
+            if teams.canonical(row.get("team") or "") == team
+            and _order(int(_value(row, "season")), int(_value(row, "week"))) > last_other]
 
 
 def _league_passing(histories: dict[str, _History]) -> dict[str, tuple[float, float]]:
@@ -539,8 +552,11 @@ def _receiver_rates(item: _History | None, position: str) -> tuple[float, float]
     player's own shrunk aDOT rather than toward a flat positional mean."""
     league_adot, ypt_a, ypt_b, catch_a, catch_b = ADOT_PRIOR[position]
     targets = _weighted_sum(item, "targets")
-    adot = (_weighted_sum(item, "receiving_air_yards") + ADOT_PSEUDO_TARGETS * league_adot) / (
-        targets + ADOT_PSEUDO_TARGETS)
+    known_air = ([] if item is None else [(row, weight) for row, weight, _ in item.rows
+                                        if number(row.get("receiving_air_yards")) is not None])
+    air_yards = sum(_value(row, "receiving_air_yards") * weight for row, weight in known_air)
+    air_targets = sum(_value(row, "targets") * weight for row, weight in known_air)
+    adot = (air_yards + ADOT_PSEUDO_TARGETS * league_adot) / (air_targets + ADOT_PSEUDO_TARGETS)
     key = position.lower()
     catch = _bayes(_weighted_sum(item, "receptions"), targets,
                    (_clamp(catch_a + catch_b * adot, 0.45, 0.90), RATE_PRIORS[f"catch_{key}"][1]))
@@ -645,12 +661,14 @@ def _share(
     field: str,
     denominator: str,
     team_games: dict[tuple[int, int, str], dict[str, float]],
+    team: str | None = None,
 ) -> float | None:
     if item is None:
         return None
     weighted = 0.0
     weight_sum = 0.0
-    for row, _, weight in item.rows:
+    rows = _stint_rows(item, team) if team else [(r, w) for r, _, w in item.rows]
+    for row, weight in rows:
         key = (
             int(number(row.get("season")) or 0),
             int(number(row.get("week")) or 0),
@@ -784,6 +802,10 @@ def project(
     scheme_matchups: dict[tuple[str, str], object] | None = None,
     snap_rows: list[dict] | None = None,
     box_rates: dict[str, float] | None = None,
+    pbp_rows: list[dict] | None = None,
+    participation_rows: list[dict] | None = None,
+    charting_rows: list[dict] | None = None,
+    intelligence_enabled: bool = True,
 ) -> BuildResult:
     """Project QB/RB/WR/TE/K output for one slate."""
     snap_trend = _snap_trends(snap_rows or [], roster, season=season, week=week)
@@ -881,7 +903,7 @@ def project(
 
             def claim(player: dict, priors: dict, field: str) -> float:
                 prior = _prior(priors[player["position"]], player["depth_rank"])
-                observed = _share(player["history"], field, field, team_games)
+                observed = _share(player["history"], field, field, team_games, team=team)
                 trend = snap_trend.get((team, player["player_id"]))
                 if observed is not None and trend is not None:
                     observed *= trend ** SNAP_TREND_BETA[field]
@@ -1133,6 +1155,7 @@ def project(
                                          else round(float(environment["implied_points"]), 2)),
                     scheme_context=scheme_context,
                     metrics=_round_metrics(metrics),
+                    current_role_weight=player["usage_weight"],
                 ))
 
     projections.sort(
@@ -1145,6 +1168,12 @@ def project(
             row.player_name,
         )
     )
+    if intelligence_enabled:
+        projections = prop_intelligence.revise(
+            projections, history_rows=history_rows, pbp_rows=pbp_rows or [],
+            participation_rows=participation_rows or [], charting_rows=charting_rows or [],
+            season=season, week=week, scheme_matchups=scheme_matchups or {},
+        )
     latest_depth = max((str(row.get("dt") or "") for row in depth), default="")
     roster_weeks = [int(number(row.get("week")) or 0) for row in roster]
     status = {
@@ -1162,12 +1191,14 @@ def project(
         "injury_report": (
             f"{len(injuries or [])} current-week designations ingested"
             if injuries
-            else "not yet published for the 2026 regular season"
+            else "no current-week official designations available"
         ),
         "role_policy": (
-            "active roster and current depth determine next-game role; historical usage "
-            "is discounted after team changes and excluded for players with no NFL history"
+            "dated active roster and each team's pre-kickoff depth determine role; "
+            "usage comes only from the current team stint; skill rates can transfer; "
+            "time-forward-selected corrections separate opportunity, process and outcomes"
         ),
+        "intelligence": prop_intelligence.parameter_status() if intelligence_enabled else None,
         "pricing": "none - projections only; no player-prop lines or edges",
         "scheme_matchups_applied": len({
             (row.team, row.opponent) for row in projections if row.scheme_context

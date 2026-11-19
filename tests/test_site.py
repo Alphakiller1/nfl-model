@@ -231,7 +231,8 @@ def test_site_has_a_distinct_line_free_player_projection_layer(slate):
     html = _render(slate)
     assert "Offensive player &amp; kicker projections" in html
     assert "not sportsbook player lines" in html
-    assert "a player who changed teams retains only 18%" in html
+    assert "Usage comes from the current" in html and "team stint" in html
+    assert "10th&ndash;90th percentile range" in html
 
 
 def test_site_renders_scheme_provenance_and_response_matrix(slate):

@@ -135,6 +135,7 @@ def _card(row: dict) -> str:
     basis = {
         "line_calibrated": "Line-calibrated model",
         "raw_distribution": "Uncalibrated PrizePicks model",
+        "v3_outcome_distribution": "V3 outcome model; betting calibration pending",
         "poisson_assumption": "Unvalidated Poisson model",
         "dependence_bound": "Dependence bound",
     }[row["probability_basis"]]

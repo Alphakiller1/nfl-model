@@ -49,6 +49,11 @@ EVIDENCE = {
 MIN_PROBABILITY = 0.53
 BREAK_EVEN = 0.524      # -110 both ways
 MIN_EVIDENCE_PLAYS = 300
+CALIBRATED_PROJECTION_VERSION = "nfl-player-projections/2.1.0"
+
+
+def calibration_applies(model_version: str | None) -> bool:
+    return not model_version or model_version == CALIBRATED_PROJECTION_VERSION
 
 
 def _lower_bound(wins: int, plays: int) -> float:
@@ -70,9 +75,14 @@ def calibrate(raw: float) -> float:
     return min(max(0.5 + CALIBRATION["s"] * (raw - CALIBRATION["c"]), 0.01), 0.99)
 
 
-def price(metric: str, projection: float | None, line: float | None) -> dict | None:
+def price(metric: str, projection: float | None, line: float | None, *, player=None) -> dict | None:
     """{'family', 'fair', 'raw', 'p_over'} for one quote, or None if unpriceable."""
     family = FAMILY.get(metric)
+    if player is not None and not calibration_applies(getattr(player, "model_version", None)):
+        # v2's historical betting record cannot qualify a different forecaster.
+        # The v3 projection, outcome bands and raw threshold probability remain
+        # available; quote-specific calibration needs its own forward record.
+        return None
     if family is None or projection is None or line is None or projection <= 0:
         return None
     dist = prop_distributions.distribution(metric, projection)

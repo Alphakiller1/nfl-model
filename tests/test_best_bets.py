@@ -98,6 +98,8 @@ def _player(**changes):
         persistence_weight=0.72, role_reason="current depth plus same-team usage",
         confidence="high", team_environment_source="DraftKings", implied_team_points=27.5,
         scheme_context={"carry_delta": 2.5}, metrics={"rushing_yards": 92.0},
+        # These mechanics tests exercise the frozen v2 calibration record.
+        model_version="nfl-player-projections/2.1.0",
     )
     values.update(changes)
     return PlayerProjection(**values)
@@ -142,6 +144,13 @@ def test_prop_pick_is_priced_from_the_matrix_distribution(slate, pricing):
 
     median = prop_distributions.distribution("rushing_yards", 92.0)["p50"]
     assert bb.prop_picks(replace(s, player_prop_quotes=[_quote(median, -110, -110)]), {}) == []
+
+
+def test_revised_forecaster_cannot_reuse_the_legacy_prop_betting_record(slate, pricing):
+    player = _player(model_version="nfl-player-projections/3.0.0")
+    revised = replace(slate, week=1, player_projections=[player],
+                      player_prop_quotes=[_quote(68.5)])
+    assert bb.prop_picks(revised, {}) == []
 
 
 def test_leans_publish_every_week_and_say_how_strong_they_are(slate, monkeypatch):

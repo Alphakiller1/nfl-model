@@ -5,6 +5,14 @@ on:
     branches:
       - main
   schedule:
+    # Refresh player usage/rosters after the overnight provider updates, including
+    # Friday/Saturday report changes. Existing book-quota floors still apply.
+    - cron: "23 11 * 1,9-12 *"
+    # Late Sunday/Monday/Thursday Eastern inactive news (following UTC day).
+    - cron: "17 0,1 * 1,9-12 1,2,5"
+    # Sunday inactive reports and later kickoff waves must reach player roles.
+    - cron: "17 16-23 * 1,9-12 0"
+    - cron: "17 23 * 1,9-12 1,4"
     # Regular-season refreshes are quota-aware: one exact DraftKings request
     # carries h2h, spread and total.  Extra noon-ET snapshots cover the three
     # NFL game days without spending credits year-round.
@@ -26,13 +34,15 @@ permissions:
 
 concurrency:
   group: github-pages
-  # false, not true: a Pages deploy that is mid-publish must finish. Cancelling it
-  # produces GitHub's "Deployment failed, try again later". Overlapping runs queue.
+  queue: max
+  # Preserve every pending full refresh as well as tracking-only publications.
+  # The default single pending slot lets a collector replace a queued forecast.
   cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
