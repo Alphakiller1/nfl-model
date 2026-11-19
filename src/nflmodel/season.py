@@ -300,8 +300,16 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     snap_rows: list[dict] = []
     for snap_season in (season - 1, season):
         snap_rows.extend(nflverse.snap_counts(snap_season))
-    first_kickoff = min((kickoff_utc(row) for row in games if kickoff_utc(row)), default=None)
-    depth = nflverse.depth_charts(season, before=first_kickoff)
+    observed_at = (datetime.now(timezone.utc).replace(microsecond=0)
+                   .isoformat().replace("+00:00", "Z"))
+    depth_cutoffs = {}
+    for game in games:
+        cutoff = min(kickoff_utc(game) or observed_at, observed_at)
+        for side in ("home_team", "away_team"):
+            depth_cutoffs[teams.canonical(game[side])] = cutoff
+    # Sunday roles may change after Thursday kickoff. Each club gets the latest
+    # snapshot known now and before its own game; completed games stay censored.
+    depth = nflverse.depth_charts(season, before_by_team=depth_cutoffs)
     injury_rows = nflverse.injuries(season, week=week)
     if open_games:
         # Game-day downgrades and IR moves reach ESPN before the nflverse report.
@@ -385,6 +393,9 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         snap_rows=snap_rows,
         box_rates=player_props.defense_box_rates(
             scheme_pbp, scheme_charting, season=season, week=week),
+        pbp_rows=scheme_pbp,
+        participation_rows=scheme_participation,
+        charting_rows=scheme_charting,
     )
     odds_status = oddsapi.status_report()
     # Book coverage is measured over games still to be played: a book quotes

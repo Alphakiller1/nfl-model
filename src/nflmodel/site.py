@@ -558,7 +558,77 @@ def _prop_value(player, key: str, *, places: int = 1, percent: bool = False) -> 
     if value is None:
         return '<td class="num dim">&ndash;</td>'
     shown = f"{value * 100:.0f}%" if percent else f"{value:.{places}f}"
-    return f'<td class="num">{shown}</td>'
+    from . import prop_distributions
+
+    dist = prop_distributions.for_player(player, key)
+    band = (f'<small class="dim">{dist["p10"]:g}&ndash;{dist["p90"]:g}</small>'
+            if dist and not percent else "")
+    return f'<td class="num">{shown}{band}</td>'
+
+
+def _player_intelligence(player) -> str:
+    info = getattr(player, "intelligence", {})
+    if not info:
+        return ""
+    lines = [f"Current team stint: {info.get('current_stint_games', 0)} games; "
+             f"opportunity variation over {info.get('stability_window_games', 0)} appearances: "
+             f"{info.get('recent_opportunity_cv', 0):.0%}."]
+    for key in ("passing_yards", "rushing_yards", "receiving_yards", "targets", "carries"):
+        trend = info.get("regression_progression", {}).get(key)
+        if trend:
+            lines.append(f"{key.replace('_', ' ')}: {trend['label']}; recent "
+                         f"{trend['recent_mean']:g}, forecast {trend['forecast_mean']:g}.")
+    if info.get("expected_completion_rate") is not None:
+        lines.append(f"Observed conversion {info['observed_completion_rate']:.1%}; "
+                     f"opportunity-based expectation {info['expected_completion_rate']:.1%}. "
+                     "The difference can include repeatable player skill.")
+    parts = getattr(player, "forecast_components", {})
+    changes = []
+    for key, component in parts.items():
+        delta = component["final_mean"] - component["structural_mean"]
+        if abs(delta) >= (0.1 if key == "anytime_td_probability" else 0.5):
+            changes.append(f"{key.replace('_', ' ')}: {delta:+.1f} fitted adjustment")
+    if changes:
+        lines.append("; ".join(changes[:3]) + ".")
+    lines.extend(info.get("warnings", []))
+    content = "".join(f"<p>{e(line)}</p>" for line in lines)
+    return ('<details class="prop-intelligence"><summary>Role, regression &amp; process</summary>'
+            f'{content}</details>')
+
+
+def _player_line_comparisons(slate) -> str:
+    from . import prop_intelligence
+
+    comparisons = prop_intelligence.quote_comparisons(slate)
+    if not comparisons:
+        return ""
+    rows = []
+    for row in comparisons:
+        band = (f"{row['p10']:g}&ndash;{row['p90']:g}" if row["p10"] is not None else "&ndash;")
+        median = f"{row['model_median']:g}" if row["model_median"] is not None else "&ndash;"
+        over = row.get("over_price")
+        under = row.get("under_price")
+        prices = (f"{over:+g} / {under:+g}" if over is not None and under is not None
+                  else "not supplied")
+        stability = row["predictability"].get("label", "limited evidence")
+        rows.append(
+            f'<tr><td>{e(row["player"])}</td><td>{e(row["team"])} vs {e(row["opponent"])}</td>'
+            f'<td>{e(row["market"])}</td><td class="num">{row["line"]:g}</td>'
+            f'<td class="num">{row["model_mean"]:g}</td><td class="num">{median}</td>'
+            f'<td class="num">{band}</td><td>{e(stability)}</td>'
+            f'<td>{e(str(row["book"]))}<small>{e(prices)}</small></td></tr>'
+        )
+    return (
+        '<details class="prop-group"><summary>Posted prop lines &amp; projection ranges '
+        f'<span>{len(rows)} comparisons</span></summary>'
+        '<p class="blurb">Every matched posted line, ordered by modelled predictability. '
+        'Means and medians differ for skewed outcomes. V3 has its own outcome validation; '
+        'quote-specific betting calibration is pending. Missing prices remain unavailable.</p>'
+        '<div class="tablewrap"><table class="pr prop-table"><thead><tr>'
+        '<th>Player</th><th>Game</th><th>Stat</th><th>Line</th><th>Mean</th>'
+        '<th>Median</th><th>10&ndash;90%</th><th>Predictability</th><th>Book / O-U prices</th>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></details>'
+    )
 
 
 def _player_identity(player) -> str:
@@ -612,7 +682,8 @@ def _player_section(slate) -> str:
                 role = (
                     f'<td title="{role_title}"><span class="prop-role">'
                     f'{e(player.role_continuity)}</span>'
-                    f'<small>{player.history_games} hist g</small></td>'
+                    f'<small>{player.history_games} hist g</small>'
+                    f'{_player_intelligence(player)}</td>'
                 )
                 cells = "".join(
                     _prop_value(player, field, percent=field == "anytime_td_probability")
@@ -634,11 +705,15 @@ def _player_section(slate) -> str:
                     )
                 else:
                     scheme_cell = '<td class="dim">unavailable</td>'
+                primary = {"QB": "pass_attempts", "RB": "carries", "WR": "targets",
+                           "TE": "targets", "K": "fg_attempts"}[position]
+                predictability = getattr(player, "predictability", {}).get(primary, {})
+                stability = predictability.get("label", player.confidence)
                 rows.append(
                     f'<tr>{_player_identity(player)}'
                     f'<td>{e(player.opponent)} {"home" if player.home else "away"}</td>'
                     f'{role}{scheme_cell}{cells}<td><span class="conf-{e(player.confidence)}">'
-                    f'{e(player.confidence)}</span></td></tr>'
+                    f'{e(stability)}</span></td></tr>'
                 )
             headers = "".join(f'<th class="num">{e(label)}</th>' for label in labels)
             open_attr = " open" if position == "QB" else ""
@@ -646,7 +721,8 @@ def _player_section(slate) -> str:
                 f'<details class="prop-group"{open_attr}><summary>{position} projections '
                 f'<span>{len(players)} players</span></summary><div class="tablewrap">'
                 f'<table class="pr prop-table"><thead><tr><th>Player</th><th>Game</th>'
-                f'<th>Role evidence</th><th>Scheme</th>{headers}<th>Confidence</th></tr></thead>'
+                f'<th>Role evidence</th><th>Scheme</th>{headers}'
+                f'<th>Predictability</th></tr></thead>'
                 f'<tbody>{"".join(rows)}</tbody></table></div></details>'
             )
         content = "".join(blocks)
@@ -658,13 +734,14 @@ def _player_section(slate) -> str:
     <span class="kicker">Players &middot; 03</span>
     <h2>Offensive player &amp; kicker projections</h2>
     <p class="blurb">Next-game centres for <b>QB, RB, WR, TE and K</b>. The current active
-    roster and dated depth chart determine the role first; recent production estimates
-    efficiency only after that role is established. A same-team veteran can retain 72% of
-    measured usage, a player who changed teams retains only 18%, and a player with no NFL
-    history retains none. Team target and carry pools are reconciled, opponent efficiency is
-    applied, and the verified DraftKings game spread and total anchor game script and scoring
-    environment when available. These are <b>not sportsbook player lines</b> and no difference
-    is labelled an edge.</p>
+    roster and each club's pre-kickoff depth chart set the role. Usage comes from the current
+    team stint; player skill can transfer. Opportunity, sustainable conversion, scoring-area
+    work and individual schematic response are measured separately. Corrections must improve
+    later-game forecasts before they change the number. The smaller figures beneath each mean
+    are its empirical <b>10th&ndash;90th percentile range</b>; predictability reflects that range
+    and recent role stability. Expand a player's process notes for regression/progression
+    evidence. Team opportunity pools remain reconciled. Game lines condition game script;
+    player-prop lines do not set the projections. These are <b>not sportsbook player lines</b>.</p>
     <div class="prop-meta">
       <span class="pill">{int(status.get('players_projected') or 0)} players</span>
       <span class="pill">{int(status.get('teams_covered') or 0)}/32 teams</span>
@@ -674,6 +751,7 @@ def _player_section(slate) -> str:
     </div>
   </div>
   {content}
+  {_player_line_comparisons(slate)}
 </section>"""
 
 
@@ -1203,14 +1281,17 @@ def _method_section() -> str:
     <div class="mth-card"><div class="mth-h">Player projection layer</div>
       <p>QB, RB, WR, TE and kicker roles come from the active weekly roster and the latest
       depth chart dated before kickoff. A current depth change is treated as a mechanism;
-      a trailing usage change is not assumed to persist without one. Historical shares retain
-      72% weight for established same-team players, 18% after a transfer, and 0% for players
-      without NFL history. Receiver targets and backfield carries are normalized to one team
-      opportunity pool.</p>
+      usage is estimated within the current team stint, and skill rates may transfer.
+      Current opportunity stability, completion expectation, scoring-area work and individual
+      schematic responses are separated from noisy outcomes. Only correction families that
+      passed later-game selection change the mean. Receiver targets and backfield carries
+      remain normalized to team opportunity pools.</p>
       <p class="fine">Player efficiency uses a {player_props.HALF_LIFE_WEEKS:.0f}-week
       half-life, Bayesian rate priors and opponent
       adjustments. DraftKings game lines condition team volume and scoring environment only;
-      no sportsbook player-prop price is ingested and no player edge is emitted.</p></div>
+      player-prop lines do not enter the forecast. Outcome ranges are fitted by position,
+      statistic and role stability. The new model does not inherit the previous projection
+      version's betting calibration.</p></div>
 
     <div class="mth-card"><div class="mth-h">Where this is weakest</div>
       <p>The model is 0.46 points behind the closing line in the strict time-forward audit,
@@ -1251,6 +1332,60 @@ def _footer(built_at: str) -> str:
 </footer>"""
 
 
+_AUTO_REFRESH_JS = r"""
+(() => {
+  const builtAt = __BUILT_AT__;
+  const stateKey = 'nfl-dashboard-view:' + location.pathname;
+  const detailsKey = el => (el.querySelector('summary')?.textContent || '').trim();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(stateKey) || 'null');
+    if (saved) {
+      const open = new Set(saved.open || []);
+      document.querySelectorAll('details').forEach(el => {
+        if (open.has(detailsKey(el))) el.open = true;
+      });
+      requestAnimationFrame(() => scrollTo(0, saved.y || 0));
+      sessionStorage.removeItem(stateKey);
+    }
+  } catch (_) {}
+  let checking = false;
+  let lastCheck = 0;
+  async function check() {
+    if (checking || document.hidden || Date.now() - lastCheck < 10000) return;
+    checking = true;
+    lastCheck = Date.now();
+    try {
+      const url = new URL('./build.json', location.href);
+      url.searchParams.set('freshness', String(Date.now()));
+      const response = await fetch(url, {
+        cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(20000)
+      });
+      if (!response.ok) return;
+      const latest = (await response.json()).generated_at;
+      // Both stamps use the producer's sortable YYYY-MM-DD HH:MM UTC format.
+      // Tracking-only collections retain this stamp and never trigger a reload.
+      if (typeof latest === 'string' && latest > builtAt) {
+        try {
+          sessionStorage.setItem(stateKey, JSON.stringify({
+            y: scrollY,
+            open: [...document.querySelectorAll('details[open]')].map(detailsKey)
+          }));
+        } catch (_) {}
+        location.reload();
+      }
+    } catch (_) {
+      // A temporary network failure leaves the current dashboard available.
+    } finally {
+      checking = false;
+    }
+  }
+  setInterval(check, 300000);
+  addEventListener('focus', check);
+  document.addEventListener('visibilitychange', check);
+})();
+"""
+
+
 # ── page ─────────────────────────────────────────────────────────────────────
 def render(slate, outlooks, *, health: dict | None = None,
            record: dict | None = None, generated_at: datetime | None = None,
@@ -1258,6 +1393,8 @@ def render(slate, outlooks, *, health: dict | None = None,
            slip_plan: dict | None = None) -> str:
     moment = generated_at or datetime.now(UTC)
     built_at = moment.strftime("%b %d %Y · %H:%M UTC")
+    refresh_js = _AUTO_REFRESH_JS.replace(
+        "__BUILT_AT__", json.dumps(moment.strftime("%Y-%m-%d %H:%M UTC")))
     body = (f"{_nav(slate)}<div class=\"wrap\">{_health_block(health, record)}</div>"
             f"{_hero(slate, built_at)}"
             f'<main class="wrap">'
@@ -1283,7 +1420,7 @@ def render(slate, outlooks, *, health: dict | None = None,
         'ratings, projected scores and totals, offensive and defensive unit rankings, '
         'simulated division races, and an explicit authority gate.">\n'
         f"<style>{brand_css()}{_PAGE_CSS}{prop_report_view.CSS}</style>\n</head>\n<body>\n{body}\n"
-        f"<script>{BOARD_JS}</script>\n</body>\n</html>\n"
+        f"<script>{BOARD_JS}</script>\n<script>{refresh_js}</script>\n</body>\n</html>\n"
     )
 
 
@@ -1555,6 +1692,10 @@ font-weight:500;text-transform:none;letter-spacing:0}
 .prop-player{min-width:205px}.prop-player .tname{gap:7px}
 .prop-role{display:block;color:var(--text-2)}
 .prop-role+small{display:block;color:var(--text-4)}
+.prop-table td.num small{display:block;font-size:var(--mm-text-xs);color:var(--text-4)}
+.prop-intelligence{margin-top:6px;min-width:13rem;max-width:26rem;white-space:normal}
+.prop-intelligence summary{cursor:pointer;color:var(--text-3);white-space:normal}
+.prop-intelligence p{margin:7px 0;line-height:1.45;white-space:normal;color:var(--text-2)}
 .scheme-boundary{margin:16px 0 0;padding:13px 15px;border-left:3px solid var(--warn);
 background:color-mix(in srgb,var(--warn) 7%,transparent);color:var(--text-2);
 font-size:var(--mm-text-sm);line-height:1.65}

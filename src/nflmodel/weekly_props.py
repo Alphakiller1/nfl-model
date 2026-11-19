@@ -60,14 +60,15 @@ def _poisson(mean: float, line: float) -> tuple[float, float, float]:
     return max(0.0, 1.0 - under - push), under, push
 
 
-def _marginal(metric: str, mean: float, line: float) -> tuple[float, float, float] | None:
-    if metric in {"fg_made", "pat_made"}:
+def _marginal(metric: str, mean: float, line: float, *, position: str | None = None,
+              evidence: dict | None = None) -> tuple[float, float, float] | None:
+    if metric in {"fg_made", "pat_made"} and position is None:
         return _poisson(mean, line)
-    if line < 0:
+    if line < 0 and metric not in {"rushing_yards", "receiving_yards"}:
         return 1.0, 0.0, 0.0
     if mean <= 0:
         return (0.0, 1.0, 0.0) if line > 0 else (0.0, 0.0, 1.0)
-    dist = prop_distributions.distribution(metric, mean)
+    dist = prop_distributions.distribution(metric, mean, position=position, evidence=evidence)
     if dist is None:
         return None
     if dist.get("pmf"):
@@ -83,7 +84,9 @@ def _marginal(metric: str, mean: float, line: float) -> tuple[float, float, floa
     return over, under, max(0.0, 1.0 - over - under)
 
 
-def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False) -> dict | None:
+def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False,
+                position: str | None = None, evidence: dict | None = None,
+                model_version: str | None = None) -> dict | None:
     """Win probabilities or dependence bounds, with pushes explicitly separated.
 
     Combined-yardage/kicking-point probabilities use Frechet/union bounds on
@@ -101,8 +104,9 @@ def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False
         lower, upper = 0.0, 1.0
         # All possible integer cut points: lattice outcomes, no random sampling.
         for cut in range(-1, math.ceil(line) + 1):
-            a = _marginal(left, metrics[left], cut / ls)
-            b = _marginal(right, metrics[right], (line - cut) / rs)
+            a = _marginal(left, metrics[left], cut / ls, position=position, evidence=evidence)
+            b = _marginal(right, metrics[right], (line - cut) / rs,
+                          position=position, evidence=evidence)
             if a is None or b is None:
                 return None
             lower = max(lower, a[0] + b[0] - 1)
@@ -117,7 +121,9 @@ def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False
             "under_interval": [1 - upper, 1 - lower],
             "basis": "dependence_bound",
             "calibrated": False,
-            "assumption": "Marginal outcome models; unknown dependence is bounded. "
+            "assumption": "Position-specific fitted count marginals; dependence is bounded"
+            if metric == "kicking_points" and position
+            else "Marginal outcome models; unknown dependence is bounded. "
             "Kicking marginals assume Poisson counts."
             if metric == "kicking_points"
             else "Fitted marginal models; unknown dependence is bounded",
@@ -125,11 +131,12 @@ def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False
     mean = metrics.get(metric)
     if mean is None or not math.isfinite(mean) or mean < 0:
         return None
-    masses = _marginal(metric, mean, line)
+    masses = _marginal(metric, mean, line, position=position, evidence=evidence)
     if masses is None:
         return None
     over, under, push = masses
-    calibrated = quoted and metric in prop_pricing.FAMILY
+    calibrated = (quoted and metric in prop_pricing.FAMILY
+                  and prop_pricing.calibration_applies(model_version))
     if calibrated and 1 - push > 1e-9:
         conditional = prop_pricing.calibrate(over / (1 - push))
         over, under = conditional * (1 - push), (1 - conditional) * (1 - push)
@@ -139,10 +146,14 @@ def probability(metric: str, metrics: dict, line: float, *, quoted: bool = False
         "push": push,
         "basis": "line_calibrated"
         if calibrated
-        else ("poisson_assumption" if metric in {"fg_made", "pat_made"} else "raw_distribution"),
+        else ("v3_outcome_distribution" if position else
+              "poisson_assumption" if metric in {"fg_made", "pat_made"}
+              else "raw_distribution"),
         "calibrated": calibrated,
         "assumption": "Existing projection-error distribution and line calibration"
         if calibrated
+        else "Position-specific outcome model; quote-specific betting calibration pending"
+        if position
         else "Poisson count assumption; unvalidated for kicker markets"
         if metric in {"fg_made", "pat_made"}
         else "Fitted projection-error distribution; no line calibration",
@@ -191,7 +202,9 @@ def _row(player, metric: str, label: str, line: float, scouting: dict, *, quote)
             return None
     metrics = _metrics(player)
     # The DraftKings line calibration has no PrizePicks validation record.
-    base = probability(metric, metrics, line, quoted=False)
+    context = {"position": player.position, "evidence": getattr(player, "intelligence", {}),
+               "model_version": getattr(player, "model_version", None)}
+    base = probability(metric, metrics, line, quoted=False, **context)
     if base is None:
         return None
     offered = {"MORE": "over", "LESS": "under"}
@@ -219,7 +232,7 @@ def _row(player, metric: str, label: str, line: float, scouting: dict, *, quote)
         (1 + stress, "expanded volume/efficiency"),
     ):
         shifted = {key: value * scale for key, value in metrics.items()}
-        view = probability(metric, shifted, line, quoted=False)
+        view = probability(metric, shifted, line, quoted=False, **context)
         scenarios.append(
             {
                 "scenario": name,
@@ -252,6 +265,10 @@ def _row(player, metric: str, label: str, line: float, scouting: dict, *, quote)
         "published_sides": list(quote.published_sides),
         "entry_availability_verified": quote.entry_availability_verified,
         "model_mean": metrics[metric],
+        "predictability": getattr(player, "predictability", {}).get(metric, {}),
+        "forecast_components": getattr(player, "forecast_components", {}).get(metric, {}),
+        "regression_progression": getattr(player, "intelligence", {}).get(
+            "regression_progression", {}).get(metric, {}),
         "hit_probability": round(base[direction], 6),
         "hit_probability_interval": base.get(f"{direction}_interval"),
         "push_probability": round(base["push"], 6),
@@ -278,6 +295,7 @@ def _row(player, metric: str, label: str, line: float, scouting: dict, *, quote)
 
 def _sort(row: dict) -> tuple:
     return (
+        row.get("predictability", {}).get("rank", 3),
         -row["conservative_hit_probability"],
         -row["hit_probability"],
         len(row["conflicts"]),

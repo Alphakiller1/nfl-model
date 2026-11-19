@@ -278,13 +278,13 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
         mean = player.metrics.get(metric)
         if metric == "rush_attempts" and mean is None:
             mean = player.metrics.get("carries")
-        priced = prop_pricing.price(metric, mean, quote.line)
+        priced = prop_pricing.price(metric, mean, quote.line, player=player)
         leg_metric = ("carries" if metric == "rush_attempts" and "carries" in player.metrics
                       else metric)
         if priced is None or (player.player_id, leg_metric) not in allowed:
             continue
         p_over = priced["p_over"]
-        dist = prop_distributions.distribution(metric, mean)
+        dist = prop_distributions.for_player(player, metric)
         over_imp, under_imp = _implied(quote.over_price), _implied(quote.under_price)
         if not getattr(quote, "priced", True):
             over_imp = under_imp = 0.5   # ESPN publishes the line, not the price

@@ -38,6 +38,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..teams import canonical
+
 GAMES_URL = "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv"
 TEAM_WEEK_URL = (
     "https://github.com/nflverse/nflverse-data/releases/download/"
@@ -80,10 +82,9 @@ CACHE_DIR = Path(os.getenv("NFL_MODEL_CACHE")
                  or Path(__file__).resolve().parents[3] / "data" / "cache")
 TIMEOUT = 90
 RETRIES = 3
-# Volatile files. Six hours is short enough that a Tuesday line move lands on the
-# next scheduled build, and long enough that a burst of local rebuilds costs one
-# download rather than twenty.
-VOLATILE_TTL = 6 * 3600
+# Current-season facts expire hourly. A later pregame run must see roster,
+# depth and stat corrections; completed-season snapshots remain cached.
+VOLATILE_TTL = 3600
 
 SCHEME_PBP_FIELDS = (
     "season", "week", "season_type", "game_id", "play_id", "posteam", "defteam",
@@ -93,6 +94,10 @@ SCHEME_PBP_FIELDS = (
     "yards_gained", "yards_after_catch", "sack", "qb_hit", "complete_pass",
     "touchdown", "interception", "fumble_lost", "first_down",
     "third_down_converted", "third_down_failed", "receiver_player_id",
+    "passer_player_id", "rusher_player_id", "pass_attempt", "rush_attempt",
+    "qb_scramble", "qb_kneel", "qb_spike", "no_play", "cp",
+    "xyac_mean_yardage", "passing_yards", "receiving_yards", "rushing_yards",
+    "pass_touchdown", "rush_touchdown",
 )
 SCHEME_PARTICIPATION_FIELDS = (
     "nflverse_game_id", "play_id", "possession_team", "offense_formation",
@@ -201,13 +206,26 @@ def _parse_selected(
     ]
 
 
-def _parse_latest(raw: bytes, field: str, *, before: str | None = None) -> list[dict]:
+def _parse_latest(raw: bytes, field: str, *, before: str | None = None,
+                  before_by_team: dict[str, str] | None = None) -> list[dict]:
     """Keep only the most recent dated snapshot, without retaining a huge history."""
     text = raw.decode("utf-8-sig", errors="replace")
     latest = ""
     selected: list[dict] = []
+    grouped: dict[str, tuple[str, list[dict]]] = {}
     for row in csv.DictReader(io.StringIO(text)):
         value = str(row.get(field) or "")
+        if before_by_team is not None:
+            team = canonical(row.get("team") or "")
+            cutoff = before_by_team.get(team)
+            if not cutoff or not value or value > cutoff:
+                continue
+            last, held = grouped.get(team, ("", []))
+            if value > last:
+                grouped[team] = value, [row]
+            elif value == last:
+                held.append(row)
+            continue
         if not value or (before is not None and value > before):
             continue
         if value > latest:
@@ -215,7 +233,8 @@ def _parse_latest(raw: bytes, field: str, *, before: str | None = None) -> list[
             selected = [row]
         elif value == latest:
             selected.append(row)
-    return selected
+    return ([row for team in sorted(grouped) for row in grouped[team][1]]
+            if before_by_team is not None else selected)
 
 
 def fetch_csv(url: str, cache_name: str, *, ttl: float | None) -> list[dict]:
@@ -317,6 +336,7 @@ def fetch_latest_csv(
     ttl: float | None,
     field: str,
     before: str | None = None,
+    before_by_team: dict[str, str] | None = None,
 ) -> list[dict]:
     """Fetch a dated CSV but retain only its last point-in-time snapshot in memory."""
     path = CACHE_DIR / cache_name
@@ -345,7 +365,7 @@ def fetch_latest_csv(
             temporary = path.with_suffix(path.suffix + ".tmp")
             temporary.write_bytes(raw)
             temporary.replace(path)
-    rows = _parse_latest(raw, field, before=before)
+    rows = _parse_latest(raw, field, before=before, before_by_team=before_by_team)
     fetched_at, age = _file_state(path)
     _STATUS[cache_name] = SourceStatus(
         cache_name, url, state, fetched_at, age, len(rows), stale=stale, error=error
@@ -481,18 +501,20 @@ def weekly_roster(season: int, *, week: int | None = None) -> list[dict]:
             if int(number(row.get("week")) or 0) == latest.get(str(row.get("team") or ""), -1)]
 
 
-def depth_charts(season: int, *, before: str | None = None) -> list[dict]:
+def depth_charts(season: int, *, before: str | None = None,
+                 before_by_team: dict[str, str] | None = None) -> list[dict]:
     return fetch_latest_csv(
         DEPTH_CHART_URL.format(season=season),
         f"depth_charts_{season}.csv",
         ttl=VOLATILE_TTL,
         field="dt",
         before=before,
+        before_by_team=before_by_team,
     )
 
 
 def injuries(season: int, *, week: int | None = None) -> list[dict]:
-    """Latest injury designation at or before ``week``.
+    """Requested week's injury designations, or the latest when no week is given.
 
     The release is legitimately absent before a season's first injury report.
     That state is recorded as ``not_published`` rather than mislabelled as a
@@ -513,6 +535,8 @@ def injuries(season: int, *, week: int | None = None) -> list[dict]:
     if not eligible:
         return []
     selected = max(eligible)
+    if week is not None and selected != week:
+        return []  # Last week's Out designation is not this week's injury evidence.
     return [row for row in rows if int(number(row.get("week")) or 0) == selected]
 
 

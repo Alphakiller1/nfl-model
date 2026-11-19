@@ -76,22 +76,43 @@ the efficiency margin to within 1e-14 — a breakdown whose parts do not add up 
 the number above it is worse than no breakdown, so `tests/test_matrix.py` pins
 the reconciliation.
 
-Player projections are a separate, line-free layer. Current active-roster and
-pre-kickoff depth evidence decides the next-game role first. Historical usage is
-then blended at 72% for an established same-team player, 18% after a team change,
-and 0% for a player with no NFL history. Targets reconcile to one team target
-pool, RB carries reserve the starting quarterback and gadget share first, and
-individual efficiency is shrunk and opponent-adjusted. DraftKings game lines may
-condition team volume and implied scoring, but no player-prop line or player edge
-is invented.
+Player projections use `nfl-player-projections/3.0.0`. Active-roster and each
+club's own pre-kickoff depth evidence determine role; usage comes from the
+current team stint while historical skill can transfer. Opportunity, expected
+completion/yards, explosive dependence, scoring-area work and individual
+coverage/blitz/play-action response are separate inputs. Corrections are
+accepted on later games, with rejected families retained as measured context.
+Targets and carries reconcile to team pools. Each stat has its own predictability
+label, outcome range, recent comparison and a decomposition of role/rate changes.
+Player-prop lines never set these forecasts.
 
-The weekly report can match those projections to paired DraftKings over/under
-player lines from The Odds API. It ranks the raw model-line gap within each prop
-family and publishes the exact line, price, model value, scheme score and matchup
-explanation. When no paired prop exists, it shows a projection-only standout and
-does not manufacture an over/under call. Because the authority remains
-`RESEARCH_ONLY`, the section is labelled a model-gap watchlist rather than a
-validated edge or betting card.
+The [full November 19 audit](reports/NFL_PLAYER_PROP_AUDIT_2026-11-19.md) documents
+14,242 replayed player-weeks, the 21 candidate families, modest 2026 gains and
+remaining weaknesses. Three correction families passed selection. Fitted
+coefficients and uncertainty end with the 2025 season; 2026 is excluded from
+fitting. `src/nflmodel/prop_parameters.json` ships with the package. Its version,
+training seasons and SHA-256 are exposed in the board's model status.
+
+The v2 betting calibration is tied to its projection version. It cannot qualify
+v3 picks or slips. Posted lines, true available prices, raw forecasts and
+predictability comparisons remain visible; missing prices remain missing.
+All projections continue into the complete weekly record/CLV archive.
+
+Forecasts rebuild daily at 11:23 UTC during September-January, on the existing
+Tuesday/game-day slots, hourly at :17 from 16:00-23:00 UTC Sunday, at 23:17 UTC
+Monday/Thursday, and at 00:17/01:17 UTC on the following days for late injury and
+inactive reports. Current-season source caches expire hourly. Open dashboards
+check for a newer forecast every five minutes and when brought into focus.
+Tracking collection
+continues twice hourly. Both publication workflows retain pending runs in the
+same serialized queue so a collector cannot displace a full refresh.
+
+The player table matches every available DraftKings prop line with its model
+mean, median, outcome range and predictability. Exact supplied prices are kept;
+ESPN line-only quotes show no price. PrizePicks' separate weekly report uses
+observed cards and raw outcome estimates, with combined-stat dependence bounded.
+Unavailable cards remain unavailable. V3 quote-specific betting calibration is
+pending and authority stays `RESEARCH_ONLY`.
 
 The scheme matrix is a separate, versioned challenger. It uses nflverse
 play-by-play, participation and FTN charting to track neutral-situation pass rate,

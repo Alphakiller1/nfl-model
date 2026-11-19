@@ -253,7 +253,7 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
         if model is None:
             continue
         gap = float(model) - quote.line
-        priced = prop_pricing.price(metric, model, quote.line)
+        priced = prop_pricing.price(metric, model, quote.line, player=player)
         if priced is None:
             continue
         over = priced["p_over"] >= 0.5

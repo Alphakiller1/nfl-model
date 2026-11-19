@@ -304,7 +304,7 @@ def candidate_legs(slate, now: datetime | None = None) -> tuple[list[Leg], dict,
         mean = player.metrics.get(metric)
         if metric == "rush_attempts" and mean is None:
             metric, mean = "carries", player.metrics.get("carries")
-        priced = prop_pricing.price(metric, mean, quote.line)
+        priced = prop_pricing.price(metric, mean, quote.line, player=player)
         if priced is None:
             continue
         side = "over" if priced["p_over"] >= 0.5 else "under"

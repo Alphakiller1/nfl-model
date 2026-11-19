@@ -22,6 +22,7 @@ mistake the board has actually made (or could make the same way):
 from __future__ import annotations
 
 import json
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -101,6 +102,30 @@ def _players(board: dict) -> list[str]:
         metrics = p.get("metrics") or {}
         if any(float(v) < 0 for v in metrics.values()):
             out.append(f"{name}: negative projection")
+        if any(not math.isfinite(float(v)) for v in metrics.values()):
+            out.append(f"{name}: non-finite projection")
+        intelligence = p.get("intelligence") or {}
+        if intelligence:
+            cutoff = intelligence.get("cutoff") or {}
+            if (cutoff.get("season") != board.get("season")
+                    or cutoff.get("week_exclusive") != board.get("week")):
+                out.append(f"{name}: player-process cutoff differs from the board")
+            for metric, component in (p.get("forecast_components") or {}).items():
+                if metric not in metrics:
+                    out.append(f"{name}: decomposition without a forecast for {metric}")
+                    continue
+                total = component.get("structural_mean", 0)
+                if "opportunity_effect" in component:
+                    total += component["opportunity_effect"] + component["rate_effect"]
+                else:
+                    total += component.get("adjustment", 0)
+                if abs(total - metrics[metric]) > 0.015:
+                    out.append(f"{name}: {metric} decomposition does not reconcile")
+            for metric, distribution in (p.get("stats") or {}).items():
+                if not distribution["p10"] <= distribution["p50"] <= distribution["p90"]:
+                    out.append(f"{name}: {metric} prediction interval is unordered")
+                if abs(distribution["mean"] - metrics[metric]) > 0.015:
+                    out.append(f"{name}: {metric} distribution uses another mean")
         targets[p.get("team")] += float(metrics.get("targets") or 0)
         if p.get("position") == "QB" and int(p.get("depth_rank") or 1) == 1:
             attempts[p.get("team")] = float(metrics.get("pass_attempts") or 0)
@@ -109,6 +134,10 @@ def _players(board: dict) -> list[str]:
         if qb and total > qb / player_props.QB_ATTEMPT_SHARE + 0.5:
             out.append(f"{team}: projected targets {total:.1f} exceed team attempts "
                        f"{qb / player_props.QB_ATTEMPT_SHARE:.1f}")
+    for row in board.get("player_prop_comparisons") or []:
+        if not row.get("priced") and any(row.get(k) is not None
+                                          for k in ("over_price", "under_price")):
+            out.append(f"{row.get('player')}: line-only comparison has a fabricated price")
     return out
 
 
