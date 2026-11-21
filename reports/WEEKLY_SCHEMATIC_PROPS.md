@@ -2,7 +2,7 @@
 
 Contract: `nfl-weekly-schematic-props/2.0.0`
 
-Every scheduled dashboard build produces four separate top tens: RB, QB, WR and
+The standalone CLI report produces four separate top tens: RB, QB, WR and
 kicking. Each list contains ten **distinct players**, one selected market per
 player, when at least ten eligible players have supported PrizePicks projections.
 Started games, undated kickoffs, Out/Doubtful/inactive players and immaterial
@@ -10,14 +10,12 @@ depth roles cannot fill the lists. A real shortfall is published explicitly.
 These four lists use **PrizePicks lines only**. Sportsbook lines and generated
 milestone thresholds cannot fill a missing PrizePicks slot.
 
-The section is **Weekly Props** on the dashboard. The identical report is in
-`board.json` at `weekly_report.weekly_position_props`, and in `weekly-props.json`.
-The existing Tuesday and NFL game-day Pages schedules rebuild it automatically
-for the season/week selected by `season.assemble`.
+This is a standalone research report available through the CLI below. The
+dashboard does not generate or publish these selections, a Weekly Props section,
+or a `weekly-props.json` feed. They are also excluded from `board.json`.
 
 ```powershell
 python -m nflmodel.cli weekly-props --season 2026 --week 4 --out weekly-props.json
-python -m nflmodel.cli build-site --season 2026 --week 4 --out _site/index.html
 ```
 
 ## Data flow and cutoff
