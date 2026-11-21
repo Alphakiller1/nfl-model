@@ -33,12 +33,10 @@ from . import (
     forecast,
     matrix,
     player_props,
-    prop_report_view,
     ratings,
     recommendations,
     teams,
     totals,
-    weekly_props,
 )
 from . import divisions as divisions_mod
 from . import season as season_mod
@@ -158,7 +156,6 @@ def _nav(slate) -> str:
       <a class="nav-link" href="#authority">Authority</a>
       <a class="nav-link" href="#board">Board</a>
       <a class="nav-link" href="#best-bets">Best Bets</a>
-      <a class="nav-link" href="#weekly-props">Weekly Props</a>
       <a class="nav-link" href="#sharp">Sharp Money</a>
       <a class="nav-link" href="#players">Players</a>
       <a class="nav-link" href="#scheme">Scheme</a>
@@ -509,11 +506,6 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
             f'<td class="report-reason">{e(row["reason"])}</td></tr>'
         )
 
-    position_report = report["weekly_position_props"]
-    prop_note = ", ".join(
-        f"{group['published']} {group['label']} props"
-        for group in position_report["groups"].values()
-    )
     return f"""
 <section id="best-bets">
   <div class="sec-head">
@@ -523,7 +515,7 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
     disagreements and scheme advantages; it does not override the {e(report['authority'])}
     authority gate. {e(report['method'])}</p>
     <div class="prop-meta"><span class="pill warn">may bet: {str(report['may_bet']).lower()}</span>
-      <span class="pill">{e(prop_note)}</span></div>
+    </div>
   </div>
   {_picks_block(picks or [], (record or {}).get("best_bets") or {})}
   <details class="prop-group" open><summary>Spread gaps (not picks: the spread model
@@ -550,7 +542,7 @@ def _best_bets_section(slate, picks: list | None = None, record: dict | None = N
     <th class="num">Pass att Δ</th><th class="num">Carry Δ</th>
     <th class="num">Pass eff Δ</th><th class="num">Rush eff Δ</th><th>Explanation</th></tr></thead>
     <tbody>{''.join(matchup_rows)}</tbody></table></div></details>
-</section>{prop_report_view.render(position_report)}"""
+</section>"""
 
 
 def _prop_value(player, key: str, *, places: int = 1, percent: bool = False) -> str:
@@ -1419,7 +1411,7 @@ def render(slate, outlooks, *, health: dict | None = None,
         '<meta name="description" content="NFL research dashboard: opponent-adjusted power '
         'ratings, projected scores and totals, offensive and defensive unit rankings, '
         'simulated division races, and an explicit authority gate.">\n'
-        f"<style>{brand_css()}{_PAGE_CSS}{prop_report_view.CSS}</style>\n</head>\n<body>\n{body}\n"
+        f"<style>{brand_css()}{_PAGE_CSS}</style>\n</head>\n<body>\n{body}\n"
         f"<script>{BOARD_JS}</script>\n<script>{refresh_js}</script>\n</body>\n</html>\n"
     )
 
@@ -1504,11 +1496,6 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         "odds": odds,
         "players": slate.player_status,
         "scheme": slate.scheme_status,
-        "weekly_props": {
-            "counts": {position: group["published"] for position, group in
-                       weekly_props.for_slate(slate)["groups"].items()},
-            "context": weekly_props.for_slate(slate)["context_status"],
-        },
         "splits": dk_splits.status(),
         "sharp_spots": len(spots),
         "issues": list(dict.fromkeys(issues)),
@@ -1526,7 +1513,7 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         encoding="utf-8",
     )
     export.write(slate, out.parent / "board.json", outlooks, prop_slips=slip_plan)
-    weekly_props.write(weekly_props.for_slate(slate), out.parent / "weekly-props.json")
+    (out.parent / "weekly-props.json").unlink(missing_ok=True)
     (out.parent / "build.json").write_text(
         json.dumps(health, indent=2) + "\n", encoding="utf-8"
     )
