@@ -30,7 +30,15 @@ from . import (
     scheme,
     teams,
 )
-from .sources import chase_context, espn_injuries, espn_props, nflverse, oddsapi, prizepicks
+from .sources import (
+    bovada,
+    chase_context,
+    espn_injuries,
+    espn_props,
+    nflverse,
+    oddsapi,
+    prizepicks,
+)
 
 # How many completed seasons of history the priors need. Three is what
 # `preseason.FORM_SEASON_WEIGHTS` asks for; loading fewer silently degrades the
@@ -265,11 +273,22 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
     prop_quotes: list[oddsapi.PlayerPropQuote] = []
     prop_error = None
     prop_source = "oddsapi"
+    # Every prop source reports its own state. Before this, each one failed
+    # silently and the board published `player_prop_quotes: 0` with no reason;
+    # all three were dark at once for weeks without a single issue raised.
+    prop_attempts: list[dict] = []
     if book_lines:
         try:
             prop_quotes = oddsapi.fetch_player_props(book_lines)
+            prop_attempts.append({"provider": "oddsapi", "book": "draftkings",
+                                  "state": "fresh" if prop_quotes else "empty",
+                                  "quotes": len(prop_quotes),
+                                  "error": None if prop_quotes else
+                                  "no event cleared the credit floor or lead window"})
         except Exception as exc:
             prop_error = f"{type(exc).__name__}: {exc}"
+            prop_attempts.append({"provider": "oddsapi", "book": "draftkings",
+                                  "state": "error", "quotes": 0, "error": prop_error})
 
     player_history: list[dict] = []
     for prior_season in history_seasons:
@@ -289,14 +308,42 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         player_history.extend(current_player_rows)
     roster = nflverse.weekly_roster(season, week=week)
     if not prop_quotes and open_games:
-        # The Odds API allowance runs dry mid-season; ESPN carries DraftKings'
-        # prop lines (not prices) for free and identifies players by id.
+        # Bovada publishes the whole NFL coupon -- player props with prices on
+        # both sides -- unauthenticated and days before kickoff. It is the only
+        # free source that can price a prop *before* it is played: ESPN's
+        # propBets endpoint 404s until kickoff and the PrizePicks research pages
+        # no longer render projection cards. See `sources/bovada.py`.
         try:
-            prop_quotes = espn_props.fetch(open_games, roster)
-            prop_source = "espn" if prop_quotes else prop_source
+            bovada_quotes, bovada_status = bovada.fetch(roster, needed=open_games)
+            prop_attempts.append(bovada_status.to_dict())
+            if bovada_quotes:
+                prop_quotes, prop_source = bovada_quotes, "bovada"
+        except Exception as exc:
+            bovada_error = f"Bovada: {type(exc).__name__}: {exc}"
+            prop_error = f"{prop_error}; {bovada_error}" if prop_error else bovada_error
+            prop_attempts.append({"provider": "bovada", "state": "error", "quotes": 0,
+                                  "error": bovada_error})
+    if not prop_quotes and open_games:
+        # ESPN carries DraftKings' prop lines (not prices) for free, but only
+        # once a game has started -- it grades, it cannot price. Kept as the last
+        # resort so a board built after kickoff still has lines to show.
+        try:
+            espn_quotes = espn_props.fetch(open_games, roster)
+            prop_attempts.append({
+                "provider": "espn", "book": "draftkings",
+                "state": "fresh" if espn_quotes else "unavailable",
+                "quotes": len(espn_quotes),
+                "error": None if espn_quotes else
+                "propBets 404s before kickoff; this source cannot price a pregame prop",
+                "failures": list(espn_props.LAST_FAILURES[:6]),
+            })
+            if espn_quotes:
+                prop_quotes, prop_source = espn_quotes, "espn"
         except Exception as exc:
             espn_error = f"ESPN: {type(exc).__name__}: {exc}"
             prop_error = f"{prop_error}; {espn_error}" if prop_error else espn_error
+            prop_attempts.append({"provider": "espn", "state": "error", "quotes": 0,
+                                  "error": espn_error})
     snap_rows: list[dict] = []
     for snap_season in (season - 1, season):
         snap_rows.extend(nflverse.snap_counts(snap_season))
@@ -426,6 +473,7 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         ),
         "player_prop_quotes": len(prop_quotes),
         "player_prop_source": prop_source if prop_quotes else None,
+        "player_prop_attempts": prop_attempts,
         "injury_feed": dict(espn_injuries.LAST),
     })
     issues: list[str] = list(issues_early)
@@ -441,6 +489,15 @@ def assemble(season: int | None = None, week: int | None = None) -> Slate:
         issues.append(f"Live sportsbook feed failed: {odds_error}")
     if prop_error:
         issues.append(f"Player-prop feed failed: {prop_error}")
+    if open_games and not prop_quotes:
+        # A board with no prop lines publishes no prop comparison, no best bet
+        # and no slip. That is a slate-wide outage and it belongs in `issues`,
+        # not inferred from a zero.
+        tried = ", ".join(
+            f"{a.get('provider')} ({a.get('state')}{': ' + a['error'] if a.get('error') else ''})"
+            for a in prop_attempts
+        ) or "no source attempted"
+        issues.append(f"No player-prop lines for any of {len(open_games)} open game(s) - {tried}")
     elif open_projections and not odds_status["slate_matched"]:
         issues.append("DraftKings returned no matched lines for this slate")
     elif odds_status["slate_complete"] < len(open_projections):
