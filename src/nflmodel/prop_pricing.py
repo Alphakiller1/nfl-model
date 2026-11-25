@@ -29,12 +29,12 @@ the closing DraftKings lines ESPN publishes for finished games, so a new version
 can be calibrated without waiting a season for the ledger to fill. Refit on
 2026 weeks 2-11 -- 6,346 graded lines against the previous fit's 1,920:
 
-                        old (v2.1.0, wk 1-3)      new (v3.0.0, wk 2-11)
-    held-out plays      838                       2,716
-    hit rate            53.70%                    55.08%
-    90% lower bound     51.49%                    53.86%
-    held-out Brier      0.2499                    0.2488
-    ranked record       54.78% (1,256)            52.48% (4,160)
+                        old (v2.1.0, wk 1-3)      new (v3.1.0, wk 2-11)
+    held-out plays      838                       2,729
+    hit rate            53.70%                    55.11%
+    90% lower bound     51.49%                    53.89%
+    held-out Brier      0.2499                    0.2487
+    ranked record       54.78% (1,256)            52.38% (4,160)
 
 Break-even at -110 is 52.38%. The held-out record clears it with a one-sided
 90% lower bound of 53.86%, on three times the sample, so `research_only` is
@@ -73,17 +73,17 @@ FAMILY = {
     "pass_attempts": "passing", "interceptions": "passing",
 }
 # scripts/fit_prop_pricing.py --replay <dir> --season 2026 (weeks 2-11).
-BLEND_WEIGHT = {"passing": 0.0, "receiving": 0.406, "rushing": 0.189}
+BLEND_WEIGHT = {"passing": 0.0, "receiving": 0.406, "rushing": 0.191}
 CALIBRATION = {"s": 0.25, "c": 0.56}
 EVIDENCE = {
-    "source": "2026 weeks 2-11, point-in-time v3 replay vs DraftKings closing lines",
-    "lines": 6346, "plays": 2716, "wins": 1496, "hit_rate": 0.551,
-    "ranked_wins": 2183, "ranked_plays": 4160,
+    "source": "2026 weeks 2-11, point-in-time v3.1.0 replay vs DraftKings closing lines",
+    "lines": 6346, "plays": 2729, "wins": 1504, "hit_rate": 0.551,
+    "ranked_wins": 2179, "ranked_plays": 4160,
 }
 MIN_PROBABILITY = 0.53
 BREAK_EVEN = 0.524      # -110 both ways
 MIN_EVIDENCE_PLAYS = 300
-CALIBRATED_PROJECTION_VERSION = "nfl-player-projections/3.0.0"
+CALIBRATED_PROJECTION_VERSION = "nfl-player-projections/3.1.0"
 # Books whose lines the calibration above was actually fitted against.
 CALIBRATED_BOOKS = frozenset({"draftkings"})
 

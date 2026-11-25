@@ -6,17 +6,17 @@
   "blend_weight": {
     "passing": 0.0,
     "receiving": 0.406,
-    "rushing": 0.189
+    "rushing": 0.191
   },
   "evidence": {
     "lines": 6346,
-    "plays": 2716,
-    "wins": 1496,
+    "plays": 2729,
+    "wins": 1504,
     "hit_rate": 0.551,
-    "ranked_wins": 2183,
+    "ranked_wins": 2179,
     "ranked_plays": 4160
   },
-  "held_out_brier": 0.2488,
+  "held_out_brier": 0.2487,
   "coin_brier": 0.25,
   "weeks": [
     "(2026, 2)",
