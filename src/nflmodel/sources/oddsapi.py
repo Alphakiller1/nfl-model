@@ -45,12 +45,27 @@ DEFAULT_BOOK = "draftkings"
 # allowance still buys the nearest games first.
 PROP_LEAD_HOURS = 120
 PROP_TTL_SECONDS = 20 * 60 * 60
-# The event-odds endpoint bills one credit per market per region, so one
-# event costs about one credit per entry in PLAYER_PROP_MARKETS. The floor
-# only needs to cover a single event plus a little headroom; it used to be
-# 80, above the balance the key carries mid-season, which stopped every
-# request before it was made.
-PROP_CREDIT_FLOOR = 12
+# Game lines refuse below this, and `site.build_site` treats a slate with no
+# verified lines as a fatal production build error when NFL_REQUIRE_LIVE_ODDS
+# is set. So this is the budget that must survive.
+LINE_CREDIT_FLOOR = 20
+# The event-odds endpoint bills one credit per market per region, so one event
+# costs about one credit per entry in PLAYER_PROP_MARKETS.
+#
+# **Props must never take the balance below what game lines need.** This was 80
+# -- above the balance the key carries mid-season, which stopped every prop
+# request before it was made. Lowering it to 12 fixed the props and broke the
+# board: 12 is *below* LINE_CREDIT_FLOOR, so a prop run drained the balance
+# into the range where the next build's game lines refuse, and deploy-pages
+# failed with "production build requires verified live DraftKings lines". The
+# 80 had been protecting the game-line budget by accident.
+#
+# Derived rather than written down, so the two floors cannot cross again. The
+# headroom covers a full slate's game-line request (three markets, one region)
+# several times over, because a board with no spread is worth less than a board
+# with no props -- and `sources/bovada.py` supplies pregame props for free
+# anyway, which is why starving this path costs little.
+PROP_CREDIT_FLOOR = LINE_CREDIT_FLOOR + 15
 PLAYER_PROP_MARKETS = (
     "player_pass_attempts",
     "player_pass_yds",
@@ -307,7 +322,7 @@ def _espn_fallback(
 
 
 def fetch_lines(
-    *, book: str | None = None, min_remaining: int = 20,
+    *, book: str | None = None, min_remaining: int = LINE_CREDIT_FLOOR,
     needed: set[tuple[str, str]] | None = None,
 ) -> dict[tuple[str, str], BookLine]:
     """Return ``(home_abbr, away_abbr) -> BookLine`` for exactly one book.
