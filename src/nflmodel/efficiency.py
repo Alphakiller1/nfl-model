@@ -32,6 +32,27 @@ The solve is the same joint iteration the power ratings use:
 
     adj_off_i = mean over games of ( off_ij + (league_def_mean - adj_def_j) )
     adj_def_j = mean over games of ( def_ji + (league_off_mean - adj_off_i) )
+
+Recency: a design inconsistency that costs nothing
+--------------------------------------------------
+This adjustment used an unweighted mean over the whole sample while
+`ratings.build` decayed at an 8-week halflife, so the two halves of the
+published 50/50 margin blend disagreed about what "current" meant. Fixing the
+inconsistency is free and worth almost exactly nothing, which is the finding.
+
+Swept in `scripts/sweep_margin.py`, strictly expanding, 1,615 games 2020-2025:
+
+    halflife   none      4       6       8      12      16      24
+    margin MAE 10.2274 10.2283 10.2270 10.2266 10.2265 10.2267 10.2268
+    ATS %      49.56   49.81   49.68   49.81   49.75   49.87   49.56
+
+The whole curve spans 0.0018 points of MAE and the ATS differences are a
+seventh of their own standard error. `HALFLIFE_WEEKS = 8` is set to agree with
+`ratings.RECENCY_HALFLIFE_WEEKS` rather than because it was earned: read the
+parameter as unidentified, exactly as `ratings.py` says of its own.
+
+The first version of that sweep measured a perfectly flat curve for a different
+reason -- see `_DEFAULT` below.
 """
 
 from __future__ import annotations
@@ -46,6 +67,19 @@ from .sources.nflverse import number
 ADJUSTABLE_STATS = ("epa", "first_down", "explosive", "sack", "turnover")
 
 ITERATIONS = 10
+
+# Recency decay for the opponent adjustment, in weeks. `None` is no decay.
+# Swept in the expanding-season harness; see the module docstring.
+HALFLIFE_WEEKS: float | None = 8.0
+
+# Sentinel for "use the module constant", mirroring `ratings.py`. A plain
+# default argument binds HALFLIFE_WEEKS once at import, so a sweep that
+# reassigns it and then calls adjust() keeps the original value and reports a
+# perfectly flat curve. `ratings.py` carries the same warning because the same
+# mistake was made there first; it was made here too, and the sweep returned
+# identical MAE to four decimals for every halflife from 4 to 24.
+# `halflife=None` is a real setting (no decay), so absence needs its own marker.
+_DEFAULT = object()
 
 # Pace feeds the totals model, not the margin model, and is deliberately NOT
 # opponent-adjusted: how many plays a team runs is mostly a joint property of the
@@ -122,8 +156,9 @@ def game_lines(rows: list[dict], *, season_type: str = "REG") -> list[GameLine]:
     return out
 
 
-def _pairs(lines: list[GameLine], stat: str) -> list[tuple[str, str, float, float]]:
-    """(team, opponent, own offensive value, value the team's defence allowed).
+def _pairs(lines: list[GameLine], stat: str, *, halflife: float | None = None
+           ) -> list[tuple[str, str, float, float, float]]:
+    """(team, opponent, own offensive value, value the defence allowed, weight).
 
     The defensive value is looked up rather than derived: it is the opponent's
     own offensive line in the same game, which exists whenever the feed is
@@ -132,42 +167,79 @@ def _pairs(lines: list[GameLine], stat: str) -> list[tuple[str, str, float, floa
     by_game: dict[str, dict[str, GameLine]] = {}
     for line in lines:
         by_game.setdefault(line.game_id, {})[line.team] = line
+    weights = _weights(lines, halflife)
     out = []
     for line in lines:
         other = by_game.get(line.game_id, {}).get(line.opponent)
         if other is None:
             continue
-        out.append((line.team, line.opponent, line.value(stat), other.value(stat)))
+        weight = weights.get((line.game_id, line.season, line.week), 1.0)
+        if weight <= 0.0:
+            continue
+        out.append((line.team, line.opponent, line.value(stat), other.value(stat), weight))
     return out
 
 
-def adjust(lines: list[GameLine], stat: str, *, iterations: int = ITERATIONS
-           ) -> tuple[dict[str, float], dict[str, float]]:
-    """Return (adjusted offense, adjusted defense) for one stat."""
-    pairs = _pairs(lines, stat)
+def _weights(lines: list[GameLine], halflife: float | None) -> dict[tuple[str, int, int], float]:
+    """Recency weight per team-game, halving every `halflife` weeks."""
+    if halflife is None:
+        return {}
+    latest_season = max(line.season for line in lines)
+    latest_week = max(line.week for line in lines if line.season == latest_season)
+    out: dict[tuple[str, int, int], float] = {}
+    for line in lines:
+        # Whole seasons count as a nominal 22 weeks, matching `ratings.build`,
+        # so a January game is not treated as a decade old.
+        age = (latest_season - line.season) * 22 + (latest_week - line.week)
+        out[(line.game_id, line.season, line.week)] = 0.5 ** (age / halflife)
+    return out
+
+
+def adjust(lines: list[GameLine], stat: str, *, iterations: int = ITERATIONS,
+           halflife=_DEFAULT) -> tuple[dict[str, float], dict[str, float]]:
+    """Return (adjusted offense, adjusted defense) for one stat.
+
+    `halflife` decays older games, in weeks. See the module docstring: this used
+    to be an unweighted mean over the whole sample while `ratings.build` decayed
+    at an 8-week halflife, so the two halves of the published 50/50 blend
+    disagreed about what "current" meant.
+    """
+    halflife = HALFLIFE_WEEKS if halflife is _DEFAULT else halflife
+    pairs = _pairs(lines, stat, halflife=halflife)
     if not pairs:
         return {}, {}
-    names = sorted({t for t, _, _, _ in pairs})
-    offense_mean = statistics.fmean([o for _, _, o, _ in pairs])
-    defense_mean = statistics.fmean([d for _, _, _, d in pairs])
+    names = sorted({t for t, _, _, _, _ in pairs})
+    total_weight = sum(w for _, _, _, _, w in pairs) or 1.0
+    offense_mean = sum(o * w for _, _, o, _, w in pairs) / total_weight
+    defense_mean = sum(d * w for _, _, _, d, w in pairs) / total_weight
 
     adj_off = dict.fromkeys(names, offense_mean)
     adj_def = dict.fromkeys(names, defense_mean)
     for _ in range(iterations):
-        acc_off: dict[str, list[float]] = {t: [] for t in names}
-        acc_def: dict[str, list[float]] = {t: [] for t in names}
-        for team, opponent, own, allowed in pairs:
+        acc_off: dict[str, list[tuple[float, float]]] = {t: [] for t in names}
+        acc_def: dict[str, list[tuple[float, float]]] = {t: [] for t in names}
+        for team, opponent, own, allowed, weight in pairs:
             # Credit the offense for the defence it actually faced, and vice versa.
-            acc_off[team].append(own + (defense_mean - adj_def.get(opponent, defense_mean)))
-            acc_def[team].append(allowed + (offense_mean - adj_off.get(opponent, offense_mean)))
-        adj_off = {t: (statistics.fmean(v) if v else offense_mean) for t, v in acc_off.items()}
-        adj_def = {t: (statistics.fmean(v) if v else defense_mean) for t, v in acc_def.items()}
+            acc_off[team].append(
+                (own + (defense_mean - adj_def.get(opponent, defense_mean)), weight))
+            acc_def[team].append(
+                (allowed + (offense_mean - adj_off.get(opponent, offense_mean)), weight))
+        adj_off = {t: _weighted_mean(v, offense_mean) for t, v in acc_off.items()}
+        adj_def = {t: _weighted_mean(v, defense_mean) for t, v in acc_def.items()}
     return adj_off, adj_def
 
 
-def adjust_all(lines: list[GameLine], *, stats: tuple[str, ...] = ADJUSTABLE_STATS
+def _weighted_mean(pairs: list[tuple[float, float]], fallback: float) -> float:
+    total = sum(w for _, w in pairs)
+    if total <= 0:
+        return fallback
+    return sum(v * w for v, w in pairs) / total
+
+
+def adjust_all(lines: list[GameLine], *, stats: tuple[str, ...] = ADJUSTABLE_STATS,
+               halflife=_DEFAULT
                ) -> dict[str, tuple[dict[str, float], dict[str, float]]]:
-    return {stat: adjust(lines, stat) for stat in stats}
+    return {stat: adjust(lines, stat, halflife=halflife) for stat in stats}
 
 
 def pace_means(lines: list[GameLine]) -> dict[str, dict[str, float]]:
