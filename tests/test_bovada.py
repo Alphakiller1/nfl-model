@@ -162,3 +162,24 @@ def test_a_read_failure_names_itself(monkeypatch):
     assert quotes == []
     assert status.state == "error"
     assert "coupon fetch failed" in status.error
+
+
+def test_an_empty_coupon_says_so_rather_than_blaming_the_slate(monkeypatch):
+    """Observed live: the endpoint served 16 events, then a bare `[]` two hours
+    later. "no coupon game matched the slate" would send the next reader
+    hunting for a team-matching bug that is not there."""
+    class _Response:
+        def read(self, _limit=None):
+            return b"[]"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    monkeypatch.setattr(bovada.urllib.request, "urlopen", lambda *a, **k: _Response())
+    quotes, status = bovada.fetch(ROSTER, needed={("LA", "GB")})
+    assert quotes == []
+    assert status.events == 0
+    assert status.error == "coupon returned no events"

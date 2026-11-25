@@ -290,6 +290,18 @@ def parse(payload, *, roster: list[dict], now: datetime | None = None
         if any(quote.event_id == event_id for quote in out):
             matched_events += 1
 
+    # An empty coupon and a coupon with no usable props are different
+    # failures and must not share a message. Observed 2026-11-25: the endpoint
+    # served 3.3 MB with 16 events, then two hours later returned a bare `[]`
+    # around the slate transition. Bovada is the best free pregame source, not
+    # a guaranteed one -- which is the whole reason the chain keeps ESPN behind
+    # it for games that have kicked off.
+    if not events:
+        reason = "coupon returned no events"
+    elif not out:
+        reason = "coupon read but no full-game player props matched the roster"
+    else:
+        reason = None
     status = BovadaStatus(
         state="fresh" if out else "unavailable",
         fetched_at=_stamp(),
@@ -299,7 +311,7 @@ def parse(payload, *, roster: list[dict], now: datetime | None = None
         markets=len({quote.market for quote in out}),
         unmatched_players=len(unmatched),
         unknown_markets=tuple(sorted(unknown)[:12]),
-        error=None if out else "coupon read but no full-game player props matched the roster",
+        error=reason,
     )
     return out, status
 
@@ -343,6 +355,7 @@ def fetch(roster: list[dict], *, needed: set[tuple[str, str]] | None = None,
             markets=len({q.market for q in quotes}),
             unmatched_players=status.unmatched_players,
             unknown_markets=status.unknown_markets,
-            error=None if quotes else "no coupon game matched the slate",
+            error=None if quotes else (
+                status.error if not status.events else "no coupon game matched the slate"),
         )
     return quotes, status
