@@ -24,8 +24,32 @@ from . import prop_intelligence, teams
 from .sources.nflverse import number
 
 MODEL_VERSION = "nfl-player-projections/3.1.0"
-# League mean quarterback rushing attempts per game, measured on 2024-25.
+# Fallback league mean quarterback rushing attempts per game, measured on
+# 2024-25. It is only used when the point-in-time history is too thin to
+# estimate one -- `_history_index` measures the prior from the games the
+# forecast can already see, recency-weighted like everything else here.
+#
+# A frozen literal was the wrong shape for this. 2024-25 measured 3.44 and 2026
+# measured 3.20, so a constant fitted once is stale the season after and the
+# error lands on every quarterback at once: the previous value of 4.4 put rush
+# attempts 6.6% heavy on 2024-25 and 12.7% heavy on 2026 and also starved the
+# backfield, because the pool is sized as team carries minus this number.
+# Estimating it instead of choosing it removes the question of which season to
+# believe.
+#
+# **This buys no accuracy, and that is the honest claim.** On the 2026 holdout
+# the measured prior moves RMSE by -0.02% on quarterback rush attempts and
+# +0.05% on rushing yards -- nothing, either way. The bias is marginally better
+# (ratio 0.9558 -> 0.9668, t 1.2 -> 0.9). It ships because it removes a
+# staleness failure mode at no measured cost, not because it forecasts better.
+#
+# What it does do is track: measured point-in-time for 2026 it reads 3.389 at
+# week 2, when the history is still mostly prior seasons, and converges to
+# 3.226 by week 12 -- arriving at the season's own 3.20 on its own rather than
+# waiting for someone to notice and edit a literal.
 QB_CARRY_PRIOR = 3.44
+# Weighted quarterback games required before the measured prior is trusted.
+QB_CARRY_PRIOR_MIN_GAMES = 40.0
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 # Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
@@ -248,8 +272,16 @@ def _round_metrics(metrics: dict[str, float]) -> dict[str, float]:
 
 def _history_index(
     rows: list[dict], *, season: int, week: int
-) -> tuple[dict[str, _History], dict[tuple[int, int, str], dict[str, float]]]:
+) -> tuple[dict[str, _History], dict[tuple[int, int, str], dict[str, float]], float]:
+    """Player history, team-game totals, and the league quarterback carry prior.
+
+    The prior is measured from the same strictly-earlier rows the forecast uses,
+    weighted by the same half-life, so it tracks the league's current rushing-
+    quarterback environment instead of a season that has already ended.
+    """
     target = _order(season, week)
+    qb_carries = 0.0
+    qb_weight = 0.0
     history: dict[str, _History] = {}
     team_games: dict[tuple[int, int, str], dict[str, float]] = defaultdict(
         lambda: {
@@ -285,10 +317,18 @@ def _history_index(
         if group:
             team_games[game_key][f"targets_{group}"] += _value(row, "targets")
 
+        age = target - _order(row_season, row_week)
+        if _position(row.get("position") or "") == "QB":
+            # Every quarterback game, not just the starters': the prior is a
+            # prior, and the posterior is what separates a Jalen Hurts from a
+            # pocket passer once he has games of his own.
+            recency = 0.5 ** (age / HALF_LIFE_WEEKS)
+            qb_carries += recency * _value(row, "carries")
+            qb_weight += recency
+
         player_id = str(row.get("player_id") or "").strip()
         if not player_id or _position(row.get("position") or "") not in POSITIONS:
             continue
-        age = target - _order(row_season, row_week)
         item = history.setdefault(player_id, _History())
         item.rows.append((
             row, 0.5 ** (age / HALF_LIFE_WEEKS), 0.5 ** (age / USAGE_HALF_LIFE_WEEKS)
@@ -298,7 +338,9 @@ def _history_index(
         if row_order > item.last_order:
             item.last_order = row_order
             item.last_team = team
-    return history, team_games
+    prior = (qb_carries / qb_weight if qb_weight >= QB_CARRY_PRIOR_MIN_GAMES
+             else QB_CARRY_PRIOR)
+    return history, team_games, prior
 
 
 def _team_environment(
@@ -825,7 +867,8 @@ def project(
 ) -> BuildResult:
     """Project QB/RB/WR/TE/K output for one slate."""
     snap_trend = _snap_trends(snap_rows or [], roster, season=season, week=week)
-    histories, team_games = _history_index(history_rows, season=season, week=week)
+    histories, team_games, qb_carry_prior = _history_index(
+        history_rows, season=season, week=week)
     passing_priors = _league_passing(histories)
     current = _active_depth(roster, depth, injuries or [])
     active_teams = {teams.canonical(row.get("home_team") or "") for row in games}
@@ -976,12 +1019,11 @@ def project(
             quarterback_item = None if quarterback is None else quarterback["history"]
             quarterback_games = _weighted_games(quarterback_item)
             # The prior is the league mean quarterback rushing attempts per
-            # game, measured 2024-25 (3.44; 2026 holdout 3.20). It was 4.4,
-            # about a carry above every quarterback's true mean, which pulled
-            # the whole position up: QB rush attempts ran 6.6% heavy on
-            # 2024-25 and 12.7% heavy on 2026 (t = 3.7 in both).
+            # game, measured from the games this forecast can already see
+            # (`_history_index`) rather than frozen at a literal. See
+            # QB_CARRY_PRIOR for why a constant was the wrong shape.
             quarterback_carries = (
-                (_weighted_sum(quarterback_item, "carries") + QB_CARRY_PRIOR * 4.0)
+                (_weighted_sum(quarterback_item, "carries") + qb_carry_prior * 4.0)
                 / (quarterback_games + 4.0)
             )
             # Reserve the starting QB's own forecast plus a small gadget/backup

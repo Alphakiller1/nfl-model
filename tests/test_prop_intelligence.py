@@ -115,7 +115,7 @@ def test_current_stint_usage_cannot_inherit_a_previous_clubs_role():
             "targets": 18,
         },
     ]
-    histories, totals = player_props._history_index(rows, season=2025, week=7)
+    histories, totals, _prior = player_props._history_index(rows, season=2025, week=7)
     assert player_props._share(histories["wr"], "targets", "targets", totals, team="NE") == (
         pytest.approx(0.1)
     )
@@ -133,8 +133,8 @@ def test_missing_air_yards_does_not_turn_a_receiver_into_a_zero_adot_player():
         "receptions": 12,
         "receiving_yards": 150,
     }
-    missing, _ = player_props._history_index([base], season=2025, week=2)
-    short, _ = player_props._history_index(
+    missing, _totals, _prior = player_props._history_index([base], season=2025, week=2)
+    short, _totals2, _prior2 = player_props._history_index(
         [{**base, "receiving_air_yards": 0}], season=2025, week=2
     )
     assert (
@@ -424,3 +424,53 @@ def test_raw_line_comparisons_keep_every_quote_and_never_invent_a_price():
     assert len(comparisons) == 2
     assert all(r["over_price"] is None and r["under_price"] is None for r in comparisons)
     assert all(not r["market_calibrated"] and not r["priced"] for r in comparisons)
+
+
+def test_the_quarterback_carry_prior_is_measured_not_frozen():
+    """A league mean frozen as a literal is stale the season after it is fitted.
+
+    2024-25 measured 3.44 and 2026 measured 3.20, and the error lands on every
+    quarterback at once because the backfield pool is sized as team carries
+    minus this number. So it is estimated from the games the forecast can
+    already see.
+    """
+    def qb(week, carries, player="qb-1"):
+        return {"season": 2026, "week": week, "season_type": "REG", "team": "KC",
+                "position": "QB", "player_id": player, "carries": carries,
+                "attempts": 30, "passing_yards": 250}
+
+    # A league of heavy runners pulls the prior up well past the 3.44 fallback.
+    runners = [qb(w, 9.0, f"qb-{w}") for w in range(1, 13)] * 5
+    _h, _t, high = player_props._history_index(runners, season=2026, week=13)
+    assert high > 8.0
+
+    # A league of pocket passers pulls it down. A fixed 3.44 would have been
+    # wrong by nearly three carries a game in both directions.
+    pocket = [qb(w, 1.0, f"qb-{w}") for w in range(1, 13)] * 5
+    _h, _t, low = player_props._history_index(pocket, season=2026, week=13)
+    assert low < 1.5
+
+
+def test_a_thin_history_falls_back_rather_than_inventing_a_prior():
+    """Week one has no games to measure, and two of them is not a league."""
+    rows = [{"season": 2026, "week": 1, "season_type": "REG", "team": "KC",
+             "position": "QB", "player_id": "qb-1", "carries": 11.0, "attempts": 30}]
+    _h, _t, prior = player_props._history_index(rows, season=2026, week=2)
+    assert prior == player_props.QB_CARRY_PRIOR
+
+
+def test_recent_seasons_outweigh_old_ones_in_the_prior():
+    """The prior tracks the current rushing-quarterback environment, so a
+    league that has stopped running its quarterbacks is reflected now, not in
+    two years."""
+    def qb(season, week, carries):
+        return {"season": season, "week": week, "season_type": "REG", "team": "KC",
+                "position": "QB", "player_id": f"qb-{season}-{week}",
+                "carries": carries, "attempts": 30}
+
+    old_heavy = [qb(2024, w, 10.0) for w in range(1, 19)] * 4
+    new_light = [qb(2026, w, 2.0) for w in range(1, 12)] * 4
+    _h, _t, prior = player_props._history_index(old_heavy + new_light,
+                                                season=2026, week=12)
+    # Weighted toward the recent light sample, not the midpoint of 6.0.
+    assert prior < 4.0
