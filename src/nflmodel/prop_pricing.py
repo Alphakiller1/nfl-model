@@ -8,22 +8,56 @@ rate:
    matrix projection.
 2. ``p_over`` = 0.5 + s * (raw - c). The raw distribution is honest about the
    player's spread of outcomes, but it ignores what the line knows. Against
-   DraftKings closing lines a raw 70% hit 57%, so it is shrunk toward even
-   by a factor s fitted leave-one-week-out. c is the raw value that
-   corresponds to an even line.
+   DraftKings closing lines a raw 70% hit well under that, so it is shrunk
+   toward even by a factor s fitted leave-one-week-out. c is the raw value
+   that corresponds to an even line.
 3. ``fair`` = line + w * (projection - line): how far toward the projection
-   the number should move, by market family (reports/PROPS_MODEL.md, C1).
+   the number should move, by market family.
 
-Evidence (EVIDENCE): matrix projections rebuilt point-in-time for 2026 weeks
-1-3 and priced against 1,920 DraftKings closing lines. Leave-one-week-out,
-the plays priced at >= 53% went 450-388 (53.7%; -110 break-even 52.4%) with
-a held-out Brier of 0.2499 against a coin's 0.2500. Ranking players within
-each week and market, top third over and bottom third under, went 688-568
-(54.8%), with no fitting beyond the projection. The fair-number blend weight
-on these projections is 0.59 for receiving (0.37 on the previous version):
-the line wants to move further toward them. ``research_only`` holds until
-the held-out record clears the -110 break-even on enough plays with a
-one-sided 90% lower bound above a coin.
+Fitted on the current forecaster, not its predecessor
+-----------------------------------------------------
+`CALIBRATED_PROJECTION_VERSION` exists because a betting record earned by one
+forecaster does not qualify another. It was doing its job and nobody noticed:
+the projection layer moved to ``3.0.0`` while this file still named ``2.1.0``,
+so `calibration_applies` returned False, `price` returned None for **every**
+prop, and the board published no prop comparison, no prop best bet and no slip.
+A version string was silently setting policy.
+
+The fix was to earn the calibration rather than edit the string.
+`scripts/fit_prop_pricing.py --replay` now joins a point-in-time v3 replay to
+the closing DraftKings lines ESPN publishes for finished games, so a new version
+can be calibrated without waiting a season for the ledger to fill. Refit on
+2026 weeks 2-11 -- 6,346 graded lines against the previous fit's 1,920:
+
+                        old (v2.1.0, wk 1-3)      new (v3.0.0, wk 2-11)
+    held-out plays      838                       2,716
+    hit rate            53.70%                    55.08%
+    90% lower bound     51.49%                    53.86%
+    held-out Brier      0.2499                    0.2488
+    ranked record       54.78% (1,256)            52.48% (4,160)
+
+Break-even at -110 is 52.38%. The held-out record clears it with a one-sided
+90% lower bound of 53.86%, on three times the sample, so `research_only` is
+satisfied on evidence rather than by assertion.
+
+**The passing blend weight fitted to zero.** `BLEND_WEIGHT["passing"] = 0.0`
+means the fair number for a passing market is the line: against the closing
+line, this model's quarterback projections carry no information about where the
+number should sit. It is left at the fitted value rather than floored at
+something that looks more useful, and it is the clearest signal in the fit of
+where the projection layer needs work.
+
+Which book a calibration applies to
+-----------------------------------
+`raw` depends on the projection; the *map* from raw to a probability was fitted
+where the line is a DraftKings closing number. `sources/bovada.py` now supplies
+most pregame quotes, and Bovada is a softer book posting a line earlier. The
+shrink calibrates the model's own overconfidence against the sharpest line
+available, so applying it to a softer line errs toward even -- conservative, in
+a known direction, rather than optimistic. That is defensible enough to publish
+and not good enough to leave unmarked, so a quote from a book outside
+`CALIBRATED_BOOKS` is priced with ``calibration_transfer`` naming the book, and
+the forward record can settle whether the transfer holds.
 """
 
 from __future__ import annotations
@@ -38,22 +72,32 @@ FAMILY = {
     "passing_yards": "passing", "passing_tds": "passing", "completions": "passing",
     "pass_attempts": "passing", "interceptions": "passing",
 }
-BLEND_WEIGHT = {"passing": 0.422, "receiving": 0.586, "rushing": 0.167}
-# scripts/fit_prop_pricing.py --rows <2026 weeks 1-3 point-in-time replay lines>.
-CALIBRATION = {"s": 0.30, "c": 0.505}
+# scripts/fit_prop_pricing.py --replay <dir> --season 2026 (weeks 2-11).
+BLEND_WEIGHT = {"passing": 0.0, "receiving": 0.406, "rushing": 0.189}
+CALIBRATION = {"s": 0.25, "c": 0.56}
 EVIDENCE = {
-    "source": "2026 weeks 1-3, point-in-time matrix replay vs DraftKings closing lines",
-    "lines": 1920, "plays": 838, "wins": 450, "hit_rate": 0.537,
-    "ranked_wins": 688, "ranked_plays": 1256,
+    "source": "2026 weeks 2-11, point-in-time v3 replay vs DraftKings closing lines",
+    "lines": 6346, "plays": 2716, "wins": 1496, "hit_rate": 0.551,
+    "ranked_wins": 2183, "ranked_plays": 4160,
 }
 MIN_PROBABILITY = 0.53
 BREAK_EVEN = 0.524      # -110 both ways
 MIN_EVIDENCE_PLAYS = 300
-CALIBRATED_PROJECTION_VERSION = "nfl-player-projections/2.1.0"
+CALIBRATED_PROJECTION_VERSION = "nfl-player-projections/3.0.0"
+# Books whose lines the calibration above was actually fitted against.
+CALIBRATED_BOOKS = frozenset({"draftkings"})
 
 
 def calibration_applies(model_version: str | None) -> bool:
     return not model_version or model_version == CALIBRATED_PROJECTION_VERSION
+
+
+def book_transfer(book: str | None) -> str | None:
+    """The book this quote came from, when it is not one the fit used."""
+    key = str(book or "").strip().lower()
+    if not key or key in CALIBRATED_BOOKS:
+        return None
+    return key
 
 
 def _lower_bound(wins: int, plays: int) -> float:
@@ -75,13 +119,18 @@ def calibrate(raw: float) -> float:
     return min(max(0.5 + CALIBRATION["s"] * (raw - CALIBRATION["c"]), 0.01), 0.99)
 
 
-def price(metric: str, projection: float | None, line: float | None, *, player=None) -> dict | None:
-    """{'family', 'fair', 'raw', 'p_over'} for one quote, or None if unpriceable."""
+def price(metric: str, projection: float | None, line: float | None, *, player=None,
+          book: str | None = None) -> dict | None:
+    """{'family', 'fair', 'raw', 'p_over'} for one quote, or None if unpriceable.
+
+    ``calibration_transfer`` is present and names the book when the quote came
+    from one the calibration was not fitted against.
+    """
     family = FAMILY.get(metric)
     if player is not None and not calibration_applies(getattr(player, "model_version", None)):
-        # v2's historical betting record cannot qualify a different forecaster.
-        # The v3 projection, outcome bands and raw threshold probability remain
-        # available; quote-specific calibration needs its own forward record.
+        # One forecaster's betting record cannot qualify a different one. The
+        # projection, its outcome bands and the raw threshold probability stay
+        # available; a calibrated price needs this version's own record.
         return None
     if family is None or projection is None or line is None or projection <= 0:
         return None
@@ -89,9 +138,13 @@ def price(metric: str, projection: float | None, line: float | None, *, player=N
     raw = prop_distributions.over_probability(dist, float(line)) if dist else None
     if raw is None:
         return None
-    return {
+    priced = {
         "family": family,
         "fair": round(float(line) + BLEND_WEIGHT[family] * (float(projection) - float(line)), 2),
         "raw": round(raw, 4),
         "p_over": round(calibrate(raw), 4),
     }
+    transfer = book_transfer(book)
+    if transfer is not None:
+        priced["calibration_transfer"] = transfer
+    return priced

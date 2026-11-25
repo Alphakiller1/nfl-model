@@ -298,10 +298,37 @@ def test_negative_yardage_can_finish_under_a_negative_threshold(monkeypatch):
     assert prop_distributions.over_probability(distribution, -10) > 0.9
 
 
-def test_previous_projection_versions_betting_evidence_cannot_price_v3():
-    player = SimpleNamespace(model_version="nfl-player-projections/3.0.0")
-    assert prop_pricing.price("receiving_yards", 70, 50.5, player=player) is None
+def test_a_forecaster_without_its_own_betting_record_cannot_be_priced():
+    """The guard is on the *record*, not on a particular number.
+
+    v3 was unpriceable while this file's calibration was still fitted on v2.1.0;
+    it is priceable now that `fit_prop_pricing --replay` has earned it a record
+    of its own. A version with no record must still be refused -- that is what
+    stops a future projection rewrite from quietly inheriting this one's.
+    """
+    current = SimpleNamespace(model_version=prop_pricing.CALIBRATED_PROJECTION_VERSION)
+    assert prop_pricing.price("receiving_yards", 70, 50.5, player=current) is not None
+    future = SimpleNamespace(model_version="nfl-player-projections/4.0.0")
+    assert prop_pricing.price("receiving_yards", 70, 50.5, player=future) is None
     assert prop_pricing.price("receiving_yards", 70, 50.5) is not None
+
+
+def test_an_uncalibrated_book_is_priced_but_marked_as_a_transfer():
+    """Bovada supplies most pregame quotes and the fit used DraftKings closes.
+    The shrink errs toward even on a softer line, so this publishes -- labelled."""
+    draftkings = prop_pricing.price("receiving_yards", 70, 50.5, book="draftkings")
+    assert "calibration_transfer" not in draftkings
+    bovada = prop_pricing.price("receiving_yards", 70, 50.5, book="bovada")
+    assert bovada["calibration_transfer"] == "bovada"
+    assert bovada["p_over"] == draftkings["p_over"]
+
+
+def test_the_passing_blend_weight_is_the_fitted_zero():
+    """Against the closing line the quarterback projections carried no
+    information about where the number should sit. Keep the measurement."""
+    assert prop_pricing.BLEND_WEIGHT["passing"] == 0.0
+    priced = prop_pricing.price("passing_yards", 300.0, 245.5)
+    assert priced["fair"] == 245.5
 
 
 def test_missing_fitted_artifact_cannot_silently_publish_an_unrevised_model(monkeypatch):

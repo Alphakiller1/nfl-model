@@ -16,10 +16,14 @@ market, the top third of raw prices taken over and the bottom third under.
 
     PYTHONPATH=src python scripts/fit_prop_pricing.py [ledger.json] [--since 2.1.0]
     PYTHONPATH=src python scripts/fit_prop_pricing.py --rows joined.json
+    PYTHONPATH=src python scripts/fit_prop_pricing.py --replay <replay dir> --season 2026
 
 ``--since`` keeps ledger rows from that projection version on (refit on the
 current model once it has a few weeks of lines). ``--rows`` takes a list of
-{week, metric, proj, line, act} dicts, e.g. from the point-in-time replay.
+{week, metric, proj, line, act} dicts. ``--replay`` reads
+`scripts/audit_player_props.py` output and joins it to ESPN's closing lines
+itself, which is how a *new* projection version earns a calibration of its own
+rather than waiting a season for the ledger to fill.
 Pure standard library, like the package.
 """
 
@@ -98,6 +102,52 @@ def joined_rows(ledger: dict, since: str | None = None) -> list[dict]:
     return rows
 
 
+def replay_rows(directory: Path, season: int) -> list[dict]:
+    """Join a point-in-time replay to the closing line each projection faced.
+
+    `scripts/audit_player_props.py` writes `structural-<season>.json.gz`, one
+    row per projected player-week carrying the *current* forecaster's `metrics`
+    and the `actual` outcome. Joining that to ESPN's closing DraftKings lines
+    gives the same {week, metric, proj, line, act} shape `--rows` takes, without
+    waiting for the ledger to accumulate a season of a new model version.
+
+    This is how a new projection version earns its own calibration instead of
+    inheriting one fitted on its predecessor -- which is what
+    `prop_pricing.CALIBRATED_PROJECTION_VERSION` refuses to allow.
+    """
+    import gzip
+
+    path = directory / f"structural-{season}.json.gz"
+    replay = json.loads(gzip.decompress(path.read_bytes()).decode("utf-8"))
+    weeks = sorted({int(row["week"]) for row in replay})
+    lines: dict[int, dict[tuple[str, str], float]] = {}
+    for week in weeks:
+        try:
+            lines[week] = espn_lines(season, week)
+        except Exception as exc:   # an unreachable week is skipped, not fatal
+            print(f"week {week}: ESPN lines unavailable ({exc})", file=sys.stderr)
+            lines[week] = {}
+        print(f"week {week}: {len(lines[week])} closing lines", file=sys.stderr)
+    rows = []
+    for row in replay:
+        # A projected player who did not record a game is a settlement question,
+        # not a pricing one: including it would score the line against a zero.
+        if not row.get("played"):
+            continue
+        week = int(row["week"])
+        for metric, projection in (row.get("metrics") or {}).items():
+            actual = (row.get("actual") or {}).get(metric)
+            if prop_pricing.FAMILY.get(metric) is None or actual is None:
+                continue
+            line = lines[week].get((row["player_id"], metric))
+            if line is None:
+                continue
+            rows.append({"week": (season, week), "metric": metric,
+                         "proj": float(projection), "line": float(line),
+                         "act": float(actual)})
+    return rows
+
+
 def fit_w(rows: list[dict]) -> float:
     num = sum((r["proj"] - r["line"]) * (r["act"] - r["line"]) for r in rows)
     den = sum((r["proj"] - r["line"]) ** 2 for r in rows)
@@ -145,7 +195,11 @@ def ranked_record(rows: list[dict]) -> tuple[int, int]:
 def main() -> None:
     args = sys.argv[1:]
     since = args[args.index("--since") + 1] if "--since" in args else None
-    if "--rows" in args:
+    if "--replay" in args:
+        directory = Path(args[args.index("--replay") + 1])
+        season = int(args[args.index("--season") + 1]) if "--season" in args else 2026
+        rows = replay_rows(directory, season)
+    elif "--rows" in args:
         rows = json.loads(Path(args[args.index("--rows") + 1]).read_text(encoding="utf-8"))
         rows = [{**r, "week": tuple(r["week"]) if isinstance(r["week"], list) else r["week"]}
                 for r in rows]
