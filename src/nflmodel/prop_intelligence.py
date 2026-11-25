@@ -660,8 +660,16 @@ def revise(
         raise ValueError("Player-intelligence parameters are missing or not validated")
     if params.get("fit_season_max", season) >= season:
         raise ValueError("Player-intelligence parameters are not prior to the forecast season")
-    if params.get("model_version") != "nfl-player-projections/3.0.0":
-        raise ValueError("Player-intelligence parameters belong to a different projection version")
+    from .player_props import MODEL_VERSION
+    if params.get("model_version") != MODEL_VERSION:
+        # Hardcoding the version here meant that changing the structural layer
+        # raised at runtime instead of failing the fit, and that a structural
+        # change could otherwise keep corrections fitted against the layer it
+        # replaced. The parameters must name the forecaster they were fitted on.
+        raise ValueError(
+            f"Player-intelligence parameters belong to a different projection "
+            f"version ({params.get('model_version')!r}, not {MODEL_VERSION!r}); "
+            f"refit with scripts/fit_player_intelligence.py")
     histories = history_index(history_rows, season=season, week=week)
     processes = process_games(
         pbp_rows,

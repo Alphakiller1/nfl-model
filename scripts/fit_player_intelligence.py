@@ -23,7 +23,7 @@ from scipy.stats import nbinom, poisson
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from nflmodel import prop_distributions, prop_intelligence  # noqa: E402
+from nflmodel import player_props, prop_distributions, prop_intelligence  # noqa: E402
 
 ROLE = ("role_trend", "role_cv", "zero_role_rate", "log_history", "new_team", "depth")
 RATE = (
@@ -363,7 +363,10 @@ def main() -> None:
     }
     params = {
         "version": prop_intelligence.VERSION,
-        "model_version": "nfl-player-projections/3.0.0",
+        # Stamped from the forecaster actually replayed, not a literal. A
+        # hardcoded version here meant a structural change produced
+        # parameters that claimed to belong to the layer they replaced.
+        "model_version": player_props.MODEL_VERSION,
         "fit_seasons": [2024, 2025],
         "selection_season": 2025,
         "held_out_season": 2026,

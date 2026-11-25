@@ -221,7 +221,11 @@ def test_props_use_the_providers_own_event_id_not_espns(monkeypatch):
     from datetime import datetime, timedelta, timezone
 
     soon = (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat()
-    later = (datetime.now(timezone.utc) + timedelta(days=4)).isoformat()
+    # Derived from the window rather than hardcoded: this assertion is about
+    # "outside the window", and a literal four days silently became *inside* it
+    # when the window widened from 30 hours to 120.
+    later = (datetime.now(timezone.utc)
+             + timedelta(hours=oddsapi.PROP_LEAD_HOURS + 24)).isoformat()
     line = oddsapi.BookLine("draftkings", "DraftKings", -2.5, 47.5, -140, 120, None, soon,
                             event_id="espn-401")
     quotes = oddsapi.fetch_player_props({("KC", "BUF"): line, ("NYJ", "CAR"): line})

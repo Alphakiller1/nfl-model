@@ -278,7 +278,8 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
         mean = player.metrics.get(metric)
         if metric == "rush_attempts" and mean is None:
             mean = player.metrics.get("carries")
-        priced = prop_pricing.price(metric, mean, quote.line, player=player)
+        priced = prop_pricing.price(metric, mean, quote.line, player=player,
+                                    book=getattr(quote, "book", None))
         leg_metric = ("carries" if metric == "rush_attempts" and "carries" in player.metrics
                       else metric)
         if priced is None or (player.player_id, leg_metric) not in allowed:

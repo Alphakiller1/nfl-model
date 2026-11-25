@@ -40,8 +40,17 @@ DEFAULT_BOOK = "draftkings"
 # Props cost markets x regions credits per game - 7 here, ~112 for a full slate.
 # Pull only inside this window before kickoff and reuse a pull this long, so a
 # week costs one or two slate pulls rather than one per build.
-PROP_LEAD_HOURS = 30
+# A board is built days ahead, so the window has to reach Sunday from a
+# Wednesday run; `fetch_player_props` orders by kickoff inside it so a thin
+# allowance still buys the nearest games first.
+PROP_LEAD_HOURS = 120
 PROP_TTL_SECONDS = 20 * 60 * 60
+# The event-odds endpoint bills one credit per market per region, so one
+# event costs about one credit per entry in PLAYER_PROP_MARKETS. The floor
+# only needs to cover a single event plus a little headroom; it used to be
+# 80, above the balance the key carries mid-season, which stopped every
+# request before it was made.
+PROP_CREDIT_FLOOR = 12
 PLAYER_PROP_MARKETS = (
     "player_pass_attempts",
     "player_pass_yds",
@@ -468,13 +477,25 @@ def fetch_player_props(
     lines: dict[tuple[str, str], BookLine],
     *,
     book: str | None = None,
-    min_remaining: int = 80,
+    min_remaining: int = PROP_CREDIT_FLOOR,
 ) -> list[PlayerPropQuote]:
     """Fetch paired NFL player props one event at a time.
 
     The provider requires the event-odds endpoint for props. Requests are made
     only for slate events already matched to the exact requested sportsbook and
     stop before crossing the configured quota floor.
+
+    **Credits go to the games closest to kickoff.** The endpoint bills one credit
+    per market per region, so one event costs about as much as
+    ``len(PLAYER_PROP_MARKETS)`` and a sixteen-game slate costs far more than a
+    month's allowance. Spending in dict order meant the allowance drained on
+    whichever game happened to be first and the Sunday-evening games -- the ones
+    whose lines are settled and whose projections are firmest -- got nothing.
+
+    The floor used to be 80, which was *above* the balance the key actually
+    carries mid-season (70 on 2026-11-24), so this function broke before its
+    first request on every run while game lines, floored at 20, kept working.
+    The floor now only has to cover one event's worth of markets.
     """
     requested = (os.getenv("ODDS_BOOKMAKERS") or book or DEFAULT_BOOK).strip().lower()
     if "," in requested or not requested:
@@ -496,6 +517,8 @@ def fetch_player_props(
             event_ids[(home, away)] = str(event["id"])
     failures = 0
     now = datetime.now(timezone.utc)
+    # Order the slate by kickoff so a thin allowance buys the nearest games.
+    schedule: list[tuple[float, tuple[str, str], str]] = []
     for (home, away), line in lines.items():
         event_id = event_ids.get((home, away))
         if not event_id:
@@ -503,9 +526,13 @@ def fetch_player_props(
         try:
             kickoff = datetime.fromisoformat(str(line.commence_time).replace("Z", "+00:00"))
         except ValueError:
-            kickoff = None
-        if kickoff is None or not 0 < (kickoff - now).total_seconds() < PROP_LEAD_HOURS * 3600:
             continue
+        lead = (kickoff - now).total_seconds()
+        if not 0 < lead < PROP_LEAD_HOURS * 3600:
+            continue
+        schedule.append((lead, (home, away), event_id))
+    schedule.sort()
+    for _lead, (home, away), event_id in schedule:
         if left is not None and left < min_remaining:
             break
         query = {

@@ -33,6 +33,33 @@ loses to the market by 0.38. A projected total is a centre of mass with a
 little of the variance, and a scoreline printed to the point looks far more
 precise than it is. That is why the dashboard shows the market total beside it.
 
+Selected on MAE, which is the wrong objective
+---------------------------------------------
+`EFFICIENCY_WEIGHT = 0.50` is the MAE argmin and it is **not** the ATS argmax.
+`scripts/sweep_margin.py`, strictly expanding, 1,615 games 2020-2025:
+
+    efficiency weight   0      0.3    0.4    0.5    0.6    0.8    1.0
+    margin MAE        10.337 10.247 10.232 10.227 10.231 10.263 10.326
+    ATS %             48.42  48.74  49.49  49.56  49.81  50.19  50.82
+    underdog side %   56.4   65.1   68.5   72.3   75.3   79.7   82.5
+
+ATS rises monotonically with the weight while MAE is minimised in the middle.
+The product is a side pick, so ATS is the objective that matters, and the two
+disagree. The weight is **not** moved: the 2.4-point ATS spread is about 1.9
+standard errors (SE 1.26% at n = 1,582) and the ATS argmax still sits 1.3 SE
+*below* the 52.38% break-even, so moving the shipped blend on this would be a
+parameter tweak without a gate record. It is documented instead, and
+`sweep_margin.py` reports both objectives so the choice stays visible.
+
+The third row is the answer to a question the audit left open. The board's
+underdog-side share of 72% is not a defect: it is the efficiency path's
+signature, monotone in the weight, and the path with the better ATS record is
+also the one that takes the dog four times in five.
+
+`TOTAL_SHRINK = 0.70` was checked the same way. The MAE argmin is 0.80
+(10.6511 against 0.70's 10.6598) and O/U stays within 49.0-49.7% at every
+shrink from 0.5 to 1.0. Worth 0.009 points; left where it is.
+
 **Projected scores** are algebra on the two projections:
 
     home = (total + margin) / 2

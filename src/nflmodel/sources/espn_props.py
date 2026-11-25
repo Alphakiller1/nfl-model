@@ -25,6 +25,12 @@ from .oddsapi import PlayerPropQuote, normalise, team_index
 PROP_BETS = ("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events/"
              "{event}/competitions/{event}/odds/100/propBets?limit=1000")
 NOMINAL_PRICE = -110.0
+# Why each game was unreadable on the last `fetch`. ESPN publishes propBets
+# only once a game has kicked off (verified 2026-11-25: every upcoming game
+# 404s, every played one returns 1,500+ items), so a pregame run fills this
+# with 404s and returns nothing. The board reports it rather than showing a
+# bare zero.
+LAST_FAILURES: list[str] = []
 # ESPN prop type name -> the Odds API market key the rest of the model speaks.
 MARKETS = {
     "total passing yards (incl. overtime)": "player_pass_yds",
@@ -117,10 +123,16 @@ def fetch(needed: set[tuple[str, str]], roster: list[dict], *,
         event_id, home, away = spec
         try:
             payload = espn_odds._get(PROP_BETS.format(event=event_id))
-        except Exception:
-            return []  # one unreadable game must not take the slate's props down
+        except Exception as exc:
+            # One unreadable game must not take the slate's props down -- but it
+            # must be recorded. Swallowing this silently is what hid the fact
+            # that every pregame request 404s, for weeks.
+            code = getattr(exc, "code", None) or type(exc).__name__
+            LAST_FAILURES.append(f"{away}@{home}: {code}")
+            return []
         return parse(payload, event_id=event_id, home=home, away=away, players=players)
 
+    LAST_FAILURES.clear()
     out: list[PlayerPropQuote] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
         for quotes in pool.map(one, wanted):

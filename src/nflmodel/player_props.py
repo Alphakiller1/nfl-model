@@ -23,7 +23,9 @@ from dataclasses import dataclass, field
 from . import prop_intelligence, teams
 from .sources.nflverse import number
 
-MODEL_VERSION = "nfl-player-projections/3.0.0"
+MODEL_VERSION = "nfl-player-projections/3.1.0"
+# League mean quarterback rushing attempts per game, measured on 2024-25.
+QB_CARRY_PRIOR = 3.44
 POSITIONS = ("QB", "RB", "WR", "TE", "K")
 DEPTH_LIMITS = {"QB": 1, "RB": 3, "WR": 4, "TE": 2, "K": 1}
 # Share of pre-kickoff depth-chart players (not listed Out) who recorded a carry,
@@ -134,9 +136,9 @@ RATE_PRIORS = {
     "receive_yards_te": (7.40, 34.0),
     "rush_td_qb": (0.012, 45.0),
     "rush_td_rb": (0.026, 55.0),
-    "receive_td_rb": (0.012, 45.0),
-    "receive_td_wr": (0.028, 55.0),
-    "receive_td_te": (0.031, 50.0),
+    "receive_td_rb": (0.0315, 45.0),
+    "receive_td_wr": (0.0508, 55.0),
+    "receive_td_te": (0.0524, 50.0),
 }
 # A receiver's depth of target (aDOT) is far more stable than his yards per
 # target (split-half k = 22 targets vs ~120), so the prior his efficiency is
@@ -363,11 +365,25 @@ def _team_environment(
     team_mean = {metric: shrunk(offense, offense_weight, metric, 6.0) for metric in fallback}
     # Efficiency allowed by a defence is mostly noise (split-half k ~ 35 games).
     allowed = {metric: shrunk(defense, defense_weight, metric, 20.0) for metric in fallback}
+    # Measured on 2024-25: team targets / pass attempts is mean 0.954, median
+    # 0.964, p95 1.000. A pass attempt has at most one target, so 1.0 is the
+    # physical ceiling and the old 0.98 sat below it. Raising it is a no-op --
+    # the estimate never comes within 0.04 of either bound -- and it is kept
+    # only because a clamp should not be tighter than the quantity it bounds.
+    #
+    # This was investigated as the cause of the WR target shortfall and is NOT
+    # it. The projected receiver pool sums to about 0.915 of projected attempts
+    # against a league-actual 0.954, but that 4-point gap is `GROUP_RESERVE`
+    # doing its job: a fifth receiver, a fullback and a third tight end draw
+    # real targets and are not projected, so their share must not be handed to
+    # the players who are. The rate itself comes out at 0.951-0.959 per club,
+    # which is correct. See the WR entry in reports/PROPS_MODEL.md: the bias is
+    # confirmed on both samples and its cause is still open.
     target_rate = _clamp(
         (0.6 * team_mean["targets"] + 0.4 * allowed["targets"])
         / max(1.0, 0.6 * team_mean["attempts"] + 0.4 * allowed["attempts"]),
         0.84,
-        0.98,
+        1.00,
     )
     pass_delta = (
         allowed["pass_yards"] / max(allowed["attempts"], 1.0)
@@ -959,8 +975,13 @@ def project(
             )
             quarterback_item = None if quarterback is None else quarterback["history"]
             quarterback_games = _weighted_games(quarterback_item)
+            # The prior is the league mean quarterback rushing attempts per
+            # game, measured 2024-25 (3.44; 2026 holdout 3.20). It was 4.4,
+            # about a carry above every quarterback's true mean, which pulled
+            # the whole position up: QB rush attempts ran 6.6% heavy on
+            # 2024-25 and 12.7% heavy on 2026 (t = 3.7 in both).
             quarterback_carries = (
-                (_weighted_sum(quarterback_item, "carries") + 4.4 * 4.0)
+                (_weighted_sum(quarterback_item, "carries") + QB_CARRY_PRIOR * 4.0)
                 / (quarterback_games + 4.0)
             )
             # Reserve the starting QB's own forecast plus a small gadget/backup

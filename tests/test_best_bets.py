@@ -5,6 +5,7 @@ import pytest
 
 from nflmodel import best_bets as bb
 from nflmodel import ledger
+from nflmodel import prop_pricing as prop_pricing_module
 from nflmodel.player_props import PlayerProjection
 from nflmodel.sources.oddsapi import PlayerPropQuote
 
@@ -98,8 +99,10 @@ def _player(**changes):
         persistence_weight=0.72, role_reason="current depth plus same-team usage",
         confidence="high", team_environment_source="DraftKings", implied_team_points=27.5,
         scheme_context={"carry_delta": 2.5}, metrics={"rushing_yards": 92.0},
-        # These mechanics tests exercise the frozen v2 calibration record.
-        model_version="nfl-player-projections/2.1.0",
+        # Mechanics tests take whichever version currently carries a betting
+        # record. Pinning the literal "2.1.0" here meant that earning v3 its own
+        # calibration broke five unrelated tests.
+        model_version=prop_pricing_module.CALIBRATED_PROJECTION_VERSION,
     )
     values.update(changes)
     return PlayerProjection(**values)
@@ -146,8 +149,12 @@ def test_prop_pick_is_priced_from_the_matrix_distribution(slate, pricing):
     assert bb.prop_picks(replace(s, player_prop_quotes=[_quote(median, -110, -110)]), {}) == []
 
 
-def test_revised_forecaster_cannot_reuse_the_legacy_prop_betting_record(slate, pricing):
-    player = _player(model_version="nfl-player-projections/3.0.0")
+def test_a_forecaster_without_a_betting_record_publishes_no_prop_pick(slate, pricing):
+    """Not a statement about any one version: whichever forecaster lacks a
+    record of its own must publish nothing. v3 held this board silent for weeks
+    because the record still named v2.1.0 -- the guard worked, the refit was
+    simply never done."""
+    player = _player(model_version="nfl-player-projections/9.9.9")
     revised = replace(slate, week=1, player_projections=[player],
                       player_prop_quotes=[_quote(68.5)])
     assert bb.prop_picks(revised, {}) == []
