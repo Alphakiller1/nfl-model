@@ -77,3 +77,29 @@ def test_report_gaps_must_not_be_calls_and_must_name_disagreement():
     assert any("presented as a call" in f for f in audit.audit(call))
     hidden = _board(weekly_report={"top_totals": [_report_row(conflicts=[])]})
     assert any("disagrees but is not named" in f for f in audit.audit(hidden))
+
+
+def test_the_live_odds_gate_names_what_failed(monkeypatch, tmp_path):
+    """A gate that throws away its diagnosis costs deploy cycles.
+
+    The bare "requires verified live DraftKings lines" covers an errored feed,
+    a quota floor and lines that matched no game — three unrelated causes. On
+    2026-11-26 it cost three failed deploys and two wrong diagnoses before
+    anyone could tell which one it was.
+    """
+    import re
+
+    from nflmodel import site
+
+    source = inspect_source(site.build_site)
+    message = re.search(r'"production build requires verified live[^"]*"', source)
+    assert message, "the gate message moved; keep it diagnosable"
+    # Everything a reader needs to tell the three causes apart.
+    for field in ("state=", "slate_complete=", "error="):
+        assert field in source, f"the gate must report {field}"
+
+
+def inspect_source(func):
+    import inspect
+
+    return inspect.getsource(func)

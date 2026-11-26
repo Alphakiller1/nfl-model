@@ -1504,7 +1504,18 @@ def build_site(out: Path, season: int | None = None, week: int | None = None,
         if odds.get("state") not in {"fresh", "cached"} or (
             slate.games and int(odds.get("slate_complete") or 0) == 0
         ):
-            raise RuntimeError("production build requires verified live DraftKings lines")
+            # Say which half failed and what the feed reported. The bare message
+            # cost three deploy cycles and two wrong diagnoses on 2026-11-26:
+            # the same text covers "the odds feed errored", "the quota floor
+            # stopped it" and "lines arrived but matched no game", and those
+            # have nothing to do with each other. The status is right here.
+            raise RuntimeError(
+                "production build requires verified live DraftKings lines: "
+                f"state={odds.get('state')!r} "
+                f"slate_complete={odds.get('slate_complete')!r}/{odds.get('slate_games')!r} "
+                f"matched={odds.get('matched')!r} events={odds.get('events')!r} "
+                f"remaining={odds.get('remaining')!r} error={odds.get('error')!r} "
+                f"issues={list(slate.issues)[:4]!r}")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
