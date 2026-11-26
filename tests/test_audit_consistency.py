@@ -103,3 +103,31 @@ def inspect_source(func):
     import inspect
 
     return inspect.getsource(func)
+
+
+def test_an_under_at_the_under_side_ceiling_is_accepted():
+    """The calibration is not symmetric about 0.5; the audit must not assume so.
+
+    An under is priced as `1 - p_over`, so with c != 0.5 the two sides reach
+    different ceilings. The v3.1.0 refit set c = 0.56: the under side reaches
+    0.640 against the over side's 0.610, and a legitimately priced under at
+    0.613 failed the deploy on 2026-11-26.
+    """
+    from nflmodel import prop_pricing
+
+    over_top = prop_pricing.calibrate(1.0)
+    under_top = 1.0 - prop_pricing.calibrate(0.0)
+    assert under_top > over_top, "this fit is asymmetric; that is what is guarded"
+
+    players = _board()["player_projections"] + [
+        {"player_id": "qb9", "player_name": "A Passer", "team": "TB", "position": "QB",
+         "depth_rank": 1, "injury_status": None, "metrics": {"rush_attempts": 6.0}}]
+    pick = {"family": "prop", "selection": "A Passer under 8.5 rush attempts",
+            "probability": round(under_top - 0.001, 3), "player_id": "qb9",
+            "metric": "rush_attempts", "side": "under", "line": 8.5}
+    out = audit.audit(_board(player_projections=players, best_bets=[pick]))
+    assert not any("outside the calibrated range" in f for f in out), out
+
+    too_high = dict(pick, probability=round(under_top + 0.01, 3))
+    out = audit.audit(_board(player_projections=players, best_bets=[too_high]))
+    assert any("outside the calibrated range" in f for f in out)
