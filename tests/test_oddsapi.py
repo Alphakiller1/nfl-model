@@ -1,3 +1,5 @@
+import pytest
+
 from nflmodel.sources import oddsapi
 
 
@@ -263,3 +265,45 @@ def test_the_game_line_floor_is_the_one_the_fetch_uses():
     assert signature.parameters["min_remaining"].default == oddsapi.LINE_CREDIT_FLOOR
     prop_signature = inspect.signature(oddsapi.fetch_player_props)
     assert prop_signature.parameters["min_remaining"].default == oddsapi.PROP_CREDIT_FLOOR
+
+
+def test_a_quota_failure_names_the_free_path_that_actually_failed(monkeypatch):
+    """The credits were a red herring; ESPN refusing the runner was the cause.
+
+    On 2026-11-26 the deploy died with "only 8 Odds API credits left (floor
+    20)". ESPN serves these lines for free and had all 29 of them, but it
+    refused the runner, and `_espn_fallback` swallowed the exception to let the
+    caller's own failure stand -- so the build blamed a quota that was not the
+    reason there was no line. Both halves get named.
+    """
+    from urllib.error import HTTPError
+
+    from nflmodel.sources import espn_odds, oddsapi
+
+    def refuse(*a, **k):
+        raise HTTPError("https://espn", 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(espn_odds, "lines", refuse)
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 8)
+    monkeypatch.setenv("ODDS_BOOKMAKERS", "draftkings")
+
+    with pytest.raises(oddsapi.QuotaExhausted) as caught:
+        oddsapi.fetch_lines(needed={("BUF", "KC")})
+    message = str(caught.value)
+    assert "only 8 Odds API credits left" in message       # the paid path
+    assert "403" in message and "ESPN" in message          # the real cause
+
+    # And the status the build gate prints carries it too, not just the raise.
+    assert "403" in (oddsapi.status_report() or {}).get("error", "")
+
+
+def test_an_empty_espn_scoreboard_is_distinguished_from_a_refused_one(monkeypatch):
+    """"No lines posted yet" and "we were blocked" need different responses."""
+    from nflmodel.sources import espn_odds, oddsapi
+
+    monkeypatch.setattr(espn_odds, "lines", lambda *a, **k: ([], "2026-11-26T08:00:00Z"))
+    monkeypatch.setattr(oddsapi, "remaining", lambda: 8)
+    monkeypatch.setenv("ODDS_BOOKMAKERS", "draftkings")
+    with pytest.raises(oddsapi.QuotaExhausted) as caught:
+        oddsapi.fetch_lines(needed={("BUF", "KC")})
+    assert "named no draftkings quote" in str(caught.value)
