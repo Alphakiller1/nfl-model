@@ -52,9 +52,17 @@ def _picks(board: dict) -> list[str]:
                 out.append(f"{name}: side contradicts model {p['model_number']} "
                            f"vs {p['book_number']}")
         if family == "prop":
-            top = prop_pricing.calibrate(1.0)
+            # Both sides, because the calibration is not symmetric about 0.5.
+            # An under is priced as 1 - p_over (best_bets), so the reachable
+            # range is [min, max] over BOTH calibrate(1.0) and 1 - calibrate(0),
+            # and those differ whenever c != 0.5. The old fit had c = 0.505, a
+            # gap of 0.003 that no pick ever landed in; the v3.1.0 refit moved c
+            # to 0.56 and widened it to 0.03, which rejected a legitimately
+            # priced under at 0.613 and failed the deploy.
+            top = max(prop_pricing.calibrate(1.0), 1.0 - prop_pricing.calibrate(0.0))
             if prob > top + 1e-6 or prob < 0.5:
-                out.append(f"{name}: probability {prob:.3f} outside the calibrated range")
+                out.append(f"{name}: probability {prob:.3f} outside the calibrated "
+                           f"range (max {top:.3f})")
             player = players.get(p.get("player_id")) or {}
             metric = p.get("metric") or ""
             if metric == "rush_attempts" and player.get("position") == "RB":
