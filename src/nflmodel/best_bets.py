@@ -78,6 +78,14 @@ class Pick:
     player_id: str | None = None
     team: str | None = None
     metric: str | None = None
+    book: str | None = None
+    # Names the book when the calibration was not fitted against it. The
+    # calibration maps `raw` to a probability using a fit against DraftKings
+    # closing lines; `sources/bovada.py` supplies most pregame quotes, so most
+    # published picks are a transfer. `prop_pricing.price` has always computed
+    # this -- it was dropped on the way into the Pick, so every board shipped
+    # unmarked while the unit test on `price()` kept passing.
+    calibration_transfer: str | None = None
 
     @property
     def pick_id(self) -> str:
@@ -331,6 +339,11 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 sentences.append(f"Same-position teammates out: {', '.join(teammates[:3])}.")
             if player.injury_status:
                 sentences.append(f"Note: {player.player_name} is listed {player.injury_status}.")
+            if priced.get("calibration_transfer"):
+                sentences.append(
+                    f"Calibration transfer: this line is {priced['calibration_transfer']}'s, "
+                    "and the shrink was fitted against DraftKings closing numbers. Applying it "
+                    "to a softer line errs toward even, not toward optimism.")
             sentences.append(
                 f"Held-out record of these leans: {record['wins']}-"
                 f"{record['plays'] - record['wins']} ({record['hit_rate']:.1%}; break-even "
@@ -343,9 +356,11 @@ def prop_picks(slate, injuries: dict) -> list[Pick]:
                 round(prob, 3), " ".join(sentences),
                 (["questionable"] if player.injury_status else [])
                 + (["lean"] if prob < MIN_PROP_PROBABILITY else [])
-                + (["research-only"] if research else []),
+                + (["research-only"] if research else [])
+                + (["calibration-transfer"] if priced.get("calibration_transfer") else []),
                 player=player.player_name, player_id=player.player_id, team=player.team,
-                metric=metric))
+                metric=metric, book=getattr(quote, "book", None),
+                calibration_transfer=priced.get("calibration_transfer")))
     return out
 
 

@@ -120,6 +120,9 @@ class Leg:
     projection: float
     probability: float
     market_record: tuple[int, int]
+    # Names the book when the calibration was not fitted against it; see
+    # `best_bets.Pick.calibration_transfer`.
+    calibration_transfer: str | None = None
 
     @property
     def label(self) -> str:
@@ -335,7 +338,7 @@ def candidate_legs(slate, now: datetime | None = None) -> tuple[list[Leg], dict,
         leg = Leg(slate.season, slate.week, home, away, player.player_name, player.player_id,
                   player.team, player.opponent, player.position, player.game_id,
                   player.kickoff_utc, metric, side, float(quote.line), round(float(mean), 2),
-                  round(prob, 4), record)
+                  round(prob, 4), record, priced.get("calibration_transfer"))
         if reason:
             excluded[reason] += 1
             if reason not in ("lean below 53%", "market without a record", "0.5 line"):

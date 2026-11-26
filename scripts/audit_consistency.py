@@ -74,6 +74,23 @@ def _picks(board: dict) -> list[str]:
                 out.append(f"{name}: backup (depth 3+)")
             if float(p.get("line") or 0) < slips.MIN_LINE:
                 out.append(f"{name}: 0.5 line")
+            # A borrowed calibration must say whose line it was applied to.
+            # `prop_pricing.price` computed this mark from the start and
+            # `prop_picks` dropped it, so on 2026-11-26 all six published picks
+            # applied a DraftKings-fitted shrink to Bovada lines unmarked -- and
+            # the unit test on `price()` passed throughout. Gate the board.
+            # Require the book itself, or this check disarms silently: a pick
+            # with no book at all makes `book_transfer` return None, which
+            # matches an absent mark and passes. That is the exact shape of the
+            # bug being gated, so an unnamed book is a failure in its own right.
+            if not str(p.get("book") or "").strip():
+                out.append(f"{name}: no book named, so the calibration cannot "
+                           f"be checked against the one it was fitted on")
+            expected = prop_pricing.book_transfer(p.get("book"))
+            if expected != p.get("calibration_transfer"):
+                out.append(f"{name}: book {p.get('book')!r} wants "
+                           f"calibration_transfer {expected!r}, board says "
+                           f"{p.get('calibration_transfer')!r}")
     return out
 
 

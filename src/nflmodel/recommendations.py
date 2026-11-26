@@ -278,6 +278,9 @@ def _player_lists(slate) -> tuple[list[dict], list[dict]]:
             "scheme_score": round(_player_scheme_score(player), 3),
             "reason": _profile_reason(slate, player.team, player.opponent),
             "book": quote.book_title,
+            # Names the book when the shrink was fitted elsewhere; see
+            # `best_bets.Pick.calibration_transfer`.
+            "calibration_transfer": priced.get("calibration_transfer"),
             "last_update": quote.last_update,
             "status": "quoted_model_gap",
         })
