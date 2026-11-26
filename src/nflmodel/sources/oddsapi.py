@@ -20,7 +20,7 @@ import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -144,6 +144,13 @@ class PlayerPropQuote:
 
 
 _LAST_STATUS = OddsStatus("not_run", DEFAULT_BOOK, None, None, 0, 0, 0)
+# Why the free ESPN path last returned nothing. `_espn_fallback` swallows every
+# exception so the caller's own failure stands, which on 2026-11-26 reported a
+# bare "only 8 credits left (floor 20)" while the real cause was ESPN refusing
+# the runner -- the credits were a red herring, and nothing recorded the 403.
+# ESPN is the primary source for game lines now (they are free there and the
+# Odds API allowance is nearly spent), so its failures are the ones that matter.
+_LAST_FALLBACK_FAILURE: str | None = None
 
 
 def _stamp() -> str:
@@ -285,12 +292,19 @@ def _espn_fallback(
     book as its provider. Returns an empty map when ESPN has nothing usable,
     so the caller's original failure stands.
     """
-    global _LAST_STATUS
+    global _LAST_STATUS, _LAST_FALLBACK_FAILURE
     from . import espn_odds
 
     try:
         quotes, fetched = espn_odds.lines(requested)
-    except Exception:
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        _LAST_FALLBACK_FAILURE = (
+            f"ESPN scoreboard unreadable: {type(exc).__name__}"
+            + (f" {code}" if code else "") + f": {exc}")
+        return {}
+    if not quotes:
+        _LAST_FALLBACK_FAILURE = f"ESPN named no {requested} quote on any game"
         return {}
     index = team_index()
     out: dict[tuple[str, str], BookLine] = {}
@@ -313,7 +327,10 @@ def _espn_fallback(
             commence_time=q["commence_time"],
         )
     if not out:
+        _LAST_FALLBACK_FAILURE = (
+            f"ESPN had {len(quotes)} {requested} quote(s) but none matched a slate team")
         return {}
+    _LAST_FALLBACK_FAILURE = None
     _LAST_STATUS = OddsStatus(
         "fresh", requested, fetched, left, len(quotes), len(out), unmatched,
         age_seconds=0, error=f"{reason}; {requested} lines read from ESPN's scoreboard",
@@ -362,7 +379,15 @@ def fetch_lines(
         fallback = _espn_fallback(requested, left, f"Odds API at {left} credits")
         if fallback:
             return fallback
-        raise QuotaExhausted(f"only {left} Odds API credits left (floor {min_remaining})")
+        # Name both halves. The quota is why the paid path is shut; the free
+        # path is why there is no line at all, and that is the actionable one.
+        _LAST_STATUS = replace(
+            _LAST_STATUS,
+            error=f"only {left} credits left (floor {min_remaining}); "
+                  f"{_LAST_FALLBACK_FAILURE or 'ESPN returned no usable lines'}")
+        raise QuotaExhausted(
+            f"only {left} Odds API credits left (floor {min_remaining}); "
+            f"free path also failed: {_LAST_FALLBACK_FAILURE or 'no usable ESPN lines'}")
     query = {
         "regions": "us",
         "markets": "h2h,spreads,totals",
