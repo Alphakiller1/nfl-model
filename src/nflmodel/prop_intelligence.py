@@ -14,7 +14,7 @@ from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
 
-from . import teams
+from . import prop_pricing, teams
 from .sources.nflverse import number
 
 VERSION = "nfl-player-intelligence/1.0.0"
@@ -820,6 +820,8 @@ def quote_comparisons(slate) -> list[dict]:
                 "projection_version": player.model_version,
                 "predictability": getattr(player, "predictability", {}).get(metric, {}),
                 "market_calibrated": False,
+                "calibration_transfer": prop_pricing.book_transfer(
+                    getattr(quote, "book", None)),
                 "comparison_status": "posted_line_and_projection; no validated v3 betting edge",
             }
         )

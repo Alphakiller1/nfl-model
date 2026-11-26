@@ -239,3 +239,32 @@ def test_evidence_gate_line():
     assert "None graded yet" in site._gate_line({})
     assert "not met" in site._gate_line({"spread": {"win": 30, "loss": 20}})
     assert "met." in site._gate_line({"spread": {"win": 160, "loss": 100}})
+
+
+def test_a_published_pick_names_the_book_whose_calibration_it_borrowed(slate, pricing):
+    """`price()` returning the mark is not the contract; the *board* carrying it is.
+
+    `prop_pricing.price` has computed `calibration_transfer` since the Bovada
+    source landed, and a unit test on `price()` asserted it. But `prop_picks`
+    built the Pick without the field, so it was computed and dropped: on
+    2026-11-26 all 477 live quotes were Bovada, every one of the six published
+    picks applied a DraftKings-fitted shrink, and nothing on the board said so
+    while that unit test passed. Assert the published object, not the helper.
+    """
+    bovada = PlayerPropQuote("e1", "KC", "BUF", "player_rush_yds", "Lead Back", 68.5,
+                             -115, -105, "bovada", "Bovada", None)
+    pick = bb.prop_picks(replace(slate, week=1, player_projections=[_player()],
+                                 player_prop_quotes=[bovada]), {})[0]
+    assert pick.calibration_transfer == "bovada"
+    assert pick.book == "bovada"
+    assert "calibration-transfer" in pick.tags
+    assert "fitted against DraftKings" in pick.angle
+    # It must survive serialisation -- that is the only form the site ever sees.
+    assert pick.to_json()["calibration_transfer"] == "bovada"
+
+    # A book the fit *did* use carries no mark and no tag.
+    clean = bb.prop_picks(replace(slate, week=1, player_projections=[_player()],
+                                  player_prop_quotes=[_quote(68.5)]), {})[0]
+    assert clean.calibration_transfer is None
+    assert "calibration-transfer" not in clean.tags
+    assert "fitted against DraftKings" not in clean.angle

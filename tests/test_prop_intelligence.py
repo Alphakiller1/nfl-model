@@ -474,3 +474,32 @@ def test_recent_seasons_outweigh_old_ones_in_the_prior():
                                                 season=2026, week=12)
     # Weighted toward the recent light sample, not the midpoint of 6.0.
     assert prior < 4.0
+
+
+def test_every_comparison_row_names_an_uncalibrated_book():
+    """477 live rows, all Bovada, none marked -- the mark was never plumbed here.
+
+    `quote_comparisons` carried `book` (the display title) but not the
+    transfer, so a reader had to know which books the fit used to tell whether
+    the shrink applied. The row states it.
+    """
+    player = SimpleNamespace(
+        player_id="wr", player_name="Receiver", position="WR", depth_rank=1,
+        team="NE", opponent="BUF", metrics={"receiving_yards": 60},
+        model_version=prop_pricing.CALIBRATED_PROJECTION_VERSION,
+        intelligence={}, predictability={},
+    )
+
+    def quote(book, title):
+        return SimpleNamespace(
+            player_id="wr", player_name="Receiver", market="player_reception_yds",
+            line=50.5, book=book, book_title=title, over_price=-110, under_price=-110,
+            priced=True, last_update="2026-11-26T07:40:00Z")
+
+    rows = prop_intelligence.quote_comparisons(SimpleNamespace(
+        player_projections=[player], player_prop_quotes=[quote("bovada", "Bovada")]))
+    assert [r["calibration_transfer"] for r in rows] == ["bovada"]
+
+    rows = prop_intelligence.quote_comparisons(SimpleNamespace(
+        player_projections=[player], player_prop_quotes=[quote("draftkings", "DraftKings")]))
+    assert [r["calibration_transfer"] for r in rows] == [None]

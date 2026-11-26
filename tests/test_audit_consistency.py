@@ -131,3 +131,39 @@ def test_an_under_at_the_under_side_ceiling_is_accepted():
     too_high = dict(pick, probability=round(under_top + 0.01, 3))
     out = audit.audit(_board(player_projections=players, best_bets=[too_high]))
     assert any("outside the calibrated range" in f for f in out)
+
+
+def test_a_borrowed_calibration_must_be_marked_on_the_board():
+    """The audit is the only gate that sees the *published* object.
+
+    A unit test on `prop_pricing.price` asserted the transfer mark while
+    `prop_picks` built the Pick without the field, so the mark was computed and
+    dropped and every board shipped unmarked. A test one level down cannot
+    catch that; this one reads the board the deploy publishes.
+    """
+    players = _board()["player_projections"] + [
+        {"player_id": "rb2", "player_name": "A Back", "team": "TB", "position": "RB",
+         "depth_rank": 1, "injury_status": None, "metrics": {"receptions": 2.0}}]
+    pick = {"family": "prop", "selection": "A Back under 3.5 receptions",
+            "probability": 0.56, "player_id": "rb2", "metric": "receptions",
+            "side": "under", "line": 3.5, "book": "bovada"}
+
+    unmarked = audit.audit(_board(player_projections=players, best_bets=[pick]))
+    assert any("calibration_transfer" in f for f in unmarked), unmarked
+
+    marked = dict(pick, calibration_transfer="bovada")
+    assert not any("calibration_transfer" in f for f in
+                   audit.audit(_board(player_projections=players, best_bets=[marked])))
+
+    # A book the fit did use must carry no mark, and claiming one is also wrong.
+    dk = dict(pick, book="draftkings")
+    assert not any("calibration_transfer" in f for f in
+                   audit.audit(_board(player_projections=players, best_bets=[dk])))
+    lying = dict(dk, calibration_transfer="bovada")
+    assert any("calibration_transfer" in f for f in
+               audit.audit(_board(player_projections=players, best_bets=[lying])))
+
+    # And a pick with no book disarms the check, so it fails on its own.
+    bookless = {k: v for k, v in pick.items() if k != "book"}
+    assert any("no book named" in f for f in
+               audit.audit(_board(player_projections=players, best_bets=[bookless])))

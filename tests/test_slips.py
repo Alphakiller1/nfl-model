@@ -135,3 +135,18 @@ def test_a_missing_starting_quarterback_lowers_the_game_total():
     assert adj == availability.QB_OUT_TOTAL_POINTS < 0
     adjusted = totals.project(None, None, rating_margin=0.0, total_adjustment=adj)
     assert adjusted.total == totals.LEAGUE_MEAN_TOTAL + availability.QB_OUT_TOTAL_POINTS
+
+
+def test_a_published_slip_leg_carries_the_calibration_transfer():
+    """The slip is the surface a bettor copies into an app, so the caveat has
+    to travel with the leg rather than sit in the board's odds diagnostic.
+
+    `candidate_legs` prices through `prop_pricing.price`, which marks a quote
+    from a book the fit did not use; the Leg dropped it, so published slips
+    were silent about it. `asdict` carries it now -- assert the published shape.
+    """
+    plain, transferred = _leg("a", "g1"), _leg("b", "g2")
+    transferred.calibration_transfer = "bovada"
+    plan = slips.SlipPlan(2026, 4, "2-pick", 1, 5.0, 50.0, slips=[[plain, transferred]])
+    legs = plan.to_json()["slips"][0]["legs"]
+    assert [leg["calibration_transfer"] for leg in legs] == [None, "bovada"]

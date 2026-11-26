@@ -58,6 +58,14 @@ a known direction, rather than optimistic. That is defensible enough to publish
 and not good enough to leave unmarked, so a quote from a book outside
 `CALIBRATED_BOOKS` is priced with ``calibration_transfer`` naming the book, and
 the forward record can settle whether the transfer holds.
+
+This mark has to reach the board to mean anything. It is carried on every
+published surface -- picks, quote comparisons, slip legs and the weekly report
+-- and `scripts/audit_consistency.py` fails the build when a prop pick's book
+disagrees with its mark, or names no book at all. That gate exists because the
+mark was computed here and dropped on the way into `best_bets.Pick` for as long
+as the Bovada source has been live: every board shipped unmarked while the unit
+test on `price()` kept passing.
 """
 
 from __future__ import annotations
