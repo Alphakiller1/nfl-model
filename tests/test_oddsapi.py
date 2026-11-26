@@ -237,3 +237,29 @@ def test_props_use_the_providers_own_event_id_not_espns(monkeypatch):
     far = oddsapi.BookLine("draftkings", "DraftKings", -2.5, 47.5, -140, 120, None, later)
     assert oddsapi.fetch_player_props({("KC", "BUF"): far}) == []
     assert not any("/odds" in path for path in requested)
+
+
+def test_props_can_never_starve_the_game_lines():
+    """The invariant that broke the board on 2026-11-25.
+
+    Game lines refuse below `LINE_CREDIT_FLOOR`, and a production build with
+    NFL_REQUIRE_LIVE_ODDS set treats a slate with no verified lines as fatal.
+    A prop floor at or below the line floor lets one prop run drain the balance
+    into the range where the next build's game lines refuse -- which is exactly
+    what a floor of 12 against a line floor of 20 did.
+    """
+    assert oddsapi.PROP_CREDIT_FLOOR > oddsapi.LINE_CREDIT_FLOOR
+    # And by more than a single game-lines request (three markets, one region),
+    # so the budget survives a run that spends right down to the prop floor.
+    assert oddsapi.PROP_CREDIT_FLOOR - oddsapi.LINE_CREDIT_FLOOR >= 3
+
+
+def test_the_game_line_floor_is_the_one_the_fetch_uses():
+    """A named floor that the function does not actually default to would be
+    documentation, not a guard."""
+    import inspect
+
+    signature = inspect.signature(oddsapi.fetch_lines)
+    assert signature.parameters["min_remaining"].default == oddsapi.LINE_CREDIT_FLOOR
+    prop_signature = inspect.signature(oddsapi.fetch_player_props)
+    assert prop_signature.parameters["min_remaining"].default == oddsapi.PROP_CREDIT_FLOOR
